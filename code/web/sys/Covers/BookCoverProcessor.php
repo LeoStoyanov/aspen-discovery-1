@@ -1245,7 +1245,23 @@ class BookCoverProcessor {
 					if ($driver->hasMarcRecord() && $this->getCoverFromMarc($driver->getMarcRecord())) {
 						return true;
 					} else {
-						//Finally, check the isbns if we don't have an override
+						$formatCategory = $driver->getFormatCategory();
+
+						// For movies, check UPCs first.
+						if ($formatCategory == 'Movies') {
+							$upcs = $driver->getCleanUPCs();
+							$this->isn = null;
+							if ($upcs) {
+								foreach ($upcs as $upc) {
+									$this->upc = $upc;
+									if ($this->getCoverFromProvider()) return true;
+									$this->upc = ltrim($upc, '0');
+									if ($this->getCoverFromProvider()) return true;
+								}
+							}
+						}
+
+						// Then check ISBNs
 						$isbns = $driver->getCleanISBNs();
 						if ($isbns) {
 							foreach ($isbns as $isbn) {
@@ -1258,7 +1274,11 @@ class BookCoverProcessor {
 						$issns = $driver->getISSNs();
 						if ($issns) {
 							foreach ($issns as $issn) {
-								$this->issn = $issn;
+								$cleanIssn = preg_replace('/[^0-9xX]/', '', $issn);
+								if (strlen($cleanIssn) == 0) {
+									continue;
+								}
+								$this->issn = $cleanIssn;
 								if ($this->getCoverFromProvider()) {
 									return true;
 								}
@@ -1268,16 +1288,15 @@ class BookCoverProcessor {
 						$this->isn = null;
 						if ($upcs) {
 							foreach ($upcs as $upc) {
-								$this->upc = ltrim($upc, '0');
+								// Try original UPC first before trimming zeros
+								$this->upc = $upc;
 								if ($this->getCoverFromProvider()) {
 									return true;
 								}
-								//If we tried trimming the leading zeroes, also try without.
-								if ($this->upc !== $upc) {
-									$this->upc = $upc;
-									if ($this->getCoverFromProvider()) {
-										return true;
-									}
+								// Then fall back to zero-trimmed version
+								$this->upc = ltrim($upc, '0');
+								if ($this->getCoverFromProvider()) {
+									return true;
 								}
 							}
 						}
