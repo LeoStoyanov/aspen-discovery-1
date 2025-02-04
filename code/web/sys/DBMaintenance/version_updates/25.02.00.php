@@ -118,6 +118,25 @@ function getUpdates25_02_00(): array {
 				"ALTER TABLE library add COLUMN requestCalendarStartDate CHAR(5) DEFAULT '01-01'"
 			]
 		], //library_requestCalendarStartDate
+		// Leo Stoyanov - BWS
+		'deduplicate_reading_history' => [
+			'title' => 'De-duplicate reading history & add unique key',
+			'description' => 'Combine multiple rows per (userId, sourceId) into one row before adding unique key.',
+			'continueOnError' => true,
+			'sql' => [
+				// 1. Keep the latest entry of the duplicated titles.
+				"DELETE t1 FROM user_reading_history_work t1
+				INNER JOIN user_reading_history_work t2 
+				WHERE 
+					t1.id < t2.id AND
+					t1.userId = t2.userId AND
+					t1.sourceId = t2.sourceId;",
+
+				// 2. Create the unique index.
+				"ALTER TABLE user_reading_history_work 
+				ADD UNIQUE INDEX user_source (userId, sourceId);"
+			],
+		], //deduplicate_reading_history
 
 		//katherine
 
