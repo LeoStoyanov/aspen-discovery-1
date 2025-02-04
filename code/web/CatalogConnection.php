@@ -642,7 +642,21 @@ class CatalogConnection {
 						//Load existing reading history from the ILS
 						$result = $this->driver->getReadingHistory($patron, -1, -1, $sortOption);
 						if ($result['numTitles'] > 0) {
+							//$loadedIds = [];
 							foreach ($result['titles'] as $title) {
+//								if (empty($title['permanentId']) && !empty($title['recordId'])) {
+//									require_once ROOT_DIR . '/sys/Grouping/GroupedWorkRecord.php';
+//									$groupedWorkRecord = new GroupedWorkRecord();
+//									$groupedWorkRecord->source = $this->accountProfile->recordSource;
+//									$groupedWorkRecord->recordIdentifier = $title['recordId'];
+//									if ($groupedWorkRecord->find(true)) {
+//										$title['permanentId'] = $groupedWorkRecord->permanent_id;
+//									}
+//								}
+//								$workId = $title['permanentId'] ?? $title['recordId'];
+//								if(isset($loadedIds[$workId])) continue;
+//								$loadedIds[$workId] = true;
+
 								//if ($title['permanentId'] != null) {
 								$userReadingHistoryEntry = new ReadingHistoryEntry();
 								$userReadingHistoryEntry->userId = $patron->id;
@@ -663,8 +677,16 @@ class CatalogConnection {
 								} else {
 									$userReadingHistoryEntry->isIll = 1;
 								}
+//								$userReadingHistoryEntry->deleted = 0;
+//								$userReadingHistoryEntry->insert();
+//								$userReadingHistoryEntry = null;
 								$userReadingHistoryEntry->deleted = 0;
-								$userReadingHistoryEntry->insert();
+								if ($userReadingHistoryEntry->find(true)) {
+
+									$userReadingHistoryEntry->update();
+								} else {
+									$userReadingHistoryEntry->insert();
+								}
 								$userReadingHistoryEntry = null;
 								//}
 							}
@@ -1204,25 +1226,24 @@ class CatalogConnection {
 				//TODO: This should check to see if the grouped work has been checked out rather than the record
 				$historyEntryDB = new ReadingHistoryEntry();
 				$historyEntryDB->userId = $patron->id;
-				if (!empty($checkout->groupedWorkId)) {
-					$historyEntryDB->groupedWorkPermanentId = $checkout->groupedWorkId;
+				$historyEntryDB->sourceId = $checkout->sourceId;
+				$existingEntry = $historyEntryDB->find(true); // Now only checks userId+sourceId
+				if ($existingEntry) {
+					//$historyEntryDB->timesUsed++;
+					$historyEntryDB->update();
 				} else {
-					$historyEntryDB->groupedWorkPermanentId = "";
-				}
-
-				$historyEntryDB->source = $source;
-				$historyEntryDB->sourceId = $sourceId;
-				$historyEntryDB->title = StringUtils::trimStringToLengthAtWordBoundary($checkout->title, 150, true);
-				$historyEntryDB->author = isset($checkout->author) ? StringUtils::trimStringToLengthAtWordBoundary($checkout->author, 75, true) : "";
-				$historyEntryDB->format = substr($checkout->format, 0, 50);
-				$historyEntryDB->checkOutDate = time();
-				$historyEntryDB->costSavings = $checkout->getReplacementCost();
-				if (!$historyEntryDB->insert()) {
-					global $logger;
-					$logger->log("Could not insert new reading history entry", Logger::LOG_ERROR);
-				} else {
-					if ($patron->enableCostSavings) {
-						$patron->__set('totalCostSavings', $patron->totalCostSavings + $historyEntryDB->costSavings);
+					$historyEntryDB->title = StringUtils::trimStringToLengthAtWordBoundary($checkout->title, 150, true);
+					$historyEntryDB->author = isset($checkout->author) ? StringUtils::trimStringToLengthAtWordBoundary($checkout->author, 75, true) : "";
+					$historyEntryDB->format = substr($checkout->format, 0, 50);
+					$historyEntryDB->checkOutDate = time();
+					$historyEntryDB->costSavings = $checkout->getReplacementCost();
+					if (!$historyEntryDB->insert()) {
+						global $logger;
+						$logger->log("Could not insert new reading history entry", Logger::LOG_ERROR);
+					} else {
+						if ($patron->enableCostSavings) {
+							$patron->__set('totalCostSavings', $patron->totalCostSavings + $historyEntryDB->costSavings);
+						}
 					}
 				}
 			}
