@@ -39,6 +39,7 @@ class SystemVariables extends DataObject {
 	public $allowScheduledUpdates;
 	public $doQuickUpdates;
 	public $monitorAntivirus;
+	public $useOriginalCoverUrls;
 
 
 	static function getObjectStructure($context = ''): array {
@@ -364,7 +365,15 @@ class SystemVariables extends DataObject {
 				'label' => 'Monitor Antivirus',
 				'description' => 'Determine whether or not Antivirus logs should be monitored',
 				'default' => true,
-			]
+			],
+			'useOriginalCoverUrls' => [
+				'property' => 'useOriginalCoverUrls',
+				'type' => 'checkbox',
+				'label' => 'Use Original Cover URLs',
+				'description' => 'Determine whether or not original cover URLs should be used.',
+				'note' => "After changing this setting, users should clear their browser's cache to ensure updated cover URLs take effect immediately. Existing cached covers may otherwise remain visible until the cache expires.",
+				'default' => false,
+			],
 		];
 
 		if (!UserAccount::getActiveUserObj()->isAspenAdminUser()) {

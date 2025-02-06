@@ -175,6 +175,14 @@ function getUpdates25_02_00(): array {
 				"ALTER TABLE user_checkout ADD COLUMN showFineButton TINYINT(1) DEFAULT 0",
 			]
 		], //user_checkout_add_showFineButton
+		'useOriginalCoverUrls' => [
+			'title' => 'Add Option to Use Original Cover URLs',
+			'description' => 'Add an option to allow the use of original cover URLs rather than cached images in the file system.',
+			'continueOnError' => false,
+			'sql' => [
+				'ALTER TABLE system_variables ADD COLUMN useOriginalCoverUrls TINYINT(1) DEFAULT 0'
+			]
+		],
 
 		//Lucas Montoya - Theke Solutions
 

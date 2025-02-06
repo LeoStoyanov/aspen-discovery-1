@@ -647,6 +647,10 @@ class BookCoverProcessor {
 	}
 
 	private function getCachedCover() {
+		if (SystemVariables::getSystemVariables()->useOriginalCoverUrls) {
+			return false;
+		}
+
 		$hasCachedImage = false;
 		if ($this->bookCoverInfo->getNumResults() == 1) {
 			if ($this->size == 'small' && $this->bookCoverInfo->thumbnailLoaded == 1) {
@@ -726,6 +730,18 @@ class BookCoverProcessor {
 	}
 
 	function processImageURL($source, $url, $attemptRefetch = true) {
+		if (SystemVariables::getSystemVariables()->useOriginalCoverUrls &&
+			$source !== 'upload' &&
+			preg_match('/^https?:\/\//i', $url)) {
+			// Use a 301 redirect if the remote image URL is stable.
+			header("HTTP/1.1 301 Moved Permanently");
+			header("Location: $url");
+			// Tell browsers and proxies to cache this redirect for 24 hours (or adjust as needed)
+			header("Cache-Control: public, max-age=86400");
+			header("Expires: " . gmdate("D, d M Y H:i:s", time() + 86400) . " GMT");
+			exit;
+		}
+
 		$this->log("Processing $url", Logger::LOG_NOTICE);
 		$context = stream_context_create([
 			'http' => [
