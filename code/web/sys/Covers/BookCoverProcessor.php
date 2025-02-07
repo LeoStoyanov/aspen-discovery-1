@@ -29,6 +29,8 @@ class BookCoverProcessor {
 	/** @var  Timer $timer */
 	private $timer;
 	private $doTimings;
+	private $urlCachePath;
+	private $urlCacheFile;
 
 	public function loadCover($configArray, $timer, $logger) {
 		$this->configArray = $configArray;
@@ -42,6 +44,9 @@ class BookCoverProcessor {
 		if (!$this->loadParameters()) {
 			return true;
 		}
+
+		// Initialize the URL cache file based on the current cacheName
+		$this->initUrlCache();
 
 		if (!$this->reload) {
 			$this->log("Looking for Cached cover", Logger::LOG_NOTICE);
@@ -730,15 +735,23 @@ class BookCoverProcessor {
 	}
 
 	function processImageURL($source, $url, $attemptRefetch = true) {
+		// If the system is configured to use original cover URLs,
+		// and the cover is not from an upload, then use the URL cache.
 		if (SystemVariables::getSystemVariables()->useOriginalCoverUrls &&
 			$source !== 'upload' &&
 			preg_match('/^https?:\/\//i', $url)) {
-			// Use a 301 redirect if the remote image URL is stable.
+
+			// First, check if we have a cached URL.
+			$cachedUrl = $this->getUrlCache();
+			if ($cachedUrl) {
+				$url = $cachedUrl;
+			} else {
+				// Otherwise, cache this URL for future use.
+				$this->setUrlCache($url);
+			}
 			header("HTTP/1.1 301 Moved Permanently");
 			header("Location: $url");
-			// Tell browsers and proxies to cache this redirect for 24 hours (or adjust as needed)
-			header("Cache-Control: public, max-age=86400");
-			header("Expires: " . gmdate("D, d M Y H:i:s", time() + 86400) . " GMT");
+			$this->addCachingHeader();
 			exit;
 		}
 
@@ -2013,5 +2026,42 @@ class BookCoverProcessor {
 			}
 		}
 		return $foundTitle;
+	}
+
+	/**
+	 * Initialize the file system cache for cover URLs.
+	 */
+	private function initUrlCache(): void
+	{
+		// Create a subdirectory "urlCache" under the main cover path
+		$this->urlCachePath = $this->bookCoverPath . '/urlCache';
+		if (!is_dir($this->urlCachePath)) {
+			mkdir($this->urlCachePath, 0777, true);
+		}
+		// Use a hashed key for the file name so that the file system has fewer characters to work with.
+		$this->urlCacheFile = $this->urlCachePath . '/' . md5($this->cacheName) . '.txt';
+	}
+
+	/**
+	 * Retrieve a cached URL from the file system.
+	 *
+	 * @return string|false The cached URL or false if not found.
+	 */
+	private function getUrlCache(): bool|string
+	{
+		if (file_exists($this->urlCacheFile)) {
+			return trim(file_get_contents($this->urlCacheFile));
+		}
+		return false;
+	}
+
+	/**
+	 * Store the URL in a cache file.
+	 *
+	 * @param string $url The URL to cache.
+	 */
+	private function setUrlCache($url): void
+	{
+		file_put_contents($this->urlCacheFile, $url);
 	}
 }
