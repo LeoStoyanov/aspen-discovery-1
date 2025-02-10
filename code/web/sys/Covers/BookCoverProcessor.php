@@ -735,25 +735,7 @@ class BookCoverProcessor {
 	}
 
 	function processImageURL($source, $url, $attemptRefetch = true) {
-		// If the system is configured to use original cover URLs,
-		// and the cover is not from an upload, then use the URL cache.
-		if (SystemVariables::getSystemVariables()->useOriginalCoverUrls &&
-			$source !== 'upload' &&
-			preg_match('/^https?:\/\//i', $url)) {
-
-			// First, check if we have a cached URL.
-			$cachedUrl = $this->getUrlCache();
-			if ($cachedUrl) {
-				$url = $cachedUrl;
-			} else {
-				// Otherwise, cache this URL for future use.
-				$this->setUrlCache($url);
-			}
-			header("HTTP/1.1 301 Moved Permanently");
-			header("Location: $url");
-			$this->addCachingHeader();
-			exit;
-		}
+		$url = $this->handleOriginalCoverUrl($source, $url);
 
 		$this->log("Processing $url", Logger::LOG_NOTICE);
 		$context = stream_context_create([
@@ -2043,25 +2025,32 @@ class BookCoverProcessor {
 	}
 
 	/**
-	 * Retrieve a cached URL from the file system.
+	 * If the system is configured to use the original cover URLs and the source is not an upload,
+	 * check for a cached URL in the file system (using the cache file initialized by initUrlCache()),
+	 * write it if not present, and then immediately issue a 301 redirect.
 	 *
-	 * @return string|false The cached URL or false if not found.
+	 * @param string $source The source label.
+	 * @param string $url The URL to process.
+	 * @return string Returns the (possibly unmodified) URL.
 	 */
-	private function getUrlCache(): bool|string
-	{
-		if (file_exists($this->urlCacheFile)) {
-			return trim(file_get_contents($this->urlCacheFile));
+	private function handleOriginalCoverUrl(string $source, string $url): string {
+		if (SystemVariables::getSystemVariables()->useOriginalCoverUrls &&
+			$source !== 'upload' &&
+			preg_match('/^https?:\/\//i', $url)
+		) {
+			if (file_exists($this->urlCacheFile)) {
+				$cachedUrl = trim(file_get_contents($this->urlCacheFile));
+				if (!empty($cachedUrl)) {
+					$url = $cachedUrl;
+				}
+			} else {
+				file_put_contents($this->urlCacheFile, $url);
+			}
+			header("HTTP/1.1 301 Moved Permanently");
+			header("Location: $url");
+			$this->addCachingHeader();
+			exit;
 		}
-		return false;
-	}
-
-	/**
-	 * Store the URL in a cache file.
-	 *
-	 * @param string $url The URL to cache.
-	 */
-	private function setUrlCache($url): void
-	{
-		file_put_contents($this->urlCacheFile, $url);
+		return $url;
 	}
 }
