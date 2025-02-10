@@ -43,6 +43,9 @@ class BookCoverProcessor {
 			return true;
 		}
 
+		// Initialize the URL cache file based on the current cacheName
+		$this->initUrlCache();
+
 		if (!$this->reload) {
 			$this->log("Looking for Cached cover", Logger::LOG_NOTICE);
 			if ($this->getCachedCover()) {
@@ -655,6 +658,10 @@ class BookCoverProcessor {
 	}
 
 	private function getCachedCover() {
+		if (SystemVariables::getSystemVariables()->useOriginalCoverUrls) {
+			return false;
+		}
+
 		$hasCachedImage = false;
 		if ($this->bookCoverInfo->getNumResults() == 1) {
 			if ($this->size == 'small' && $this->bookCoverInfo->thumbnailLoaded == 1) {
@@ -734,6 +741,8 @@ class BookCoverProcessor {
 	}
 
 	function processImageURL($source, $url, $attemptRefetch = true) {
+		$url = $this->handleOriginalCoverUrl($source, $url);
+
 		$this->log("Processing $url", Logger::LOG_NOTICE);
 		$context = stream_context_create([
 			'http' => [
@@ -1253,7 +1262,23 @@ class BookCoverProcessor {
 					if ($driver->hasMarcRecord() && $this->getCoverFromMarc($driver->getMarcRecord())) {
 						return true;
 					} else {
-						//Finally, check the isbns if we don't have an override
+						$formatCategory = $driver->getFormatCategory();
+
+						// For movies, check UPCs first.
+						if ($formatCategory == 'Movies') {
+							$upcs = $driver->getCleanUPCs();
+							$this->isn = null;
+							if ($upcs) {
+								foreach ($upcs as $upc) {
+									$this->upc = $upc;
+									if ($this->getCoverFromProvider()) return true;
+									$this->upc = ltrim($upc, '0');
+									if ($this->getCoverFromProvider()) return true;
+								}
+							}
+						}
+
+						// Then check ISBNs
 						$isbns = $driver->getCleanISBNs();
 						if ($isbns) {
 							foreach ($isbns as $isbn) {
@@ -1266,7 +1291,11 @@ class BookCoverProcessor {
 						$issns = $driver->getISSNs();
 						if ($issns) {
 							foreach ($issns as $issn) {
-								$this->issn = $issn;
+								$cleanIssn = preg_replace('/[^0-9xX]/', '', $issn);
+								if (strlen($cleanIssn) == 0) {
+									continue;
+								}
+								$this->issn = $cleanIssn;
 								if ($this->getCoverFromProvider()) {
 									return true;
 								}
@@ -1276,16 +1305,15 @@ class BookCoverProcessor {
 						$this->isn = null;
 						if ($upcs) {
 							foreach ($upcs as $upc) {
-								$this->upc = ltrim($upc, '0');
+								// Try original UPC first before trimming zeros
+								$this->upc = $upc;
 								if ($this->getCoverFromProvider()) {
 									return true;
 								}
-								//If we tried trimming the leading zeroes, also try without.
-								if ($this->upc !== $upc) {
-									$this->upc = $upc;
-									if ($this->getCoverFromProvider()) {
-										return true;
-									}
+								// Then fall back to zero-trimmed version
+								$this->upc = ltrim($upc, '0');
+								if ($this->getCoverFromProvider()) {
+									return true;
 								}
 							}
 						}
@@ -2053,5 +2081,49 @@ class BookCoverProcessor {
 			}
 		}
 		return $foundTitle;
+	}
+
+	/**
+	 * Initialize the file system cache for cover URLs.
+	 */
+	private function initUrlCache(): void
+	{
+		// Create a subdirectory "urlCache" under the main cover path
+		$this->urlCachePath = $this->bookCoverPath . '/urlCache';
+		if (!is_dir($this->urlCachePath)) {
+			mkdir($this->urlCachePath, 0777, true);
+		}
+		// Use a hashed key for the file name so that the file system has fewer characters to work with.
+		$this->urlCacheFile = $this->urlCachePath . '/' . md5($this->cacheName) . '.txt';
+	}
+
+	/**
+	 * If the system is configured to use the original cover URLs and the source is not an upload,
+	 * check for a cached URL in the file system (using the cache file initialized by initUrlCache()),
+	 * write it if not present, and then immediately issue a 301 redirect.
+	 *
+	 * @param string $source The source label.
+	 * @param string $url The URL to process.
+	 * @return string Returns the (possibly unmodified) URL.
+	 */
+	private function handleOriginalCoverUrl(string $source, string $url): string {
+		if (SystemVariables::getSystemVariables()->useOriginalCoverUrls &&
+			$source !== 'upload' &&
+			preg_match('/^https?:\/\//i', $url)
+		) {
+			if (file_exists($this->urlCacheFile)) {
+				$cachedUrl = trim(file_get_contents($this->urlCacheFile));
+				if (!empty($cachedUrl)) {
+					$url = $cachedUrl;
+				}
+			} else {
+				file_put_contents($this->urlCacheFile, $url);
+			}
+			header("HTTP/1.1 301 Moved Permanently");
+			header("Location: $url");
+			$this->addCachingHeader();
+			exit;
+		}
+		return $url;
 	}
 }
