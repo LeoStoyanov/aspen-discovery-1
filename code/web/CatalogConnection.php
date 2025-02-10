@@ -636,11 +636,18 @@ class CatalogConnection {
 				$masqueradeMode = UserAccount::isUserMasquerading();
 				if ($masqueradeMode) {
 					$okToLoadFromIls = $this->driver->canLoadReadingHistoryInMasqueradeMode();
+					global $logger;
+					$logger->log('Is ok to load from ILS?', Logger::LOG_ERROR);
 				}
 				if ($okToLoadFromIls) {
+					global $logger;
+					$logger->log('Must be ok to load from ILS!', Logger::LOG_ERROR);
 					if ($this->driver->hasNativeReadingHistory()) {
 						//Load existing reading history from the ILS
 						$result = $this->driver->getReadingHistory($patron, -1, -1, $sortOption);
+						global $logger;
+						$logger->log('Reading history entry:', Logger::LOG_ERROR);
+						$logger->log($result, Logger::LOG_ERROR);
 						if ($result['numTitles'] > 0) {
 							foreach ($result['titles'] as $title) {
 								//if ($title['permanentId'] != null) {
@@ -1194,6 +1201,8 @@ class CatalogConnection {
 
 		//Update reading history based on current checkouts.  That way it never looks out of date
 		$checkouts = $patron->getCheckouts(false, 'all');
+		global $logger;
+		$logger->log('In updating reading history based on new checkouts', Logger::LOG_ERROR);
 		foreach ($checkouts as $checkout) {
 			$source = $checkout->source;
 			$sourceId = $checkout->sourceId;

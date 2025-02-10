@@ -3137,17 +3137,28 @@ class SirsiDynixROA extends HorizonAPI {
 	 * @throws Exception
 	 */
 	public function getReadingHistory($patron, $page = 1, $recordsPerPage = -1, $sortOption = "checkedOut") {
+		global $logger;
+		$logger->log('In Symphony ', Logger::LOG_ERROR);
 		//Get reading history information
 		$historyActive = false;
 		$readingHistoryTitles = [];
 		$staffSessionToken = $this->getStaffSessionToken();
 		if (!empty($staffSessionToken)) {
+			global $logger;
+			$logger->log('Staff session token not empty! ', Logger::LOG_ERROR);
 			$webServiceURL = $this->getWebServiceURL();
 			$includeFields = urlEncode("keepCircHistory,circHistoryRecordList{checkInDate,checkOutDate,itemType,bib,title,author}");
 			$getCircHistoryUrl = $webServiceURL . '/user/patron/barcode/' . $patron->getBarcode() . '?includeFields=' . $includeFields;
+			global $logger;
+			$logger->log('Circ history URL:', Logger::LOG_ERROR);
+			$logger->log($getCircHistoryUrl, Logger::LOG_ERROR);
 			$getCircHistoryResponse = $this->getWebServiceResponse('getReadingHistory', $getCircHistoryUrl, null, $staffSessionToken);
 			if ($getCircHistoryResponse && !isset($getCircHistoryResponse->messageList)) {
+				global $logger;
+				$logger->log('Circ history response must have been good, response below:', Logger::LOG_ERROR);
+				$logger->log("Reading History Response: " . json_encode($getCircHistoryResponse), Logger::LOG_ERROR);
 				$keepCircHistory = $getCircHistoryResponse->fields->keepCircHistory;
+				$logger->log($keepCircHistory, Logger::LOG_ERROR);
 				if ($keepCircHistory == 'ALLCHARGES') {
 					$historyActive = true;
 				} elseif ($keepCircHistory == 'NOHISTORY') {
@@ -3159,12 +3170,14 @@ class SirsiDynixROA extends HorizonAPI {
 					$logger->log('Unknown keepCircHistory value: ' . $keepCircHistory, Logger::LOG_DEBUG);
 				}
 				if ($historyActive) {
+					$logger->log('History active', Logger::LOG_ERROR);
 					$readingHistoryTitles = [];
 					$systemVariables = SystemVariables::getSystemVariables();
 					global $aspen_db;
 					require_once ROOT_DIR . '/RecordDrivers/GroupedWorkDriver.php';
 
 					foreach ($getCircHistoryResponse->fields->circHistoryRecordList as $circEntry) {
+						$logger->log("Circ Entry: " . json_encode($circEntry), Logger::LOG_ERROR);
 						$historyEntry = [];
 						$shortId = $circEntry->fields->bib->key;
 						$bibId = 'a' . $circEntry->fields->bib->key;

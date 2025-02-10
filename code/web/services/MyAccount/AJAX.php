@@ -3811,6 +3811,9 @@ class MyAccount_AJAX extends JSON_Action {
 	}
 
 	public function getReadingHistory() {
+		require_once ROOT_DIR . '/sys/Logger.php';
+		global $logger;
+		$logger->log('In AJAX get reading history!', Logger::LOG_ERROR);
 		global $interface;
 		$showCovers = $this->setShowCovers();
 
