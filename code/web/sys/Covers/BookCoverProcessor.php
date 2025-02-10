@@ -29,6 +29,7 @@ class BookCoverProcessor {
 	/** @var  Timer $timer */
 	private $timer;
 	private $doTimings;
+	private string $urlCacheFile;
 
 	public function loadCover($configArray, $timer, $logger) {
 		$this->configArray = $configArray;
@@ -43,7 +44,7 @@ class BookCoverProcessor {
 			return true;
 		}
 
-		// Initialize the URL cache file based on the current cacheName
+		// Initialize the URL cache file based on the current cacheName.
 		$this->initUrlCache();
 
 		if (!$this->reload) {
@@ -1262,23 +1263,7 @@ class BookCoverProcessor {
 					if ($driver->hasMarcRecord() && $this->getCoverFromMarc($driver->getMarcRecord())) {
 						return true;
 					} else {
-						$formatCategory = $driver->getFormatCategory();
-
-						// For movies, check UPCs first.
-						if ($formatCategory == 'Movies') {
-							$upcs = $driver->getCleanUPCs();
-							$this->isn = null;
-							if ($upcs) {
-								foreach ($upcs as $upc) {
-									$this->upc = $upc;
-									if ($this->getCoverFromProvider()) return true;
-									$this->upc = ltrim($upc, '0');
-									if ($this->getCoverFromProvider()) return true;
-								}
-							}
-						}
-
-						// Then check ISBNs
+						//Finally, check the isbns if we don't have an override
 						$isbns = $driver->getCleanISBNs();
 						if ($isbns) {
 							foreach ($isbns as $isbn) {
@@ -2088,13 +2073,13 @@ class BookCoverProcessor {
 	 */
 	private function initUrlCache(): void
 	{
-		// Create a subdirectory "urlCache" under the main cover path
-		$this->urlCachePath = $this->bookCoverPath . '/urlCache';
-		if (!is_dir($this->urlCachePath)) {
-			mkdir($this->urlCachePath, 0777, true);
+		// Create a subdirectory "urlCache" under the main cover path.
+		$urlCachePath = $this->bookCoverPath . '/urlCache';
+		if (!is_dir($urlCachePath)) {
+			mkdir($urlCachePath, 0777, true);
 		}
 		// Use a hashed key for the file name so that the file system has fewer characters to work with.
-		$this->urlCacheFile = $this->urlCachePath . '/' . md5($this->cacheName) . '.txt';
+		$this->urlCacheFile = $urlCachePath . '/' . md5($this->cacheName) . '.txt';
 	}
 
 	/**
