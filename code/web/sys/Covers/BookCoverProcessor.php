@@ -1,5 +1,6 @@
 <?php
 require_once ROOT_DIR . '/sys/Covers/BookCoverInfo.php';
+require_once ROOT_DIR . '/sys/Covers/CoverImage.php';
 
 class BookCoverProcessor {
 	/**
@@ -29,6 +30,7 @@ class BookCoverProcessor {
 	/** @var  Timer $timer */
 	private $timer;
 	private $doTimings;
+	private CoverImage $coverImage;
 
 	public function loadCover($configArray, $timer, $logger) {
 		$this->configArray = $configArray;

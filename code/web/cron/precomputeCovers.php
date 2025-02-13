@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../bootstrap_aspen.php';
 require_once ROOT_DIR . '/sys/Covers/BookCoverProcessor.php';
-require_once ROOT_DIR . '/sys/Covers/BookCoverInfo.php';
+require_once ROOT_DIR . '/sys/Covers/CoverImage.php';
 require_once ROOT_DIR . '/sys/Grouping/GroupedWork.php';
 require_once ROOT_DIR . '/sys/UserLists/UserList.php';
 require_once ROOT_DIR . '/sys/CourseReserves/CourseReserve.php';
@@ -30,7 +30,7 @@ foreach ($recordsToProcess as $record) {
 	try {
 		console_log("Processing {$current}/{$total}: {$record['type']} {$record['id']}");
 
-		$coverInfo = new BookCoverInfo();
+		$coverInfo = new CoverImage();
 		$coverInfo->recordType = $record['type'];
 		$coverInfo->recordId = $record['id'];
 
