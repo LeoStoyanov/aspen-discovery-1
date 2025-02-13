@@ -29,23 +29,24 @@ class BookCoverProcessor {
 	/** @var  Timer $timer */
 	private $timer;
 	private $doTimings;
-	private string $urlCacheFile;
 
 	public function loadCover($configArray, $timer, $logger) {
 		$this->configArray = $configArray;
 		$this->timer = $timer;
-		$this->doTimings = $this->configArray['System']['coverTimings'];
+		$this->doTimings = $this->configArray['System']['coverTimings'] ?? false;
 		$this->timer->enableTimings($this->doTimings);
 		$this->logger = $logger;
 
 		$this->log("Starting to load cover", Logger::LOG_NOTICE);
-		$this->bookCoverPath = $configArray['Site']['coverPath'];
+		$this->bookCoverPath = $configArray['Site']['coverPath'] ?? '';
+		$this->console_log("{$this->id} and {$this->type} in loadCover()!");
 		if (!$this->loadParameters()) {
 			return true;
 		}
+		$this->console_log("Exited loadParameters()!");
 
-		// Initialize the URL cache file based on the current cacheName.
-		$this->initUrlCache();
+		// Initialize the URL cache file based on the current cacheName
+		//$this->initUrlCache();
 
 		if (!$this->reload) {
 			$this->log("Looking for Cached cover", Logger::LOG_NOTICE);
@@ -84,14 +85,6 @@ class BookCoverProcessor {
 			}
 		} elseif ($this->type == 'assabet_event') {
 			if ($this->getAssabetCover($this->id)){
-				return true;
-			}
-		} elseif ($this->type == 'aspenEvent_event') {
-			if ($this->getAspenEventsDateCover($this->id)){
-				return true;
-			}
-		} elseif ($this->type == 'aspenEvent_eventRecord') {
-			if ($this->getAspenEventsImageCover($this->id)){
 				return true;
 			}
 		} elseif ($this->type == 'webpage' || $this->type == 'WebPage' || $this->type == 'BasicPage' || $this->type == 'WebResource' || $this->type == 'PortalPage' || $this->type == 'GrapesPage') {
@@ -188,7 +181,7 @@ class BookCoverProcessor {
 		}
 
 		$this->log("No image found, using default image", Logger::LOG_NOTICE);
-		return $this->getDefaultCover();
+		//return $this->getDefaultCover();
 	}
 
 	private function getHooplaCover($id) {
@@ -401,23 +394,23 @@ class BookCoverProcessor {
 
 	private function loadParameters() {
 		//Check parameters
-		if (!count($_GET)) {
-			$this->error = "No parameters provided.";
-			return false;
-		}
+//		if (!count($_GET)) {
+//			$this->error = "No parameters provided.";
+//			return false;
+//		}
 		$this->reload = isset($_GET['reload']);
 		// Sanitize incoming parameters to avoid filesystem attacks.  We'll make sure the
 		// provided size matches an accepted list, and we'll strip illegal characters from the
 		// ISBN.
-		$this->size = isset($_GET['size']) ? $_GET['size'] : 'small';
-		if (!in_array($this->size, [
-			'small',
-			'medium',
-			'large',
-		])) {
-			$this->error = "No size provided, please specify small, medium, or large.";
-			return false;
-		}
+//		$this->size = isset($_GET['size']) ? $_GET['size'] : 'small';
+//		if (!in_array($this->size, [
+//			'small',
+//			'medium',
+//			'large',
+//		])) {
+//			$this->error = "No size provided, please specify small, medium, or large.";
+//			return false;
+//		}
 		if (isset($_GET['isn']) && is_array($_GET['isn'])) {
 			$_GET['isn'] = array_pop($_GET['isn']);
 		}
@@ -446,7 +439,7 @@ class BookCoverProcessor {
 		if (isset($_GET['id']) && is_array($_GET['id'])) {
 			$_GET['id'] = array_pop($_GET['id']);
 		}
-		$this->id = isset($_GET['id']) ? $_GET['id'] : '';
+		//$this->id = isset($_GET['id']) ? $_GET['id'] : '';
 		//If this is external eContent, we don't care about that part, just use the remaining id
 		$this->id = str_replace('external_econtent:', '', $this->id);
 		if (isset($_GET['type'])) {
@@ -466,6 +459,7 @@ class BookCoverProcessor {
 		}
 
 		$this->bookCoverInfo = new BookCoverInfo();
+		$this->console_log("{$this->id} does exist in loadParameters()!");
 		//First check to see if this has a custom cover due to being an e-book
 		if (!empty($this->id)) {
 			if ($this->type == 'grouped_work') {
@@ -742,7 +736,9 @@ class BookCoverProcessor {
 	}
 
 	function processImageURL($source, $url, $attemptRefetch = true) {
+		$this->console_log("In processImageURL() with source ${source} and url {$url}!");
 		$url = $this->handleOriginalCoverUrl($source, $url);
+		return true;
 
 		$this->log("Processing $url", Logger::LOG_NOTICE);
 		$context = stream_context_create([
@@ -1196,6 +1192,7 @@ class BookCoverProcessor {
 	}
 
 	private function getGroupedWorkCover() {
+		$this->console_log("In getGroupedWorkCover()!");
 		if ($this->loadGroupedWork()) {
 			$oldType = $this->type;
 			$this->type = 'grouped_work';
@@ -1263,7 +1260,23 @@ class BookCoverProcessor {
 					if ($driver->hasMarcRecord() && $this->getCoverFromMarc($driver->getMarcRecord())) {
 						return true;
 					} else {
-						//Finally, check the isbns if we don't have an override
+						$formatCategory = $driver->getFormatCategory();
+
+						// For movies, check UPCs first.
+						if ($formatCategory == 'Movies') {
+							$upcs = $driver->getCleanUPCs();
+							$this->isn = null;
+							if ($upcs) {
+								foreach ($upcs as $upc) {
+									$this->upc = $upc;
+									if ($this->getCoverFromProvider()) return true;
+									$this->upc = ltrim($upc, '0');
+									if ($this->getCoverFromProvider()) return true;
+								}
+							}
+						}
+
+						// Then check ISBNs
 						$isbns = $driver->getCleanISBNs();
 						if ($isbns) {
 							foreach ($isbns as $isbn) {
@@ -1781,73 +1794,6 @@ class BookCoverProcessor {
 		return false;
 	}
 
-	private function getAspenEventsDateCover($id) {
-		if (strpos($id, ':') !== false) {
-			[
-				,
-				$id,
-			] = explode(":", $id);
-		}
-		require_once ROOT_DIR . '/RecordDrivers/AspenEventRecordDriver.php';
-		$driver = new AspenEventRecordDriver($id);
-		if (!($driver->isValid())){ //if driver isn't valid, likely a past event on a list
-			require_once ROOT_DIR . '/sys/Covers/EventCoverBuilder.php';
-			require_once ROOT_DIR . '/sys/Events/UserEventsEntry.php';
-			$coverBuilder = new EventCoverBuilder();
-			$userEntry = new UserEventsEntry();
-			$userEntry->sourceId = $id;
-			if ($userEntry->find(true)){
-				$startDate = new DateTime("@$userEntry->eventDate");
-				$startDate->setTimezone(new DateTimeZone(date_default_timezone_get()));
-				$props = [
-					'eventDate' => $startDate,
-					'isPastEvent' => true,
-				];
-				$title = $userEntry->title;
-			} else{
-				$props = [
-					'eventDate' => $driver->getStartDateFromDB($id),
-					'isPastEvent' => true,
-				];
-				$title = $driver->getTitleFromDB($id);
-			}
-			$coverBuilder->getCover($title, $this->cacheFile, $props);
-			return $this->processImageURL('default_event', $this->cacheFile, false);
-		} else if ($driver) {
-			require_once ROOT_DIR . '/sys/Covers/EventCoverBuilder.php';
-			$coverBuilder = new EventCoverBuilder();
-			$isPast = false;
-			if (array_key_exists('isPast', $_REQUEST)){
-				$isPast = $_REQUEST['isPast'];
-			}
-			$props = [
-				'eventDate' => $driver->getStartDate(),
-				'isPastEvent' => $isPast,
-			];
-			$coverBuilder->getCover($driver->getTitle(), $this->cacheFile, $props);
-			return $this->processImageURL('default_event', $this->cacheFile, false);
-		}
-		return false;
-	}
-
-	private function getAspenEventsImageCover($id) {
-		if (strpos($id, ':') !== false) {
-			[
-				,
-				$id,
-			] = explode(":", $id);
-		}
-		require_once ROOT_DIR . '/RecordDrivers/AspenEventRecordDriver.php';
-		$driver = new AspenEventRecordDriver($id);
-		if (($driver->isValid()) && $driver->getCoverImagePath()) {
-			$uploadedImage = $driver->getCoverImagePath();
-			if (file_exists($uploadedImage)) {
-				return $this->processImageURL('upload', $uploadedImage);
-			}
-		}
-		return false;
-	}
-
 	private function getWebPageCover($id) {
 		//Build a cover based on the title of the page
 		require_once ROOT_DIR . '/sys/Covers/WebPageCoverBuilder.php';
@@ -1943,6 +1889,7 @@ class BookCoverProcessor {
 	}
 
 	private function getReferencedGroupedWorkCover($permanentId) {
+		$this->console_log("In getReferencedGroupedWorkCover()!");
 		require_once ROOT_DIR . '/sys/Grouping/GroupedWork.php';
 		$groupedWork = new GroupedWork();
 		$groupedWork->permanent_id = $permanentId;
@@ -2073,13 +2020,13 @@ class BookCoverProcessor {
 	 */
 	private function initUrlCache(): void
 	{
-		// Create a subdirectory "urlCache" under the main cover path.
-		$urlCachePath = $this->bookCoverPath . '/urlCache';
-		if (!is_dir($urlCachePath)) {
-			mkdir($urlCachePath, 0777, true);
+		// Create a subdirectory "urlCache" under the main cover path
+		$this->urlCachePath = $this->bookCoverPath . '/urlCache';
+		if (!is_dir($this->urlCachePath)) {
+			mkdir($this->urlCachePath, 0777, true);
 		}
 		// Use a hashed key for the file name so that the file system has fewer characters to work with.
-		$this->urlCacheFile = $urlCachePath . '/' . md5($this->cacheName) . '.txt';
+		$this->urlCacheFile = $this->urlCachePath . '/' . md5($this->cacheName) . '.txt';
 	}
 
 	/**
@@ -2096,19 +2043,67 @@ class BookCoverProcessor {
 			$source !== 'upload' &&
 			preg_match('/^https?:\/\//i', $url)
 		) {
-			if (file_exists($this->urlCacheFile)) {
-				$cachedUrl = trim(file_get_contents($this->urlCacheFile));
-				if (!empty($cachedUrl)) {
-					$url = $cachedUrl;
-				}
-			} else {
-				file_put_contents($this->urlCacheFile, $url);
-			}
-			header("HTTP/1.1 301 Moved Permanently");
-			header("Location: $url");
-			$this->addCachingHeader();
-			exit;
+//			if (file_exists($this->urlCacheFile)) {
+//				$cachedUrl = trim(file_get_contents($this->urlCacheFile));
+//				if (!empty($cachedUrl)) {
+//					$url = $cachedUrl;
+//				}
+//			} else {
+//				file_put_contents($this->urlCacheFile, $url);
+//			}
+			$this->console_log("Let's update bookcover_info!");
+			$this->bookCoverInfo->image_url = $url;
+			$this->console_log("{$this->bookCoverInfo->image_url}");
+			//$this->bookCoverInfo->update();
+			// header("HTTP/1.1 301 Moved Permanently");
+			// header("Location: $url");
+			// $this->addCachingHeader();
+			// exit;
 		}
 		return $url;
+	}
+
+	public function processCoverForRecord(BookCoverInfo $coverInfo, string $type, string $id): void {
+		try {
+			$this->type = $type;
+			$this->id = $id;
+			$this->bookCoverInfo = $coverInfo;
+			$this->console_log("{$this->id} and {$this->type} in processCoverForRecord()!");
+
+			// Existing processing logic
+			$this->loadCover($this->configArray, new Timer(), new Logger());
+
+			// Store final URL
+			//$coverInfo->imageUrl = $this->getResolvedCoverUrl();
+			$this->bookCoverInfo->last_processed = time();
+			error_log("Updating cover info: " . print_r($this->bookCoverInfo->toArray(), true));
+			$this->bookCoverInfo->update(TRUE);
+
+		} finally {
+			$this->precomputeMode = false;
+		}
+	}
+
+	public function getResolvedCoverUrl(): string {
+		if (!empty($this->bookCoverInfo->image_url)) {
+			return $this->bookCoverInfo->image_url;
+		}
+		return '';
+		// // Handle uploaded covers
+		// if ($this->bookCoverInfo->imageSource === 'upload') {
+		//     return $this->configArray['Site']['url'] . '/covers/original/' . $this->id . '.png';
+		// }
+
+		// // Handle generated covers
+		// $coverPath = $this->configArray['Site']['coverPath'];
+		// $relativePath = str_replace($coverPath, '', $this->cacheFile);
+		// return $this->configArray['Site']['url'] . $relativePath;
+	}
+
+	function console_log($message, $prefix = ''): void
+	{
+		$STDERR = fopen("php://stderr", "w");
+		fwrite($STDERR, $prefix.$message."\n");
+		fclose($STDERR);
 	}
 }

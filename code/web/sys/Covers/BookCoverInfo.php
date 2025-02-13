@@ -17,6 +17,9 @@ class BookCoverInfo extends DataObject {
 	protected $largeLoaded;
 	protected $uploadedImage;
 	protected $disallowThirdPartyCover;
+	protected $image_url;
+	protected $last_processed;
+	protected $reload_cover;
 
 	public function getNumericColumnNames(): array {
 		return [
