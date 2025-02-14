@@ -494,6 +494,8 @@ class BookCoverProcessor {
 		/** @var Library */ global $library;
 		$this->defaultCoverCacheFile = $this->bookCoverPath . '/' . $this->size . '/' . $library->subdomain . '_' . $this->cacheName . '.png';
 		$this->logTime("load parameters");
+		global $logger;
+		$logger->log("In loadParameters() with cache file $this->cacheFile", Logger::LOG_ERROR);
 		return true;
 	}
 
@@ -761,6 +763,8 @@ class BookCoverProcessor {
 				$tempFile = str_replace('.png', uniqid(), $this->cacheFile);
 				$finalFile = $this->cacheFile;
 			}
+			global $logger;
+			$logger->log("In processImageURL() with final file $finalFile", Logger::LOG_ERROR);
 
 			//Make sure we don't get an image not found cover
 			$imageChecksum = md5($image);
@@ -1830,8 +1834,9 @@ class BookCoverProcessor {
 
 	private function getUploadedListCover($id) {
 		$uploadedImage = $this->bookCoverPath . '/original/' . $id . '.png';
-		if (file_exists($uploadedImage)) {
-			return $this->processImageURL('upload', $uploadedImage);
+		$source = $this->bookCoverInfo->imageSource;
+		if ($source == 'upload' && file_exists($uploadedImage)) {
+			return $this->processImageURL($source, $uploadedImage);
 		}
 		return false;
 	}
