@@ -14,6 +14,7 @@ class SearchObject_GroupedWorkSearcher2 extends SearchObject_AbstractGroupedWork
 	];
 
 	private $fieldsToReturn = null;
+	private mixed $nextCursorMark;
 
 	/**
 	 * Constructor. Initialise some details about the server
@@ -436,7 +437,8 @@ class SearchObject_GroupedWorkSearcher2 extends SearchObject_AbstractGroupedWork
 
 		// The first record to retrieve:
 		//  (page - 1) * limit = start
-		$recordStart = ($this->page - 1) * $this->limit;
+		//$recordStart = ($this->page - 1) * $this->limit;
+		$recordStart = $this->getCursorMark() ? 0 : ($this->page - 1) * $this->limit;
 		//Remove irrelevant fields based on scoping
 		$fieldsToReturn = $this->getFieldsToReturn();
 
@@ -507,9 +509,15 @@ class SearchObject_GroupedWorkSearcher2 extends SearchObject_AbstractGroupedWork
 			$finalSort,        // Field to sort on
 			$fieldsToReturn,   // Fields to return
 			'POST',     // HTTP Request method
-			$returnIndexErrors // Include errors in response?
+			$returnIndexErrors, // Include errors in response?
+			$this->getCursorMark()
 		);
 		$timer->logTime("run solr search");
+
+		// Store next cursor
+		if (isset($this->indexResult['nextCursorMark'])) {
+			$this->nextCursorMark = $this->indexResult['nextCursorMark'];
+		}
 
 		// Get time after the query
 		$this->stopQueryTimer();

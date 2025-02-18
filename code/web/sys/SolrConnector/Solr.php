@@ -1025,6 +1025,10 @@ abstract class Solr {
 			$sortDirection = $defaultSortDirection;
 		}
 
+		if (!str_contains($sortField, 'id')) {
+			$sortField .= ', id asc';
+		}
+
 		return $sortField . ' ' . $sortDirection;
 	}
 
@@ -1073,7 +1077,7 @@ abstract class Solr {
 	 * @return    array                             An array of query results
 	 * @throws    AspenError
 	 */
-	function search($query, $handler = null, $filter = null, $start = 0, $limit = 20, $facet = null, $spell = '', $dictionary = null, $sort = null, $fields = null, $method = 'POST', $returnSolrError = false) {
+	function search($query, $handler = null, $filter = null, $start = 0, $limit = 20, $facet = null, $spell = '', $dictionary = null, $sort = null, $fields = null, $method = 'POST', $returnSolrError = false, $cursorMark = null) {
 		global $timer;
 		global $configArray;
 		global $solrScope;
@@ -1084,17 +1088,23 @@ abstract class Solr {
 			'rows' => $limit,
 			'start' => $start,
 			'indent' => 'yes',
+			'cursorMark' => $cursorMark ?? '*',
 		];
 
 		// Add Sorting
 		if ($sort && !empty($sort)) {
 			// There may be multiple sort options (ranked, with tie-breakers);
 			// process each individually, then assemble them back together again:
-			$sortParts = explode(',', $sort);
-			for ($x = 0; $x < count($sortParts); $x++) {
-				$sortParts[$x] = $this->_normalizeSort($sortParts[$x]);
+//			$sortParts = explode(',', $sort);
+//			for ($x = 0; $x < count($sortParts); $x++) {
+//				$sortParts[$x] = $this->_normalizeSort($sortParts[$x]);
+//			}
+//			$options['sort'] = implode(',', $sortParts);
+			// Ensure sort contains unique key (id) if not already present
+			if (!str_contains($sort, 'id')) {
+				$sort .= ', id asc';
 			}
-			$options['sort'] = implode(',', $sortParts);
+			$options['sort'] = $sort;
 		}
 
 		//Convert from old AllFields Search to Keyword search

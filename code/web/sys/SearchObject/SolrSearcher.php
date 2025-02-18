@@ -9,7 +9,7 @@ abstract class SearchObject_SolrSearcher extends SearchObject_BaseSearcher {
 	/** @var Solr */
 	protected $indexEngine = null;
 	// Result
-	protected $indexResult;
+	public $indexResult;
 
 	// Facets
 	protected $facetLimit = 30;
@@ -34,6 +34,8 @@ abstract class SearchObject_SolrSearcher extends SearchObject_BaseSearcher {
 
 	protected $facetSearchField;
 	protected $facetSearchTerm;
+	private $cursorMark = null;
+	private $nextCursorMark = null;
 
 	public function __construct() {
 		parent::__construct();
@@ -52,6 +54,38 @@ abstract class SearchObject_SolrSearcher extends SearchObject_BaseSearcher {
 
 	function setTimeout($timeout) {
 		$this->indexEngine->setTimeout($timeout);
+	}
+
+	/**
+	 * @return null
+	 */
+	public function getCursorMark()
+	{
+		return $this->cursorMark;
+	}
+
+	/**
+	 * @param null $cursorMark
+	 */
+	public function setCursorMark($cursorMark): void
+	{
+		$this->cursorMark = $cursorMark;
+	}
+
+	/**
+	 * @return null
+	 */
+	public function getNextCursorMark()
+	{
+		return $this->nextCursorMark;
+	}
+
+	/**
+	 * @param null $nextCursorMark
+	 */
+	public function setNextCursorMark($nextCursorMark): void
+	{
+		$this->nextCursorMark = $nextCursorMark;
 	}
 
 	/**
@@ -395,11 +429,18 @@ abstract class SearchObject_SolrSearcher extends SearchObject_BaseSearcher {
 
 		// The first record to retrieve:
 		//  (page - 1) * limit = start
-		$recordStart = ($this->page - 1) * $this->limit;
+		//$recordStart = ($this->page - 1) * $this->limit;
+		if ($this->cursorMark) {
+			$start = 0; // Cursor ignores start parameter
+		} else {
+			$start = ($this->page - 1) * $this->limit;
+		}
+
 		$this->indexResult = $this->indexEngine->search($this->query,      // Query string
 			$this->index,      // DisMax Handler
 			$filterQuery,      // Filter query
-			$recordStart,      // Starting record
+			//$recordStart,      // Starting record
+			$start,
 			$this->limit,      // Records per page
 			$facetSet,         // Fields to facet on
 			$spellcheck,       // Spellcheck query
@@ -407,8 +448,13 @@ abstract class SearchObject_SolrSearcher extends SearchObject_BaseSearcher {
 			$finalSort,        // Field to sort on
 			$this->fields,     // Fields to return
 			'POST',     // HTTP Request method
-			$returnIndexErrors // Include errors in response?
+			$returnIndexErrors, // Include errors in response?
+			$this->cursorMark
 		);
+
+		if (isset($this->indexResult['nextCursorMark'])) {
+			$this->nextCursorMark = $this->indexResult['nextCursorMark'];
+		}
 
 		// Get time after the query
 		$this->stopQueryTimer();

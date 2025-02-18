@@ -1525,25 +1525,32 @@ class SearchAPI extends AbstractAPI {
 	const ITEMS_PER_PAGE = 24;
 
 	public function getBrowseCategoryResults($browseCategory, &$response) : void {
-		if (isset($_REQUEST['pageToLoad']) && is_numeric($_REQUEST['pageToLoad'])) {
-			$pageToLoad = (int)$_REQUEST['pageToLoad'];
-		} else {
-			$pageToLoad = 1;
-		}
+//		if (isset($_REQUEST['pageToLoad']) && is_numeric($_REQUEST['pageToLoad'])) {
+//			$pageToLoad = (int)$_REQUEST['pageToLoad'];
+//		} else {
+//			$pageToLoad = 1;
+//		}
+		// Replace page-based parameters with cursor
+		$cursorMark = $_REQUEST['cursorMark'] ?? '*';
 		$pageSize = $_REQUEST['pageSize'] ?? self::ITEMS_PER_PAGE;
+
 		if ($browseCategory->textId == 'system_recommended_for_you') {
-			$this->getSuggestionsBrowseCategoryResults($pageToLoad, $pageSize, $response);
+			//$this->getSuggestionsBrowseCategoryResults($pageToLoad, $pageSize, $response);
+			$this->getSuggestionsBrowseCategoryResults($cursorMark, $pageSize, $response);
 		} elseif ($browseCategory->textId == 'system_saved_searches') {
-			$this->getSavedSearchBrowseCategoryResults($pageToLoad, $pageSize, $response);
+			//$this->getSavedSearchBrowseCategoryResults($pageToLoad, $pageSize, $response);
+			$this->getSavedSearchBrowseCategoryResults($cursorMark, $pageSize, $response);
 		} elseif ($browseCategory->textId == 'system_user_lists') {
-			$this->getUserListBrowseCategoryResults($pageToLoad, $pageSize, $response);
+			//$this->getUserListBrowseCategoryResults($pageToLoad, $pageSize, $response);
+			$this->getUserListBrowseCategoryResults($cursorMark, $pageSize, $response);
 		} else {
 			if ($browseCategory->source == 'List') {
 				require_once ROOT_DIR . '/sys/UserLists/UserList.php';
 				$sourceList = new UserList();
 				$sourceList->id = $browseCategory->sourceListId;
 				if ($sourceList->find(true)) {
-					$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize, $this->checkIfLiDA());
+					//$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize, $this->checkIfLiDA());
+					$records = $sourceList->getBrowseRecordsRaw($cursorMark, $pageSize, $this->checkIfLiDA());
 				} else {
 					$records = [];
 				}
@@ -1556,7 +1563,8 @@ class SearchAPI extends AbstractAPI {
 				$sourceList = new CourseReserve();
 				$sourceList->id = $browseCategory->sourceCourseReserveId;
 				if ($sourceList->find(true)) {
-					$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize);
+					//$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize);
+					$records = $sourceList->getBrowseRecordsRaw($cursorMark, $pageSize);
 				} else {
 					$records = [];
 				}
@@ -1583,7 +1591,8 @@ class SearchAPI extends AbstractAPI {
 				}
 				$searchObject->disableLogging();
 				$searchObject->setLimit($pageSize);
-				$searchObject->setPage($pageToLoad);
+				//$searchObject->setPage($pageToLoad);
+				$searchObject->setCursorMark($cursorMark);
 				$searchObject->processSearch();
 
 				// Big one - our results
@@ -1608,6 +1617,10 @@ class SearchAPI extends AbstractAPI {
 
 				// Shutdown the search object
 				$searchObject->close();
+
+				if (isset($searchObject->indexResult['nextCursorMark'])) {
+					$response['nextCursorMark'] = $searchObject->indexResult['nextCursorMark'];
+				}
 			}
 			$response['records'] = $records;
 			$response['numRecords'] = count($records);
@@ -1789,7 +1802,9 @@ class SearchAPI extends AbstractAPI {
 		$sourceList->id = $id;
 		$response = [];
 		if ($sourceList->find(true)) {
-			$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize, $forLida);
+			//$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize, $forLida);
+			$cursorMark = $_REQUEST['cursorMark'] ?? '*';
+			$records = $sourceList->getBrowseRecordsRaw($cursorMark, $pageSize, $forLida);
 		}else{
 			return [
 				'success' => false,
@@ -2375,6 +2390,7 @@ class SearchAPI extends AbstractAPI {
 		} else {
 			$pageToLoad = 1;
 		}
+		$cursorMark = $_REQUEST['cursorMark'] ?? '*';
 
 		if (!$pageSize) {
 			$pageSize = $_REQUEST['limit'] ?? self::ITEMS_PER_PAGE;
@@ -2454,7 +2470,8 @@ class SearchAPI extends AbstractAPI {
 						$sourceList = new UserList();
 						$sourceList->id = $browseCategory->sourceListId;
 						if ($sourceList->find(true)) {
-							$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize, $isLida, $appVersion);
+							//$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize, $isLida, $appVersion);
+							$records = $sourceList->getBrowseRecordsRaw($cursorMark, $pageSize, $isLida, $appVersion);
 							$response['message'] = 'Results found for browse category';
 						} else {
 							$records = [];
@@ -2466,7 +2483,8 @@ class SearchAPI extends AbstractAPI {
 						$sourceList = new CourseReserve();
 						$sourceList->id = $browseCategory->sourceCourseReserveId;
 						if ($sourceList->find(true)) {
-							$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize);
+							//$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize);
+							$records = $sourceList->getBrowseRecordsRaw($cursorMark, $pageSize);
 							$response['message'] = 'Results found for browse category';
 						} else {
 							$records = [];
@@ -2553,7 +2571,8 @@ class SearchAPI extends AbstractAPI {
 						}
 						$searchObject->disableLogging();
 						$searchObject->setLimit($pageSize);
-						$searchObject->setPage($pageToLoad);
+						//$searchObject->setPage($pageToLoad);
+						$searchObject->setCursorMark($cursorMark);
 						$searchObject->processSearch();
 
 						$link = $searchObject->renderLinkPageTemplate();
@@ -2692,6 +2711,7 @@ class SearchAPI extends AbstractAPI {
 		} else {
 			$pageToLoad = 1;
 		}
+		$cursorMark = $_REQUEST['cursorMark'] ?? '*';
 
 		if (!empty($_REQUEST['limit'])) {
 			$pageSize = $_REQUEST['limit'];
@@ -2721,7 +2741,8 @@ class SearchAPI extends AbstractAPI {
 		if ($sourceList->find(true)) {
 			$response['title'] = $sourceList->title;
 			$response['id'] = $sourceList->id;
-			$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize, $isLida, $appVersion);
+			//$records = $sourceList->getBrowseRecordsRaw(($pageToLoad - 1) * $pageSize, $pageSize, $isLida, $appVersion);
+			$records = $sourceList->getBrowseRecordsRaw($cursorMark, $pageSize, $isLida, $appVersion);
 			$response['items'] = $records;
 		}else{
 			return [
