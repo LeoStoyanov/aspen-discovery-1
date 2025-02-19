@@ -1081,15 +1081,22 @@ abstract class Solr {
 		global $timer;
 		global $configArray;
 		global $solrScope;
-		// Query String Parameters
+		// Build the basic query options.
 		$options = [
-			'q' => $query,
-			'q.op' => 'AND',
-			'rows' => $limit,
-			'start' => $start,
+			'q'      => $query,
+			'q.op'   => 'AND',
+			'rows'   => $limit,
 			'indent' => 'yes',
-			'cursorMark' => $cursorMark ?? '*',
 		];
+
+		// Only add the cursorMark parameter if it was explicitly provided.
+		if ($cursorMark !== null) {
+			// When using cursorMark, Solr requires start=0.
+			$options['start'] = 0;
+			$options['cursorMark'] = $cursorMark;
+		} else {
+			$options['start'] = $start;
+		}
 
 		// Add Sorting
 		if ($sort && !empty($sort)) {
@@ -1105,6 +1112,9 @@ abstract class Solr {
 				$sort .= ', id asc';
 			}
 			$options['sort'] = $sort;
+		} else {
+			// Default to relevance + id when no sort specified
+			$options['sort'] = 'score desc, id asc';
 		}
 
 		//Convert from old AllFields Search to Keyword search

@@ -410,14 +410,18 @@ class SearchObject_GroupedWorkSearcher extends SearchObject_AbstractGroupedWorkS
 
 		// The "relevance" sort option is a VuFind reserved word; we need to make
 		// this null in order to achieve the desired effect with Solr:
-		$finalSort = ($this->sort == 'relevance') ? null : $this->sort;
+		//$finalSort = ($this->sort == 'relevance') ? null : $this->sort;
+		// The "relevance" sort option needs explicit id tie-breaker
+		$finalSort = ($this->sort == 'relevance') ? 'score desc, id asc' : $this->sort;
 		if ($finalSort == 'days_since_added asc') {
-			$finalSort = 'local_days_since_added_' . $solrScope . ' asc';
+			//$finalSort = 'local_days_since_added_' . $solrScope . ' asc';
+			$finalSort = 'local_days_since_added_' . $solrScope . ' asc, id asc';
 		}
 
 		// The first record to retrieve:
 		//  (page - 1) * limit = start
-		$recordStart = ($this->page - 1) * $this->limit;
+		//$recordStart = ($this->page - 1) * $this->limit;
+		$recordStart = $this->getCursorMark() ? 0 : ($this->page - 1) * $this->limit;
 		//Remove irrelevant fields based on scoping
 		$fieldsToReturn = $this->getFieldsToReturn();
 

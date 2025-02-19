@@ -427,10 +427,17 @@ abstract class SearchObject_SolrSearcher extends SearchObject_BaseSearcher {
 		// this null in order to achieve the desired effect with Solr:
 		$finalSort = ($this->sort == 'relevance') ? null : $this->sort;
 
+		// Force ID sort for cursor stability
+		if (empty($finalSort)) {
+			$finalSort = 'score desc, id asc';
+		} elseif (!str_contains($finalSort, 'id')) {
+			$finalSort .= ', id asc';
+		}
+
 		// The first record to retrieve:
 		//  (page - 1) * limit = start
 		//$recordStart = ($this->page - 1) * $this->limit;
-		if ($this->cursorMark) {
+		if ($this->getCursorMark()) {
 			$start = 0; // Cursor ignores start parameter
 		} else {
 			$start = ($this->page - 1) * $this->limit;
