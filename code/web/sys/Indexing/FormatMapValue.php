@@ -63,6 +63,7 @@ class FormatMapValue extends DataObject {
 				'maxLength' => '255',
 				'required' => false,
 				'forcesReindex' => true,
+				'forcesRegroup' => true,
 				'onchange' => 'return AspenDiscovery.Admin.calculateGroupingCategories(this);',
 			],
 			'formatCategory' => [
@@ -73,6 +74,7 @@ class FormatMapValue extends DataObject {
 				'values' => $formatCategories,
 				'required' => true,
 				'forcesReindex' => true,
+				'forcesRegroup' => true,
 				'onchange' => 'return AspenDiscovery.Admin.calculateGroupingCategories(this);',
 			],
 			'groupingCategory' => [

@@ -396,6 +396,18 @@ class SystemVariables extends DataObject {
 		}
 	}
 
+	/**
+	 * @return void
+	 */
+	public static function forceRegrouping(): void
+	{
+		$variables = SystemVariables::getSystemVariables();
+		if ($variables && $variables->regroupAllRecordsDuringNightlyIndex == 0) {
+			$variables->regroupAllRecordsDuringNightlyIndex = 1;
+			$variables->update();
+		}
+	}
+
 	/** @var null|SystemVariables */
 	protected static $_systemVariables = null;
 

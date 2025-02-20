@@ -982,11 +982,20 @@ abstract class DataObject implements JsonSerializable {
 				}
 			}
 			$this->$propertyName = $newValue;
-			if ($propertyStructure != null && !empty($propertyStructure['forcesReindex'])) {
-				require_once ROOT_DIR . '/sys/SystemVariables.php';
-				global $logger;
-				SystemVariables::forceNightlyIndex();
-				$logger->log("Forcing Nightly Index because $propertyName on " . get_class($this) . ' - ' . $this->getPrimaryKeyValue() . " was changed to $newValue by user " . UserAccount::getActiveUserId(), Logger::LOG_ALERT);
+
+			if ($propertyStructure != null) {
+				if (!empty($propertyStructure['forcesReindex'])) {
+					require_once ROOT_DIR . '/sys/SystemVariables.php';
+					global $logger;
+					SystemVariables::forceNightlyIndex();
+					$logger->log("Forcing nightly index because $propertyName on " . get_class($this) . ' - ' . $this->getPrimaryKeyValue() . " was changed to $newValue by user " . UserAccount::getActiveUserId(), Logger::LOG_ALERT);
+				}
+				if (!empty($propertyStructure['forcesRegroup'])) {
+					require_once ROOT_DIR . '/sys/SystemVariables.php';
+					global $logger;
+					SystemVariables::forceRegrouping();
+					$logger->log("Forcing regrouping because $propertyName on " . get_class($this) . ' - ' . $this->getPrimaryKeyValue() . " was changed to $newValue by user " . UserAccount::getActiveUserId(), Logger::LOG_ALERT);
+				}
 			}
 			//Add the change to the history unless tracking the history is off (passwords)
 			if ($propertyStructure != null && $propertyStructure['type'] != 'password' && $propertyStructure['type'] != 'storedPassword') {

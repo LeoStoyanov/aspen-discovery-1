@@ -38,7 +38,7 @@ public class GroupedReindexMain {
 
 	/**
 	 * Starts the re-indexing process
-	 * 
+	 *
 	 * @param args String[] The server name to index with optional parameter for properties of indexing
 	 */
 	public static void main(String[] args) {
@@ -80,9 +80,9 @@ public class GroupedReindexMain {
 				System.exit(1);
 			}
 		}
-		
+
 		initializeReindex();
-		
+
 		logEntry.addNote("Initialized Reindex ");
 		if (checkNightlyIndexRunning) {
 			boolean isNightlyIndexRunning = IndexingUtils.isNightlyIndexRunning(configIni, serverName, logger);
@@ -111,7 +111,7 @@ public class GroupedReindexMain {
 					logger.error("Unable to determine if we should regroup all records", e);
 				}
 			}
-
+			logEntry.addNote("Regrouping all records: " + (regroupAllRecords ? "ENABLED" : "DISABLED"));
 			GroupedWorkIndexer groupedWorkIndexer = new GroupedWorkIndexer(serverName, dbConn, configIni, fullReindex, clearIndex, regroupAllRecords, logEntry, logger);
 			if (groupedWorkIndexer.isOkToIndex()) {
 				if (individualWorkToProcess != null) {
