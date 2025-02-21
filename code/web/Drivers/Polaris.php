@@ -1277,8 +1277,8 @@ class Polaris extends AbstractIlsDriver {
 				if ($authenticationResponseRaw) {
 					$authenticationResponse = json_decode($authenticationResponseRaw);
 					if (empty($authenticationResponse->PAPIErrorCode) || $authenticationResponse->PAPIErrorCode == 0) {
-						$accessToken = $authenticationResponse->AccessToken;
-						$patronId = $authenticationResponse->PatronID;
+						$accessToken = $authenticationResponse->AccessToken ?? null;
+						$patronId = $authenticationResponse->PatronID ?? null;
 						$session = [
 							'userValid' => true,
 							'accessToken' => $accessToken,
