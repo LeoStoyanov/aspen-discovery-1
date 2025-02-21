@@ -1912,6 +1912,14 @@ class Sierra extends Millennium {
 			'payments' => [],
 		];
 
+        // Use patron's home location stat group by default.
+        $homeLocation = $patron->getHomeLocation();
+        if ($homeLocation && $homeLocation->statGroup != -1) {
+            $paymentParams['statgroup'] = (int)$homeLocation->statGroup;
+            global $logger;
+            $logger->log("Using home location stat group {$homeLocation->statGroup} for patron {$patron->id}", Logger::LOG_ERROR);
+        }
+
 		$finePayments = explode(',', $payment->finesPaid);
 		foreach ($finePayments as $finePayment) {
 			[
