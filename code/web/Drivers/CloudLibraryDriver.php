@@ -114,6 +114,10 @@ class CloudLibraryDriver extends AbstractEContentDriver {
 	 * @return mixed
 	 */
 	function renewCheckout($patron, $recordId, $itemId = null, $itemIndex = null) {
+		global $logger;
+		$logger->log("Starting cloudLibrary renewal for patron {$patron->id} and record {$recordId}", Logger::LOG_DEBUG);
+
+		$logger->log("Attempting to renew cloudLibrary title through checkout method", Logger::LOG_DEBUG);
 		return $this->checkOutTitle($patron, $recordId, true);
 	}
 
@@ -585,6 +589,9 @@ class CloudLibraryDriver extends AbstractEContentDriver {
 	 * @return array
 	 */
 	public function checkOutTitle($patron, $titleId, $fromRenew = false) {
+		global $logger;
+		$logger->log("Starting cloudLibrary checkout/renewal process for patron {$patron->id} and title {$titleId}. FromRenew: " . ($fromRenew ? 'true' : 'false'), Logger::LOG_DEBUG);
+
 		$result = [
 			'success' => false,
 			'message' => translate([
@@ -665,6 +672,7 @@ class CloudLibraryDriver extends AbstractEContentDriver {
 						'text' => 'Your title was renewed successfully.',
 						'isPublicFacing' => true,
 					]);
+					$logger->log("Completing renewal process for title {$titleId}", Logger::LOG_DEBUG);
 				} else {
 					$result['message'] = translate([
 						'text' => 'Your title was checked out successfully. You can read or listen to the title from your account.',
@@ -685,7 +693,7 @@ class CloudLibraryDriver extends AbstractEContentDriver {
 						'isPublicFacing' => true,
 					]);
 				}
-
+				$logger->log("Successfully checked out/renewed title {$titleId} for patron {$patron->id}", Logger::LOG_DEBUG);
 				$patron->clearCachedAccountSummaryForSource('cloud_library');
 				$patron->forceReloadOfCheckouts();
 			}

@@ -245,16 +245,23 @@ class CloudLibrary_AJAX extends JSON_Action {
 	}
 
 	function renewCheckout() {
+		global $logger;
 		$user = UserAccount::getLoggedInUser();
 		$id = $_REQUEST['recordId'];
+		$logger->log("Received cloudLibrary renewal request for record {$id}", Logger::LOG_DEBUG);
 		if ($user) {
 			$patronId = $_REQUEST['patronId'];
+			$logger->log("Processing renewal for patron {$patronId}", Logger::LOG_DEBUG);
 			$patron = $user->getUserReferredTo($patronId);
 			if ($patron) {
 				require_once ROOT_DIR . '/Drivers/CloudLibraryDriver.php';
 				$driver = new CloudLibraryDriver();
-				return $driver->renewCheckout($patron, $id);
+				//return $driver->renewCheckout($patron, $id);
+				$result = $driver->renewCheckout($patron, $id);
+				$logger->log("Renewal result: " . ($result['success'] ? 'success' : 'failure') . " - " . $result['message'], Logger::LOG_DEBUG);
+				return $result;
 			} else {
+				$logger->log("Invalid patron permissions for renewal", Logger::LOG_ERROR);
 				return [
 					'result' => false,
 					'message' => translate([

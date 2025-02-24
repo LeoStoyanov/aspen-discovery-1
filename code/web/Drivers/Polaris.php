@@ -1237,76 +1237,89 @@ class Polaris extends AbstractIlsDriver {
 	protected function loginViaWebService(string &$username, ?string $password, $fromMasquerade = false): array {
 		if (array_key_exists($username, Polaris::$accessTokensForUsers)) {
 			return Polaris::$accessTokensForUsers[$username];
-		} else {
-			$staffUserInfo = $this->getStaffUserInfo();
+		}
 
+		// If masquerading and no password provided, skip authentication.
+		if ($fromMasquerade && empty($password)) {
+			global $logger;
+			$logger->log('Skipping Polaris authentication because masquerade mode has been detected.', Logger::LOG_DEBUG);
 			$session = [
-				'userValid' => false,
-				'accessToken' => false,
-				'patronId' => false,
+				'userValid' => true,
+				'accessToken' => '',
+				'patronId' => '',
 			];
-
-			//Validate that the patron exists. This can also be used to get the barcode for the user based on username
-			$polarisUrl = '/PAPIService/REST/public/v1/1033/100/1/patron/' . $username;
-			$validatePatronResponseRaw = $this->getWebServiceResponse($polarisUrl, 'GET', $staffUserInfo['accessSecret'], false, true);
-			ExternalRequestLogEntry::logRequest('polaris.validatePatron', 'GET', $this->getWebServiceURL() . $polarisUrl, $this->apiCurlWrapper->getHeaders(), false, $this->lastResponseCode, $validatePatronResponseRaw, ['staffAccessSecret' => $staffUserInfo['accessSecret']]);
-			$patronValidationDone = false;
-			if ($validatePatronResponseRaw) {
-				$validationResponse = json_decode($validatePatronResponseRaw);
-				if ($validationResponse->PAPIErrorCode == -3000) {
-					$patronValidationDone = true;
-					$session = [
-						'userValid' => true,
-						'accessToken' => '',
-						'patronId' => '',
-					];
-				} elseif (!empty($validationResponse->PatronBarcode) && $validationResponse->PatronBarcode != $username) {
-					$username = $validationResponse->PatronBarcode;
-				}
-			}
-
-			$authenticationData = new stdClass();
-			$authenticationData->Barcode = $username;
-			$authenticationData->Password = $password;
-
-			if (!$patronValidationDone) {
-				$body = json_encode($authenticationData);
-				$polarisUrl = '/PAPIService/REST/public/v1/1033/100/1/authenticator/patron';
-				$authenticationResponseRaw = $this->getWebServiceResponse($polarisUrl, 'POST', '', $body, $fromMasquerade);
-				ExternalRequestLogEntry::logRequest('polaris.authenticatePatron', 'POST', $this->getWebServiceURL() . $polarisUrl, $this->apiCurlWrapper->getHeaders(), false, $this->lastResponseCode, $authenticationResponseRaw, ['password' => $password]);
-				if ($authenticationResponseRaw) {
-					$authenticationResponse = json_decode($authenticationResponseRaw);
-					if (empty($authenticationResponse->PAPIErrorCode) || $authenticationResponse->PAPIErrorCode == 0) {
-						$accessToken = $authenticationResponse->AccessToken ?? null;
-						$patronId = $authenticationResponse->PatronID ?? null;
-						if ($accessToken === null) {
-							global $logger;
-							$logger->log('Polaris authentication error: AccessToken is null. Raw response: ' . PHP_EOL . print_r($authenticationResponse, true), Logger::LOG_ERROR);
-						}
-						if ($patronId === null) {
-							global $logger;
-							$logger->log('Polaris authentication error: PatronID is null. Raw response: ' . PHP_EOL . print_r($authenticationResponse, true), Logger::LOG_ERROR);
-						}
-						$session = [
-							'userValid' => true,
-							'accessToken' => $accessToken,
-							'patronId' => $patronId,
-						];
-					} else {
-						global $logger;
-						$logger->log($authenticationResponse->ErrorMessage, Logger::LOG_ERROR);
-						$logger->log(print_r($authenticationResponse, true), Logger::LOG_ERROR);
-					}
-				} else {
-					global $logger;
-					$errorMessage = 'Polaris Authentication Error: ' . $this->lastResponseCode;
-					$logger->log($errorMessage, Logger::LOG_ERROR);
-					$logger->log(print_r($authenticationResponseRaw, true), Logger::LOG_ERROR);
-				}
-			}
 			Polaris::$accessTokensForUsers[$username] = $session;
 			return $session;
 		}
+
+		$staffUserInfo = $this->getStaffUserInfo();
+
+		$session = [
+			'userValid' => false,
+			'accessToken' => false,
+			'patronId' => false,
+		];
+
+		//Validate that the patron exists. This can also be used to get the barcode for the user based on username
+		$polarisUrl = '/PAPIService/REST/public/v1/1033/100/1/patron/' . $username;
+		$validatePatronResponseRaw = $this->getWebServiceResponse($polarisUrl, 'GET', $staffUserInfo['accessSecret'], false, true);
+		ExternalRequestLogEntry::logRequest('polaris.validatePatron', 'GET', $this->getWebServiceURL() . $polarisUrl, $this->apiCurlWrapper->getHeaders(), false, $this->lastResponseCode, $validatePatronResponseRaw, ['staffAccessSecret' => $staffUserInfo['accessSecret']]);
+		$patronValidationDone = false;
+		if ($validatePatronResponseRaw) {
+			$validationResponse = json_decode($validatePatronResponseRaw);
+			if ($validationResponse->PAPIErrorCode == -3000) {
+				$patronValidationDone = true;
+				$session = [
+					'userValid' => true,
+					'accessToken' => '',
+					'patronId' => '',
+				];
+			} elseif (!empty($validationResponse->PatronBarcode) && $validationResponse->PatronBarcode != $username) {
+				$username = $validationResponse->PatronBarcode;
+			}
+		}
+
+		$authenticationData = new stdClass();
+		$authenticationData->Barcode = $username;
+		$authenticationData->Password = $password;
+
+		if (!$patronValidationDone) {
+			$body = json_encode($authenticationData);
+			$polarisUrl = '/PAPIService/REST/public/v1/1033/100/1/authenticator/patron';
+			$authenticationResponseRaw = $this->getWebServiceResponse($polarisUrl, 'POST', '', $body, $fromMasquerade);
+			ExternalRequestLogEntry::logRequest('polaris.authenticatePatron', 'POST', $this->getWebServiceURL() . $polarisUrl, $this->apiCurlWrapper->getHeaders(), false, $this->lastResponseCode, $authenticationResponseRaw, ['password' => $password]);
+			if ($authenticationResponseRaw) {
+				$authenticationResponse = json_decode($authenticationResponseRaw);
+				if (empty($authenticationResponse->PAPIErrorCode) || $authenticationResponse->PAPIErrorCode == 0) {
+					$accessToken = $authenticationResponse->AccessToken ?? null;
+					$patronId = $authenticationResponse->PatronID ?? null;
+					if ($accessToken === null) {
+						global $logger;
+						$logger->log('Polaris authentication error: AccessToken is null. Raw response: ' . PHP_EOL . print_r($authenticationResponse, true), Logger::LOG_ERROR);
+					}
+					if ($patronId === null) {
+						global $logger;
+						$logger->log('Polaris authentication error: PatronID is null. Raw response: ' . PHP_EOL . print_r($authenticationResponse, true), Logger::LOG_ERROR);
+					}
+					$session = [
+						'userValid' => true,
+						'accessToken' => $accessToken,
+						'patronId' => $patronId,
+					];
+				} else {
+					global $logger;
+					$logger->log($authenticationResponse->ErrorMessage, Logger::LOG_ERROR);
+					$logger->log(print_r($authenticationResponse, true), Logger::LOG_ERROR);
+				}
+			} else {
+				global $logger;
+				$errorMessage = 'Polaris Authentication Error: ' . $this->lastResponseCode;
+				$logger->log($errorMessage, Logger::LOG_ERROR);
+				$logger->log(print_r($authenticationResponseRaw, true), Logger::LOG_ERROR);
+			}
+		}
+		Polaris::$accessTokensForUsers[$username] = $session;
+		return $session;
 	}
 
 	private function getAccessToken(string $barcode, ?string $password, bool $fromMasquerade = false) {
