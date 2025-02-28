@@ -11,6 +11,21 @@ class MyAccount_Logout extends Action {
 			$ssoSettings = new SSOSetting();
 			$ssoSettings->id = $library->ssoSettingId;
 			if ($ssoSettings->find(true)) {
+
+				// Check if we should only perform a local logout.
+				//if (!empty($ssoSettings->localLogout)) {
+					// Just do a local logout without redirecting to SSO provider.
+					UserAccount::logout();
+					session_write_close();
+
+					if (isset($_REQUEST['return'])) {
+						header('Location: ' . $_REQUEST['return']);
+					} else {
+						header('Location: /');
+					}
+					die();
+				//}
+
 				if($ssoSettings->service == 'saml') {
 					if ($ssoSettings->ssoSPLogoutUrl) {
 						UserAccount::logout();

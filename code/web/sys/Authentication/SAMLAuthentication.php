@@ -301,6 +301,17 @@ class SAMLAuthentication{
 
 	private function aspenLogin(User $user) {
 		if($this->ssoAuthOnly) {
+			// Make sure admin_sso account profile exists before attempting login.
+			global $logger;
+			$logger->log('Checking for admin_sso account profile when SSO.', Logger::LOG_DEBUG);
+			$this->checkAndCreateAdminSSOProfile();
+
+			// Update user source if needed.
+			if ($user->source != 'admin_sso') {
+				$user->source = 'admin_sso';
+				$user->update();
+			}
+
 			$login = UserAccount::loginWithAspen($user);
 		} else {
 			$_REQUEST['username'] = empty($user->ils_username) ? $user->ils_barcode : $user->ils_username;
@@ -485,7 +496,12 @@ class SAMLAuthentication{
 		}
 		$tmpUser->myLocation1Id = 0;
 		$tmpUser->myLocation2Id = 0;
+
 		if($this->ssoAuthOnly) {
+			// Check and create admin_sso account profile if needed before setting the source.
+			global $logger;
+			$logger->log('Checking for an admin_sso account profile when registering Aspen user.', Logger::LOG_DEBUG);
+			$this->checkAndCreateAdminSSOProfile();
 			$tmpUser->source = 'admin_sso';
 		}
 
@@ -498,6 +514,46 @@ class SAMLAuthentication{
 		}
 
 		return UserAccount::findNewAspenUser('username', $this->searchArray($user, 'ssoUniqueAttribute'));
+	}
+
+	/**
+	 * Checks if an admin_sso account profile exists and creates one if it doesn't.
+	 * The account profile "admin_sso" is only required if the partner has enabled "Only authenticate users with single sign-on" in the SSO settings.
+	 * When that is disabled, the source is set to the first account profile that has a set driver and ILS.
+	 */
+	private function checkAndCreateAdminSSOProfile(): void
+	{
+		require_once ROOT_DIR . '/sys/Account/AccountProfile.php';
+		$accountProfile = new AccountProfile();
+		$accountProfile->name = 'admin_sso';
+
+		// If the profile doesn't exist, create it.
+		if (!$accountProfile->find(true)) {
+			global $logger;
+			$logger->log('Automatically generating an admin_sso account profile.', Logger::LOG_DEBUG);
+
+			$accountProfile->ils = 'na';
+			$accountProfile->driver = '';
+			$accountProfile->loginConfiguration = 'barcode_pin';
+			// The auto-generated admin_sso profile uses 'db' authentication method because:
+			//  - It's not tied to any specific ILS.
+			//  - Needs to work before SSO is fully configured.
+			// 	- Manages permissions/roles internally rather than delegating.
+			// 	- Matches the existing implementation pattern across all SSO types.
+			$accountProfile->authenticationMethod = 'db';
+			$accountProfile->vendorOpacUrl = '';
+			$accountProfile->patronApiUrl = '';
+			$accountProfile->recordSource = '';
+			$accountProfile->weight = 0;
+			$accountProfile->carlXViewVersion = '';
+
+			$result = $accountProfile->insert();
+			if ($result === false) {
+				$logger->log('Failed to create admin_sso account profile. Error: ' . $accountProfile->getLastError() . '.', Logger::LOG_ERROR);
+			} else {
+				$logger->log('Successfully created admin_sso account profile with ID ' . $accountProfile->id . '.', Logger::LOG_DEBUG);
+			}
+		}
 	}
 
 	private function newSSOSession($id) {
