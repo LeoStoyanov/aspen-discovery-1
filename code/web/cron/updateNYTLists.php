@@ -9,6 +9,7 @@ require_once ROOT_DIR . '/sys/NYTApi.php';
 
 require_once ROOT_DIR . '/sys/Enrichment/NewYorkTimesSetting.php';
 require_once ROOT_DIR . '/sys/UserLists/NYTUpdateLogEntry.php';
+require_once ROOT_DIR . '/sys/Grouping/GroupedWork.php';
 
 //Create a NYTUpdateLogEntry
 $nytUpdateLog = new NYTUpdateLogEntry();
