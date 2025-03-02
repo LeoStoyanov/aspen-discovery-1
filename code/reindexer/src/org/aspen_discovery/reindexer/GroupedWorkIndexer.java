@@ -1387,7 +1387,7 @@ public class GroupedWorkIndexer {
 			if (displayInfoRS.next()) {
 				String title = displayInfoRS.getString("title");
 				if (!title.isEmpty()){
-					groupedWork.setTitle(title, "", title, AspenStringUtils.makeValueSortable(title), "", true);
+					groupedWork.setTitle(title, "", title, AspenStringUtils.makeValueSortable(title), "", "");
 					groupedWork.clearSubTitle();
 				}
 				String author = displayInfoRS.getString("author");

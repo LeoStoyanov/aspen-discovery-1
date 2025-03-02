@@ -419,11 +419,7 @@ public abstract class AbstractGroupedWorkSolr {
 	private final static Pattern punctuationPattern = Pattern.compile("[.\\\\/()\\[\\]:;]");
 
 	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String recordFormat, String formatCategory) {
-		this.setTitle(shortTitle, subTitle, displayTitle, sortableTitle, formatCategory, false, null);
-	}
-
-	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String formatCategory, boolean isDisplayInfo) {
-		this.setTitle(shortTitle, subTitle, displayTitle, sortableTitle, formatCategory, isDisplayInfo, null);
+		this.setTitle(shortTitle, subTitle, displayTitle, sortableTitle, formatCategory,  false, null);
 	}
 
 	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String formatCategory, boolean isDisplayInfo, RecordInfo recordInfo) {
