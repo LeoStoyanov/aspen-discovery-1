@@ -261,6 +261,20 @@ public class PalaceProjectExportMain {
 					JSONObject initialCrawlableResponseJSON = new JSONObject(response.getMessage());
 					HashMap<String, String> validCollections = getValidCollectionsFromPalaceProject(initialCrawlableResponseJSON, palaceProjectCollections, insertCollectionStmt, settingsId);
 
+					// Make sure we remove any titles from collections that are no longer in the Palace Project.
+					Set<String> allAspenCollections = palaceProjectCollections.keySet();
+					allAspenCollections.removeAll(validCollections.keySet());
+					for (String deletedCollectionName : allAspenCollections) {
+						logEntry.addNote("Removing titles from deleted collection " + deletedCollectionName + " because it is no longer in the Palace Project.");
+						PalaceProjectCollection deletedColl = palaceProjectCollections.get(deletedCollectionName);
+						if (!deletedColl.includeInAspen) {
+							HashMap<Long, PalaceProjectTitleAvailability> titlesForCollection = getTitlesForCollection(getTitlesForCollectionStmt, deletedColl);
+							for (PalaceProjectTitleAvailability titleAvailability : titlesForCollection.values()) {
+								removePalaceProjectTitleFromCollection(titleAvailability.id, titleAvailability.titleId);
+							}
+						}
+					}
+
 					for (String collectionName : validCollections.keySet()) {
 						//Index the collection if the collection has circulation or the collection has not been updated for 24 hours
 						PalaceProjectCollection collection = palaceProjectCollections.get(collectionName);

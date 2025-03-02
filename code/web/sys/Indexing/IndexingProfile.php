@@ -216,6 +216,8 @@ class IndexingProfile extends DataObject {
 		$numMillisecondsToPauseAfterBibLookups;
 	public /** @noinspection PhpUnused */
 		$numExtractionThreads;
+	public /** @noinspection PhpUnused */
+		$ignoreOnOrderRecordsForTitleSelection;
 
 	private $_translationMaps;
 	private $_timeToReshelve;
@@ -244,7 +246,8 @@ class IndexingProfile extends DataObject {
 			'orderRecordsToSuppressByDate',
 			'numRetriesForBibLookups',
 			'numMillisecondsToPauseAfterBibLookups',
-			'numExtractionThreads'
+			'numExtractionThreads',
+			'ignoreOnOrderRecordsForTitleSelection',
 		];
 	}
 
@@ -623,6 +626,15 @@ class IndexingProfile extends DataObject {
 						'default' => true,
 						'description' => 'Check metadata within the record to see if a book is large print',
 						'note'        => 'Only applies when all items have formats of either Book or Large Print',
+						'forcesReindex' => true,
+					],
+					'ignoreOnOrderRecordsForTitleSelection' => [
+						'property' => 'ignoreOnOrderRecordsForTitleSelection',
+						'type' => 'checkbox',
+						'label' => 'Ignore On-Order Records for Title Selection',
+						'description' => 'When checked, titles from on-order records will not be selected as the primary display title in grouped works.',
+						'hideInLists' => true,
+						'default' => 0,
 						'forcesReindex' => true,
 					],
 					'formatMap' => [
@@ -1539,7 +1551,6 @@ class IndexingProfile extends DataObject {
 				'canDelete' => true,
 				'forcesReindex' => true,
 			];
-
 		}
 
 		return $structure;
@@ -1562,6 +1573,11 @@ class IndexingProfile extends DataObject {
 					unset($formatMapStructure['appliesToItemSublocation']);
 					unset($formatMapStructure['appliesToItemCollection']);
 					unset($formatMapStructure['appliesToItemType']);
+
+					// Hide the ignoreOnOrderRecordsForTitleSelection setting for non-Koha ILS.
+					if (isset($structure['formatSection']['properties']['ignoreOnOrderRecordsForTitleSelection'])) {
+						unset($structure['formatSection']['properties']['ignoreOnOrderRecordsForTitleSelection']);
+					}
 				}
 				if ($activeIls != 'sierra') {
 					unset($formatMapStructure['appliesToMatType']);

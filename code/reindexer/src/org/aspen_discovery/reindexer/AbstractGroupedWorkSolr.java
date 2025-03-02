@@ -419,10 +419,14 @@ public abstract class AbstractGroupedWorkSolr {
 	private final static Pattern punctuationPattern = Pattern.compile("[.\\\\/()\\[\\]:;]");
 
 	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String recordFormat, String formatCategory) {
-		this.setTitle(shortTitle, subTitle, displayTitle, sortableTitle, formatCategory, false);
+		this.setTitle(shortTitle, subTitle, displayTitle, sortableTitle, formatCategory, false, null);
 	}
 
 	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String formatCategory, boolean isDisplayInfo) {
+		this.setTitle(shortTitle, subTitle, displayTitle, sortableTitle, formatCategory, isDisplayInfo, null);
+	}
+
+	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String formatCategory, boolean isDisplayInfo, RecordInfo recordInfo) {
 		if (shortTitle != null) {
 			shortTitle = AspenStringUtils.trimTrailingPunctuation(shortTitle);
 
@@ -431,30 +435,35 @@ public abstract class AbstractGroupedWorkSolr {
 			if (this.title == null) {
 				updateTitle = true;
 			} else {
-				//Only overwrite if we get a better format
-				if (formatCategory.equals("Books")) {
-					//We have a book, update if we didn't have a book before
-					if (!formatCategory.equals(titleFormat)) {
-						updateTitle = true;
-						//Or update if we had a book before and this title is longer
-					} else if (shortTitle.length() > this.title.length()) {
-						updateTitle = true;
-					}
-				} else if (formatCategory.equals("eBook")) {
-					//Update if the format we had before is not a book
-					if (!titleFormat.equals("Books")) {
-						//And the new format was not an eBook or the new title is longer than what we had before
+				// Skip on-order records for title selection if we have any other title.
+				if (recordInfo != null && recordInfo.isOnOrder()) {
+					updateTitle = false;
+				} else {
+					//Only overwrite if we get a better format
+					if (formatCategory.equals("Books")) {
+						//We have a book, update if we didn't have a book before
 						if (!formatCategory.equals(titleFormat)) {
 							updateTitle = true;
-							//or update if we had a book before and this title is longer
+							//Or update if we had a book before and this title is longer
 						} else if (shortTitle.length() > this.title.length()) {
 							updateTitle = true;
 						}
-					}
-				} else if (!titleFormat.equals("Books") && !titleFormat.equals("eBook")) {
-					//If we don't have a Book or an eBook then we can update the title if we get a longer title
-					if (shortTitle.length() > this.title.length()) {
-						updateTitle = true;
+					} else if (formatCategory.equals("eBook")) {
+						//Update if the format we had before is not a book
+						if (!titleFormat.equals("Books")) {
+							//And the new format was not an eBook or the new title is longer than what we had before
+							if (!formatCategory.equals(titleFormat)) {
+								updateTitle = true;
+								//or update if we had a book before and this title is longer
+							} else if (shortTitle.length() > this.title.length()) {
+								updateTitle = true;
+							}
+						}
+					} else if (!titleFormat.equals("Books") && !titleFormat.equals("eBook")) {
+						//If we don't have a Book or an eBook then we can update the title if we get a longer title
+						if (shortTitle.length() > this.title.length()) {
+							updateTitle = true;
+						}
 					}
 				}
 			}
@@ -467,10 +476,10 @@ public abstract class AbstractGroupedWorkSolr {
 				}
 				//Do not remove common subtitle from display info
 				//if (!isDisplayInfo) {
-					tmpTitle = commonSubtitlePattern.matcher(shortTitle).replaceAll("").trim();
-					if (!tmpTitle.isEmpty()) {
-						shortTitle = tmpTitle;
-					}
+				tmpTitle = commonSubtitlePattern.matcher(shortTitle).replaceAll("").trim();
+				if (!tmpTitle.isEmpty()) {
+					shortTitle = tmpTitle;
+				}
 				//}
 				this.title = shortTitle;
 				this.titleFormat = formatCategory;
@@ -511,7 +520,6 @@ public abstract class AbstractGroupedWorkSolr {
 			keywords.add(shortTitle);
 		}
 	}
-
 
 	private void setSubTitle(String subTitle) {
 		if (subTitle != null) {
@@ -993,7 +1001,7 @@ public abstract class AbstractGroupedWorkSolr {
 			this.placesOfPublication.add(placeOfPublication);
 		}
 	}
-	
+
 	void addLiteraryForms(HashMap<String, Integer> literaryForms) {
 		for (String curLiteraryForm : literaryForms.keySet()) {
 			this.addLiteraryForm(curLiteraryForm, literaryForms.get(curLiteraryForm));
@@ -1294,6 +1302,18 @@ public abstract class AbstractGroupedWorkSolr {
 			relatedRecords.put(recordIdentifierWithType, newRecord);
 			return newRecord;
 		}
+	}
+
+	/**
+	 * Get the RecordInfo for a specific source and identifier
+	 *
+	 * @param source The source of the record (e.g. "koha")
+	 * @param recordIdentifier The identifier of the record
+	 * @return The RecordInfo object if found, null otherwise
+	 */
+	RecordInfo getRecordInfo(String source, String recordIdentifier) {
+		String recordIdentifierWithType = source + ":" + recordIdentifier;
+		return relatedRecords.get(recordIdentifierWithType);
 	}
 
 	void addLCSubject(String lcSubject) {

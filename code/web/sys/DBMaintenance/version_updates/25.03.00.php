@@ -19,6 +19,13 @@ function getUpdates25_03_00(): array {
 		//kirstien - Grove
 
 		// Leo Stoyanov - BWS
+		'add_ignore_on_order_records_for_title_selection' => [
+			'title' => 'Add ignoreOnOrderRecordsForTitleSelection to indexing profiles',
+			'description' => 'Adds a setting to skip on-order records when selecting titles for display in grouped works (Koha-specific)',
+			'sql' => [
+				"ALTER TABLE indexing_profiles ADD COLUMN ignoreOnOrderRecordsForTitleSelection TINYINT(1) DEFAULT 0"
+			],
+		], // add_ignore_on_order_records_for_title_selection
 
 		//alexander - PTFS-Europe
 

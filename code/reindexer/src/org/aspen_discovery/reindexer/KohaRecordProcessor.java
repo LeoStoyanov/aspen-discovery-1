@@ -546,4 +546,55 @@ class KohaRecordProcessor extends IlsRecordProcessor {
 		}
 		return super.isItemHoldableUnscoped(itemInfo);
 	}
+
+	@Override
+	protected void updateGroupedWorkSolrDataBasedOnMarc(AbstractGroupedWorkSolr groupedWork, Record record, String identifier) {
+		// First check if this is an on-order record.
+		boolean isOnOrder = isRecordOnOrder(record);
+
+		// Add the record to the grouped work.
+		RecordInfo recordInfo = groupedWork.addRelatedRecord(profileType, identifier);
+
+		if (isOnOrder) {
+			// Set the on-order flag to true if the setting is enabled and the opposite if the setting is disabled.
+			recordInfo.setOnOrder(settings.getIgnoreOnOrderRecordsForTitleSelection());
+		}
+		else {
+			recordInfo.setOnOrder(false);
+		}
+
+		// Continue with standard processing.
+		super.updateGroupedWorkSolrDataBasedOnMarc(groupedWork, record, identifier);
+	}
+
+	/**
+	 * Determines if a record is an on-order record by checking if all items are on-order
+	 *
+	 * @param record The MARC record to check
+	 * @return true if the record is an on-order record
+	 */
+	private boolean isRecordOnOrder(Record record) {
+		List<DataField> itemRecords = MarcUtil.getDataFields(record, settings.getItemTagInt());
+		if (itemRecords.isEmpty()) {
+			return false;
+		}
+
+		boolean allItemsOnOrder = true;
+		for (DataField itemField : itemRecords) {
+//			String subLocationData = MarcUtil.getItemSubfieldData(settings.getSubLocationSubfield(), itemField, indexer.getLogEntry(), logger);
+//			if (subLocationData == null || !subLocationData.equalsIgnoreCase("ON-ORDER")) {
+//				// If any item is not on-order, the record is not considered an on-order record
+//				allItemsOnOrder = false;
+//				break;
+//			}
+			String itemStatus = getItemStatus(itemField, "");
+			if (itemStatus.equalsIgnoreCase("On Order")) {
+				// Item status directly indicates it's on order
+				continue;
+			}
+			allItemsOnOrder = false;
+		}
+
+		return allItemsOnOrder;
+	}
 }

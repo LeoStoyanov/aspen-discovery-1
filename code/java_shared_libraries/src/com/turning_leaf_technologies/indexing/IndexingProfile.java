@@ -113,6 +113,9 @@ public class IndexingProfile extends BaseIndexingSettings {
 
 	private SierraExportFieldMapping sierraExportFieldMappings = null;
 
+	// Whether to ignore on-order records when selecting titles for display in grouped works
+	private boolean ignoreOnOrderRecordsForTitleSelection = false;
+
 	public IndexingProfile(String serverName, BaseIndexingLogEntry logEntry){
 		//This is only intended to be used for unit testing
 		super(serverName, logEntry);
@@ -262,6 +265,8 @@ public class IndexingProfile extends BaseIndexingSettings {
 
 		index856Links = indexingProfileRS.getInt("index856Links");
 		treatUnknownAudienceAs = indexingProfileRS.getString("treatUnknownAudienceAs");
+
+		ignoreOnOrderRecordsForTitleSelection = indexingProfileRS.getBoolean("ignoreOnOrderRecordsForTitleSelection");
 
 		//Custom Facet 1
 		this.customFacet1SourceField = indexingProfileRS.getString("customFacet1SourceField");
@@ -1145,5 +1150,13 @@ public class IndexingProfile extends BaseIndexingSettings {
 
 	public void setOrderRecordStatusToTreatAsUnderConsideration(String orderRecordStatusToTreatAsUnderConsideration) {
 		this.orderRecordStatusToTreatAsUnderConsideration = orderRecordStatusToTreatAsUnderConsideration;
+	}
+
+	public boolean getIgnoreOnOrderRecordsForTitleSelection() {
+		return ignoreOnOrderRecordsForTitleSelection;
+	}
+
+	public void setIgnoreOnOrderRecordsForTitleSelection(boolean ignoreOnOrderRecordsForTitleSelection) {
+		this.ignoreOnOrderRecordsForTitleSelection = ignoreOnOrderRecordsForTitleSelection;
 	}
 }

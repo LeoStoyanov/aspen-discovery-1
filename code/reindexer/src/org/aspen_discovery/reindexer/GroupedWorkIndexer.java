@@ -1987,7 +1987,7 @@ public class GroupedWorkIndexer {
 		return id;
 	}
 
-	
+
 	private final MaxSizeHashMap<String, Long> physicalDescriptionIds = new MaxSizeHashMap<>(1000);
 	private long getPhysicalDescriptionId(String physicalDescription, int numTries) {
 		if (physicalDescription == null){

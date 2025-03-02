@@ -373,9 +373,13 @@ abstract class MarcRecordProcessor {
 		for (DataField seriesField : seriesFields){
 			String series = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, "anp"," ")).toString();
 			//Remove anything in parentheses since it's normally just the format
-			series = series.replaceAll("\\s+\\(.*?\\)", "");
+			//series = series.replaceAll("\\s+\\(.*?\\)", "");
 			//Remove the word series at the end since this gets cataloged inconsistently
 			series = series.replaceAll("(?i)\\s+series$", "");
+			String seriesLanguage = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, "l","")).toString();
+			if (!seriesLanguage.isEmpty()) {
+				series = series + " (" + seriesLanguage + ")";
+			}
 			String volume = "";
 			if (seriesField.getSubfield('v') != null){
 				//Separate out the volume so we can link specially
@@ -387,8 +391,13 @@ abstract class MarcRecordProcessor {
 		seriesFields = MarcUtil.getDataFields(record, 800);
 		for (DataField seriesField : seriesFields){
 			String series = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, "pqt","")).toString();
+			String seriesLanguage = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, "l","")).toString();
+			if (!seriesLanguage.isEmpty()) {
+				series = series + " (" + seriesLanguage + ")";
+			}
 			//Remove anything in parentheses since it's normally just the format
-			series = series.replaceAll("\\s+\\(.*?\\)", "");
+			//No longer remove parentheses to better differentiate series
+			//series = series.replaceAll("\\s+\\(.*?\\)", "");
 			//Remove the word series at the end since this gets cataloged inconsistently
 			series = series.replaceAll("(?i)\\s+series$", "");
 
@@ -405,7 +414,7 @@ abstract class MarcRecordProcessor {
 			for (DataField seriesField : seriesFields){
 				String series = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, "a","")).toString();
 				//Remove anything in parentheses since it's normally just the format
-				series = series.replaceAll("\\s+\\(.*?\\)", "");
+				//series = series.replaceAll("\\s+\\(.*?\\)", "");
 				//Remove the word series at the end since this gets cataloged inconsistently
 				series = series.replaceAll("(?i)\\s+series$", "");
 
@@ -1528,8 +1537,25 @@ abstract class MarcRecordProcessor {
 			//noinspection SpellCheckingInspection
 			String subTitle = titleField.getSubfieldsAsString("bfgnp");
 			if (!hasParentRecord) {
+				String identifier = MarcUtil.getFirstFieldVal(record, "001");
+				RecordInfo recordInfo = groupedWork.getRecordInfo(profileType, identifier);
+
+				// If recordInfo is null, try to add the record to ensure we have it
+				if (recordInfo == null) {
+					logger.warn("RecordInfo was null for " + profileType + ":" + identifier + ", adding it now");
+					recordInfo = groupedWork.addRelatedRecord(profileType, identifier);
+				}
+
 				//noinspection SpellCheckingInspection
-				groupedWork.setTitle(titleField.getSubfieldsAsString("a"), subTitle, titleField.getSubfieldsAsString("abfgnp"), this.getSortableTitle(record), format, formatCategory);
+				groupedWork.setTitle(
+					titleField.getSubfieldsAsString("a"),
+					subTitle,
+					titleField.getSubfieldsAsString("abfgnp"),
+					this.getSortableTitle(record),
+					format,
+					false,
+					recordInfo
+				);
 			}
 			//title full
 			authorInTitleField = titleField.getSubfieldsAsString("c");
