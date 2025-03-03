@@ -419,10 +419,10 @@ public abstract class AbstractGroupedWorkSolr {
 	private final static Pattern punctuationPattern = Pattern.compile("[.\\\\/()\\[\\]:;]");
 
 	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String recordFormat, String formatCategory) {
-		this.setTitle(shortTitle, subTitle, displayTitle, sortableTitle, formatCategory,  false, null);
+		this.setTitle(shortTitle, subTitle, displayTitle, sortableTitle, recordFormat, formatCategory, false, null);
 	}
 
-	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String formatCategory, boolean isDisplayInfo, RecordInfo recordInfo) {
+	void setTitle(String shortTitle, String subTitle, String displayTitle, String sortableTitle, String recordFormat, String formatCategory, boolean isDisplayInfo, RecordInfo recordInfo) {
 		if (shortTitle != null) {
 			shortTitle = AspenStringUtils.trimTrailingPunctuation(shortTitle);
 
@@ -431,10 +431,8 @@ public abstract class AbstractGroupedWorkSolr {
 			if (this.title == null) {
 				updateTitle = true;
 			} else {
-				// Skip on-order records for title selection if we have any other title.
-				if (recordInfo != null && recordInfo.isOnOrder()) {
-					updateTitle = false;
-				} else {
+				// Skip unavailable records for title selection if we have any other title.
+				if (recordInfo == null || !recordInfo.isOnOrder()) {
 					//Only overwrite if we get a better format
 					if (formatCategory.equals("Books")) {
 						//We have a book, update if we didn't have a book before

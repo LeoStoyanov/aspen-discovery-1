@@ -553,7 +553,7 @@ class KohaRecordProcessor extends IlsRecordProcessor {
 		RecordInfo recordInfo = groupedWork.addRelatedRecord(profileType, identifier);
 
 		// Check if this is an on-order record and set the flag accordingly, only if the setting is enabled
-		boolean isOnOrder = settings.getIgnoreOnOrderRecordsForTitleSelection() && isRecordOnOrder(record);
+		boolean isOnOrder = settings.getIgnoreOnOrderRecordsForTitleSelection() && isRecordExcludedFromTitleSelection(record);
 		recordInfo.setOnOrder(isOnOrder);
 
 		super.updateGroupedWorkSolrDataBasedOnMarc(groupedWork, record, identifier);
@@ -565,22 +565,22 @@ class KohaRecordProcessor extends IlsRecordProcessor {
 	 * @param record The MARC record to check
 	 * @return true if the record is an on-order record
 	 */
-	private boolean isRecordOnOrder(Record record) {
+	private boolean isRecordExcludedFromTitleSelection(Record record) {
 		List<DataField> itemRecords = MarcUtil.getDataFields(record, settings.getItemTagInt());
 		if (itemRecords.isEmpty()) {
 			return false;
 		}
 
-		boolean allItemsOnOrder = true;
+		boolean allItemsExcluded = true;
 		for (DataField itemField : itemRecords) {
 			String itemStatus = getItemStatus(itemField, "");
-			if (itemStatus.equalsIgnoreCase("On Order")) {
-				// Item status directly indicates it's on order
-				continue;
+			if (itemStatus.equals("On Shelf") || itemStatus.equals("Checked Out")) {
+				// Found an available item, so the record should not be excluded.
+				allItemsExcluded = false;
+				break;
 			}
-			allItemsOnOrder = false;
 		}
 
-		return allItemsOnOrder;
+		return allItemsExcluded;
 	}
 }
