@@ -284,6 +284,8 @@ abstract class ObjectEditor extends Admin_Admin {
 					$interface->assign('canCompare', false);
 				}
 				$interface->assign('showQuickFilterOnPropertiesList', $this->showQuickFilterOnPropertiesList());
+				global $logger;
+				$logger->log("Loading propertiesList template - module: {$this->getModule()}, templatePath: ../Admin/propertiesList.tpl", Logger::LOG_ERROR);
 				$interface->setTemplate('../Admin/propertiesList.tpl');
 			}
 		}

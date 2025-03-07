@@ -217,6 +217,13 @@ class AspenError extends DataObject {
 			echo json_encode($result);
 		} else {
 			global $module;
+			global $logger;
+			$logger->log("AspenError occurred: " . $this->message . " at " . $this->file . ":" . $this->line, Logger::LOG_ERROR);
+			$backtraceString = '';
+			foreach ($this->getRawBacktrace() as $trace) {
+				$backtraceString .= "{$trace['file']}:{$trace['line']}\n";
+			}
+			$logger->log("Backtrace:\n" . $backtraceString, Logger::LOG_ERROR);
 			if (!empty($module)) {
 				$interface->setTemplate('../error.tpl');
 			} else {
