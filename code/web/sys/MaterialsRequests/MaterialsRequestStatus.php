@@ -17,6 +17,7 @@ class MaterialsRequestStatus extends DataObject {
 	public $holdPlacedSuccessfully;
 	public $holdNotNeeded;
 	public $holdFailed;
+	public $isArchived;
 
 	public $libraryId;
 
@@ -38,6 +39,8 @@ class MaterialsRequestStatus extends DataObject {
 			'checkForHolds',
 			'holdPlacedSuccessfully',
 			'holdFailed',
+			'holdNotNeeded',
+			'isArchived',
 			'libraryId'
 		];
 	}
@@ -97,6 +100,13 @@ class MaterialsRequestStatus extends DataObject {
 				'type' => 'checkbox',
 				'label' => 'Active Status?',
 				'description' => "Whether requests with this status count against the patron's maximum active requests",
+			],
+			'isArchived' => [
+				'property' => 'isArchived',
+				'type' => 'checkbox',
+				'label' => 'Archived Status?',
+				'description' => "Whether requests with this status should be archived (i.e., hidden by default) in the admin interface.",
+				'default' => 0,
 			],
 			'checkForHolds' => [
 				'property' => 'checkForHolds',

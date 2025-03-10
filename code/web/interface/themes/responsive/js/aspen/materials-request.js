@@ -53,6 +53,66 @@ AspenDiscovery.MaterialsRequest = (function(){
 			return false;
 		},
 
+		archiveSelectedRequests: function() {
+			var selectedRequests = $("input.select:checked");
+			if (selectedRequests.length === 0) {
+				alert("Please select at least one request to update.");
+				return false;
+			}
+
+			var archiveAction = $("#archiveAction").val();
+			if (archiveAction === "unselected") {
+				alert("Please select an archive action (archive or unarchive).");
+				return false;
+			}
+
+			if (!confirm("Are you sure you want to " + archiveAction + " the " + selectedRequests.length + " selected request(s)?")) {
+				return false;
+			}
+
+			// Track progress
+			var completedRequests = 0;
+			var successfulRequests = 0;
+			var failedRequests = 0;
+
+			// Process each request
+			selectedRequests.each(function() {
+				var id = $(this).attr("id").replace("select_", "");
+				var url = Globals.path + "/MaterialsRequest/AJAX?method=updateRequestArchiveStatus&id=" + id + "&archiveAction=" + archiveAction;
+
+				$.ajax({
+					url: url,
+					dataType: 'json',
+					async: false,
+					success: function(data) {
+						completedRequests++;
+						if (data.success) {
+							successfulRequests++;
+						} else {
+							failedRequests++;
+							console.error("Failed to update request " + id + ": " + (data.error || "Unknown error"));
+						}
+					},
+					error: function() {
+						completedRequests++;
+						failedRequests++;
+						console.error("Failed to update request " + id + ": AJAX error");
+					}
+				});
+			});
+
+			// Show results
+			if (failedRequests > 0) {
+				alert("Processed " + completedRequests + " requests. " + successfulRequests + " were successful, " + failedRequests + " failed.");
+			} else {
+				alert("Successfully " + archiveAction + "d " + successfulRequests + " requests.");
+			}
+
+			// Reload the page to show the changes
+			window.location.reload();
+			return false;
+		},
+
 		assignSelectedRequests: function(){
 			var newAssignee = $("#newAssignee").val();
 			if (newAssignee === "unselected"){
@@ -271,6 +331,76 @@ AspenDiscovery.MaterialsRequest = (function(){
 					$("#existingTitleInformation" + id).html(data.existingRecordInformation);
 				}
 			});
+		},
+
+		/**
+		 * Update the status of a single materials request via the dropdown
+		 * @param {string} id - The ID of the request
+		 * @param {string} status - The new status
+		 * @returns {boolean} - Always returns false to prevent default link behavior
+		 */
+		updateRequestStatus: function(id, status) {
+			if (confirm("Are you sure you want to change the status of this request?")) {
+				var url = Globals.path + "/MaterialsRequest/AJAX?method=updateRequestStatus&id=" + id + "&status=" + status;
+				$.getJSON(
+					url,
+					function(data) {
+						if (data.success) {
+							window.location.reload();
+						} else {
+							alert(data.error || "Error updating status");
+						}
+					}
+				);
+			}
+			return false;
+		},
+
+		/**
+		 * Update the assignment of a single materials request via the dropdown
+		 * @param {string} id - The ID of the request
+		 * @param {string} assigneeId - The ID of the assignee or 'unassign'
+		 * @returns {boolean} - Always returns false to prevent default link behavior
+		 */
+		updateRequestAssignment: function(id, assigneeId) {
+			if (confirm("Are you sure you want to change the assignment of this request?")) {
+				var url = Globals.path + "/MaterialsRequest/AJAX?method=updateRequestAssignment&id=" + id + "&assigneeId=" + assigneeId;
+				$.getJSON(
+					url,
+					function(data) {
+						if (data.success) {
+							window.location.reload();
+						} else {
+							alert(data.error || "Error updating assignment");
+						}
+					}
+				);
+			}
+			return false;
+		},
+
+		/**
+		 * Update the archive status of a single materials request via the dropdown
+		 * @param {string} id - The ID of the request
+		 * @param {string} archiveAction - Either 'archive' or 'unarchive'
+		 * @returns {boolean} - Always returns false to prevent default link behavior
+		 */
+		updateRequestArchiveStatus: function(id, archiveAction) {
+			if (confirm("Are you sure you want to " + archiveAction + " this request?")) {
+				const url = Globals.path + "/MaterialsRequest/AJAX?method=updateRequestArchiveStatus&id=" + id + "&archiveAction=" + archiveAction;
+				$.getJSON(
+					url,
+					function(data) {
+						console.log(data);
+						if (data.success) {
+							window.location.reload();
+						} else {
+							alert(data.error || "Error updating archive status");
+						}
+					}
+				);
+			}
+			return false;
 		}
 	};
 }(AspenDiscovery.MaterialsRequest || {}));

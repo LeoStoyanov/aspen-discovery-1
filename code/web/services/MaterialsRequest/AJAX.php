@@ -540,7 +540,6 @@ class MaterialsRequest_AJAX extends Action {
 		return $result;
 	}
 
-	/** @noinspection PhpUnused */
 	function checkRequestForExistingRecord() : array {
 		$id = $_REQUEST['id'];
 		$result = [
@@ -587,5 +586,214 @@ class MaterialsRequest_AJAX extends Action {
 
 	function getBreadcrumbs(): array {
 		return [];
+	}
+
+	/**
+	 * Update the status of a single materials request
+	 * @return array
+	 */
+	function updateRequestStatus() : array {
+		if (!UserAccount::isLoggedIn()) {
+			return [
+				'success' => false,
+				'error' => 'You must be logged in to update status'
+			];
+		}
+
+		if (!UserAccount::userHasPermission('Manage Library Materials Requests')) {
+			return [
+				'success' => false,
+				'error' => 'You do not have permission to update material request status'
+			];
+		}
+
+		if (empty($_REQUEST['id']) || empty($_REQUEST['status'])) {
+			return [
+				'success' => false,
+				'error' => 'Missing required parameters'
+			];
+		}
+
+		$id = $_REQUEST['id'];
+		$newStatus = $_REQUEST['status'];
+
+		// Validate status exists
+		$statusObj = new MaterialsRequestStatus();
+		$statusObj->id = $newStatus;
+		if (!$statusObj->find(true)) {
+			return [
+				'success' => false,
+				'error' => 'Invalid status selected'
+			];
+		}
+
+		// Update the request
+		$request = new MaterialsRequest();
+		$request->id = $id;
+		if ($request->find(true)) {
+			$request->status = $newStatus;
+			$request->dateUpdated = time();
+			if ($request->update()) {
+				require_once ROOT_DIR . '/sys/MaterialsRequests/MaterialsRequestUsage.php';
+				MaterialsRequestUsage::incrementStat($request->status, $request->libraryId);
+				return [
+					'success' => true
+				];
+			} else {
+				return [
+					'success' => false,
+					'error' => 'Failed to update request'
+				];
+			}
+		} else {
+			return [
+				'success' => false,
+				'error' => 'Request not found'
+			];
+		}
+	}
+
+	/**
+	 * Update the assignment of a single materials request
+	 * @return array
+	 */
+	function updateRequestAssignment() : array {
+		if (!UserAccount::isLoggedIn()) {
+			return [
+				'success' => false,
+				'error' => 'You must be logged in to update assignment'
+			];
+		}
+
+		if (!UserAccount::userHasPermission('Manage Library Materials Requests')) {
+			return [
+				'success' => false,
+				'error' => 'You do not have permission to update material request assignments'
+			];
+		}
+
+		if (empty($_REQUEST['id']) || !isset($_REQUEST['assigneeId'])) {
+			return [
+				'success' => false,
+				'error' => 'Missing required parameters'
+			];
+		}
+
+		$id = $_REQUEST['id'];
+		$assigneeId = $_REQUEST['assigneeId'];
+
+		// Update the request
+		$request = new MaterialsRequest();
+		$request->id = $id;
+		if ($request->find(true)) {
+			if ($assigneeId === 'unassign') {
+				$request->assignedTo = null;
+			} else {
+				// Validate assignee exists
+				$user = new User();
+				$user->id = $assigneeId;
+				if (!$user->find(true)) {
+					return [
+						'success' => false,
+						'error' => 'Invalid assignee selected'
+					];
+				}
+				$request->assignedTo = $assigneeId;
+			}
+
+			$request->dateUpdated = time();
+			if ($request->update()) {
+				return [
+					'success' => true
+				];
+			} else {
+				return [
+					'success' => false,
+					'error' => 'Failed to update request assignment'
+				];
+			}
+		} else {
+			return [
+				'success' => false,
+				'error' => 'Request not found'
+			];
+		}
+	}
+
+	/**
+	 * Update the archive status of a single materials request
+	 * @return array
+	 */
+	function updateRequestArchiveStatus() : array {
+		if (!UserAccount::isLoggedIn()) {
+			return [
+				'success' => false,
+				'error' => 'You must be logged in to update material request archive status'
+			];
+		}
+
+		if (!UserAccount::userHasPermission('Manage Library Materials Requests')) {
+			return [
+				'success' => false,
+				'error' => 'You do not have permission to update material request archive status'
+			];
+		}
+
+		if (empty($_REQUEST['id']) || empty($_REQUEST['archiveAction'])) {
+			return [
+				'success' => false,
+				'error' => 'Missing required parameters'
+			];
+		}
+
+		$id = $_REQUEST['id'];
+		$action = $_REQUEST['archiveAction'];
+		global $logger;
+		$logger->log("$id, $action", Logger::LOG_ERROR);
+
+		if ($action !== 'archive' && $action !== 'unarchive') {
+			return [
+				'success' => false,
+				'error' => 'Invalid action specified'
+			];
+		}
+
+		// Load the request to get its status
+		$request = new MaterialsRequest();
+		$request->id = $id;
+		if (!$request->find(true)) {
+			return [
+				'success' => false,
+				'error' => 'Failed to load materials request'
+			];
+		}
+
+		// Get the status object
+		$status = new MaterialsRequestStatus();
+		$status->id = $request->status;
+		if (!$status->find(true)) {
+			return [
+				'success' => false,
+				'error' => 'Failed to load status for this request'
+			];
+		}
+
+		// Update the isArchived field in the status object
+		$status->isArchived = ($action === 'archive') ? 1 : 0;
+
+		if ($status->update()) {
+			// Update request's date updated
+			$request->dateUpdated = time();
+			$request->update();
+
+			return [
+				'success' => true
+			];
+		} else {
+			return [
+				'success' => false,
+				'error' => 'Failed to update archive status'
+			];
+		}
 	}
 }

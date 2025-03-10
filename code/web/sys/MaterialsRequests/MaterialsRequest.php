@@ -887,4 +887,16 @@ class MaterialsRequest extends DataObject {
 		//Automatically check for existing records if it has been an hour and an existing record with the same format has not been found.
 		return ((time() - $this->lastCheckForExistingRecord) > 60 * 60) && !$this->hasExistingRecord;
 	}
+
+	public function getStatus() : MaterialsRequestStatus|false {
+		if (!empty($this->status)) {
+			require_once ROOT_DIR . '/sys/MaterialsRequests/MaterialsRequestStatus.php';
+			$status = new MaterialsRequestStatus();
+			$status->id = $this->status;
+			if ($status->find(true)) {
+				return $status;
+			}
+		}
+		return false;
+	}
 }

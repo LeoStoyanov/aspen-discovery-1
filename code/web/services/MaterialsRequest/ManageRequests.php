@@ -28,7 +28,7 @@ class MaterialsRequest_ManageRequests extends Admin_Admin {
 		$defaultStatusesToShow = [];
 		while ($materialsRequestStatus->fetch()) {
 			$availableStatuses[$materialsRequestStatus->id] = $materialsRequestStatus->description;
-			if ($materialsRequestStatus->isOpen == 1 || $materialsRequestStatus->isActive == 1 || $materialsRequestStatus->isDefault == 1) {
+			if ($materialsRequestStatus->isOpen == 1 || $materialsRequestStatus->isActive == 1 || $materialsRequestStatus->isDefault == 1 || $materialsRequestStatus->isPatronCancel == 1) {
 				$defaultStatusesToShow[] = $materialsRequestStatus->id;
 			}
 		}
@@ -54,10 +54,21 @@ class MaterialsRequest_ManageRequests extends Admin_Admin {
 
 		$interface->assign('showExistingTitleInformation', $homeLibrary->checkRequestsForExistingTitles);
 
+		// Handle Archive Filter
+		if (isset($_REQUEST['archiveFilter'])) {
+			$archiveFilter = $_REQUEST['archiveFilter'];
+			$_SESSION['materialsRequestArchiveFilter'] = $archiveFilter;
+		} elseif (isset($_SESSION['materialsRequestArchiveFilter'])) {
+			$archiveFilter = $_SESSION['materialsRequestArchiveFilter'];
+		} else {
+			$archiveFilter = 'showActive';
+		}
+		$interface->assign('archiveFilter', $archiveFilter);
+
 		//Process status change if needed
-		if (isset($_REQUEST['newStatus']) && isset($_REQUEST['select']) && $_REQUEST['newStatus'] != 'unselected') {
+		if (isset($_REQUEST['newStatus']) && $_REQUEST['newStatus'] != 'unselected') {
 			//Look for which titles should be modified
-			$selectedRequests = $_REQUEST['select'];
+			$selectedRequests = $_REQUEST['select'] ?? [];
 			$statusToSet = $_REQUEST['newStatus'];
 			foreach ($selectedRequests as $requestId => $selected) {
 				$materialRequest = new MaterialsRequest();
@@ -74,6 +85,34 @@ class MaterialsRequest_ManageRequests extends Admin_Admin {
 			}
 		}
 
+		// Process archive status change if needed
+		if (isset($_REQUEST['archiveAction']) && isset($_REQUEST['processType']) && $_REQUEST['processType'] == 'archiveUpdate') {
+			$archiveAction = $_REQUEST['archiveAction'];
+			if ($archiveAction != 'unselected') {
+				if (!empty($_REQUEST['select'])) {
+					$selectedRequestIds = $_REQUEST['select'];
+					foreach ($selectedRequestIds as $requestId => $value) {
+						require_once ROOT_DIR . '/sys/MaterialsRequests/MaterialsRequest.php';
+						$materialsRequest = new MaterialsRequest();
+						$materialsRequest->id = $requestId;
+						if ($materialsRequest->find(true)) {
+							// Get the current status
+							$statusObj = new MaterialsRequestStatus();
+							$statusObj->id = $materialsRequest->status;
+							if ($statusObj->find(true)) {
+								// Update the archive status of the status
+								if ($archiveAction == 'archive') {
+									$statusObj->isArchived = 1;
+								} else if ($archiveAction == 'unarchive') {
+									$statusObj->isArchived = 0;
+								}
+								$statusObj->update();
+							}
+						}
+					}
+				}
+			}
+		}
 
 		// Assign Requests
 		if (isset($_REQUEST['newAssignee']) && isset($_REQUEST['select']) && $_REQUEST['newAssignee'] != 'unselected') {
@@ -146,6 +185,14 @@ class MaterialsRequest_ManageRequests extends Admin_Admin {
 			if (count($availableStatuses) > count($statusesToShow)) {
 				$materialsRequests->whereAddIn('status', $statusesToShow, false);
 			}
+
+			// Apply archive filtering
+			if ($archiveFilter == 'showActive') {
+				$materialsRequests->whereAdd('status.isArchived = 0');
+			} elseif ($archiveFilter == 'showArchived') {
+				$materialsRequests->whereAdd('status.isArchived = 1');
+			}
+			// For 'showAll', no additional where clause needed
 
 			if (count($availableFormats) > count($formatsToShow)) {
 				//At least one format is disabled

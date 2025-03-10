@@ -210,6 +210,40 @@ AspenDiscovery.Searches = (function(){
 			var hasAdvancedSearch = false;
 			var advancedSearchLabel = "Advanced Search";
 			var advancedSearchUrl = "/Search/Advanced";
+
+			// Check localStorage for the last selected search index for this catalog type
+			var lastSearchIndex = null;
+			if (AspenDiscovery.hasLocalStorage()) {
+				// Get the last search type the user selected for this catalog
+				try {
+					var searchTypePrefs = JSON.parse(localStorage.getItem('aspen_search_type_prefs')) || {};
+					if (searchTypeElement) {
+						var selectedSearchType = $(searchTypeElement.find(":selected"));
+						if (selectedSearchType) {
+							catalogType = selectedSearchType.data("catalog_type");
+							lastSearchIndex = searchTypePrefs[catalogType];
+						}
+					}
+				} catch (e) {
+					console.log("Error loading saved search preferences", e);
+				}
+			}
+
+			// If we have a cached search type, set it immediately
+			if (lastSearchIndex) {
+				var searchIndexElement = $("#searchIndex");
+				var existingOptions = searchIndexElement.find("option");
+				if (existingOptions.length > 0) {
+					// Find the option with the matching value
+					existingOptions.each(function() {
+						if ($(this).val() === lastSearchIndex) {
+							searchIndexElement.val(lastSearchIndex);
+							return false; // break the loop
+						}
+					});
+				}
+			}
+
 			if (searchTypeElement){
 				var selectedSearchType = $(searchTypeElement.find(":selected"));
 				if (selectedSearchType){
@@ -234,6 +268,17 @@ AspenDiscovery.Searches = (function(){
 								var selected = "";
 								if (searchIndex === data.selectedIndex){
 									selected = " selected"
+
+									// Store the selected search type in localStorage for future use
+									if (AspenDiscovery.hasLocalStorage()) {
+										try {
+											var searchTypePrefs = JSON.parse(localStorage.getItem('aspen_search_type_prefs')) || {};
+											searchTypePrefs[catalogType] = searchIndex;
+											localStorage.setItem('aspen_search_type_prefs', JSON.stringify(searchTypePrefs));
+										} catch (e) {
+											console.log("Error saving search preferences", e);
+										}
+									}
 								}
 								var defaultSearch = "";
 								if (searchIndex === data.defaultSearchIndex){
