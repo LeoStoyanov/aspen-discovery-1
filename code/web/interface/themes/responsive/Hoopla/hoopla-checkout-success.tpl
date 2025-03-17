@@ -6,16 +6,20 @@
 	{/if}
 	{if !empty($hooplaPatronStatus)}
 		<div class="alert alert-info">
-			{if $hooplaPatronStatus->numCheckedOut == 1}
-				{translate text="You have 1 Hoopla title currently checked out." isPublicFacing=true}
+			{if $hooplaType == 'FLEX'}
+				{translate text="Your Hoopla FLEX title was checked out successfully." isPublicFacing=true}
 			{else}
-				{translate text="You have %1% Hoopla titles currently checked out." 1=$hooplaPatronStatus->numCheckedOut isPublicFacing=true}
-			{/if}
-			<br>
-			{if $hooplaPatronStatus->numCheckoutsRemaining == 1}
-				{translate text="You can borrow 1 more Hoopla title this month." isPublicFacing=true}
-			{else}
-				{translate text="You can borrow %1% more Hoopla titles this month." 1=$hooplaPatronStatus->numCheckoutsRemaining isPublicFacing=true}
+				{if $hooplaPatronStatus->numCheckedOut == 1}
+					{translate text="You have 1 Hoopla title currently checked out." isPublicFacing=true}
+				{else}
+					{translate text="You have %1% Hoopla titles currently checked out." 1=$hooplaPatronStatus->numCheckedOut isPublicFacing=true}
+				{/if}
+				<br>
+				{if $hooplaPatronStatus->numCheckoutsRemaining == 1}
+					{translate text="You can borrow 1 more Hoopla title this month." isPublicFacing=true}
+				{else}
+					{translate text="You can borrow %1% more Hoopla titles instant this month." 1=$hooplaPatronStatus->numCheckoutsRemaining isPublicFacing=true}
+				{/if}
 			{/if}
 		</div>
 	{/if}

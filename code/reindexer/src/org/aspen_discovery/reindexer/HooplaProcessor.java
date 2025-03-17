@@ -26,15 +26,16 @@ class HooplaProcessor {
 	private PreparedStatement getProductInfoStmt;
 	private PreparedStatement doubleDecodeRawResponseStmt;
 	private PreparedStatement updateRawResponseStmt;
-
+	private PreparedStatement getFlexAvailabilityStmt;
 	HooplaProcessor(GroupedWorkIndexer indexer, Connection dbConn, Logger logger) {
 		this.indexer = indexer;
 		this.logger = logger;
 
 		try {
-			getProductInfoStmt = dbConn.prepareStatement("SELECT id, hooplaId, active, title, kind, pa, demo, profanity, rating, abridged, children, price, rawChecksum, UNCOMPRESS(rawResponse) as rawResponse, dateFirstDetected from hoopla_export where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
+			getProductInfoStmt = dbConn.prepareStatement("SELECT id, hooplaId, active, title, kind, pa, demo, profanity, rating, abridged, children, price, rawChecksum, UNCOMPRESS(rawResponse) as rawResponse, dateFirstDetected, type from hoopla_export where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			doubleDecodeRawResponseStmt = dbConn.prepareStatement("SELECT UNCOMPRESS(UNCOMPRESS(rawResponse)) as rawResponse from hoopla_export where id = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			updateRawResponseStmt = dbConn.prepareStatement("UPDATE hoopla_export SET rawResponse = COMPRESS(?) where id = ?");
+			getFlexAvailabilityStmt = dbConn.prepareStatement("SELECT * from hoopla_flex_availability where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 		} catch (SQLException e) {
 			logger.error("Error setting up hoopla processor", e);
 		}
@@ -55,7 +56,6 @@ class HooplaProcessor {
 					logEntry.incErrors("rawResponse for Hoopla title " + identifier + " was null skipping");
 					return;
 				}
-
 				String kind = productRS.getString("kind");
 				float price = productRS.getFloat("price");
 
@@ -402,6 +402,8 @@ class HooplaProcessor {
 				String upc = rawResponse.getString("upc");
 				groupedWork.addUpc(upc);
 
+				String type = rawResponse.getString("purchaseModel");
+
 				ItemInfo itemInfo = new ItemInfo();
 				itemInfo.setItemIdentifier(identifier);
 				itemInfo.seteContentSource("Hoopla");
@@ -413,13 +415,39 @@ class HooplaProcessor {
 				itemInfo.setSortableCallNumber("Online Hoopla");
 				itemInfo.setFormat(primaryFormat);
 				itemInfo.setFormatCategory(formatCategory);
-				//Hoopla is always 1 copy unlimited use
-				itemInfo.setNumCopies(1);
-				itemInfo.setAvailable(true);
-				itemInfo.setDetailedStatus("Available Online");
-				itemInfo.setGroupedStatus("Available Online");
-				itemInfo.setHoldable(false);
+
+				if (type.equals("FLEX")){
+					getFlexAvailabilityStmt.setString(1, identifier);
+					ResultSet flexAvailabilityRS = getFlexAvailabilityStmt.executeQuery();
+					if (flexAvailabilityRS.next()){
+						int totalCopies = flexAvailabilityRS.getInt("totalCopies");
+						int availableCopies = flexAvailabilityRS.getInt("availableCopies");
+						int holdsQueueSize = flexAvailabilityRS.getInt("holdsQueueSize");
+						itemInfo.setNumCopies(totalCopies);
+						itemInfo.setAvailable(availableCopies > 0);
+
+						if (availableCopies > 0){
+							itemInfo.setDetailedStatus("Available Online");
+							itemInfo.setGroupedStatus("Available Online");
+							itemInfo.setHoldable(false);
+						}else{
+							itemInfo.setDetailedStatus("Checked Out");
+							itemInfo.setGroupedStatus("Checked Out");
+							itemInfo.setHoldable(true);
+						}
+					}
+					flexAvailabilityRS.close();
+				}else{
+					//Hoopla instant is always 1 copy unlimited use
+					itemInfo.setNumCopies(1);
+					itemInfo.setAvailable(true);
+					itemInfo.setDetailedStatus("Available Online");
+					itemInfo.setGroupedStatus("Available Online");
+					itemInfo.setHoldable(false);
+
+				}
 				itemInfo.setInLibraryUseOnly(false);
+
 
 				Date dateAdded = new Date(productRS.getLong("dateFirstDetected") * 1000);
 				itemInfo.setDateAdded(dateAdded);

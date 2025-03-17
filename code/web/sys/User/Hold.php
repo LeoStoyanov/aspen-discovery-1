@@ -88,6 +88,8 @@ class Hold extends CircEntry {
 			if ($this->getRecordDriver()) {
 				$hold['previewActions'] = $this->getRecordDriver()->getPreviewActions();
 			}
+		} elseif ($hold['type'] == 'hoopla') {
+			$hold['holdSource'] = 'Hoopla';
 		}
 		$hold['id'] = $hold['sourceId'];
 		$hold['available'] = $hold['available'] == 1;

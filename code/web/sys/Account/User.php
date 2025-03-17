@@ -1924,6 +1924,18 @@ class User extends DataObject {
 					$holdsToReturn = array_merge_recursive($holdsToReturn, $vdxRequests);
 				}
 			}
+
+			//Get holds from Hoopla
+			if ($source == 'all' || $source == 'hoopla') {
+				if ($this->isValidForEContentSource('hoopla')) {
+					require_once ROOT_DIR . '/Drivers/HooplaDriver.php';
+					$driver = new HooplaDriver();
+					$hooplaHolds = $driver->getHolds($this);
+					$allHolds = array_merge_recursive($allHolds, $hooplaHolds);
+					$holdsToReturn = array_merge_recursive($holdsToReturn, $hooplaHolds);
+				}
+			}
+
 			//Delete all existing holds
 			$hold = new Hold();
 			$hold->userId = $this->id;
@@ -2218,7 +2230,7 @@ class User extends DataObject {
 				'requireLogin' => false,
 				'btnType' => 'btn-info',
 			];
-		} elseif ($source != 'hoopla' && $this->isRecordOnHold($source, $recordId)) {
+		} elseif ($this->isRecordOnHold($source, $recordId)) {
 			$actions[] = [
 				'title' => translate([
 					'text' => 'On Hold for %1%',
@@ -3113,13 +3125,13 @@ class User extends DataObject {
 
 	/**
 	 * Get the user's age based on their date of birth.
-	 * 
+	 *
 	 * @return int|null The user's age or null if date of birth is not set.
-	*/
+	 */
 	public function getAge(): ?int {
-		
+
 		$this->loadContactInformation();
-		
+
 		$dob = new DateTime($this->_dateOfBirth);
 		$today = new DateTime();
 
@@ -4598,18 +4610,18 @@ class User extends DataObject {
 			if (SystemVariables::getSystemVariables()->enableAspenEvents) {
 				$aspenEventsAction = new AdminAction('Aspen Events - Manage Events', 'Add and manage Aspen Events.', '/Events/Events');
 				if ($sections['events']->addAction($aspenEventsAction, [
-					'Administer Events for All Locations',
-					'Administer Events for Home Library Locations',
-					'Administer Events for Home Location']
+						'Administer Events for All Locations',
+						'Administer Events for Home Library Locations',
+						'Administer Events for Home Location']
 				)) {
 					$aspenEventsAction->addSubAction(new AdminAction('Configure Event Fields', 'Define event fields for Aspen Events.', '/Events/EventFields'), 'Administer Field Sets');
 					$aspenEventsAction->addSubAction(new AdminAction('Configure Event Field Sets', 'Define sets of event fields to use for Aspen Events.', '/Events/EventFieldSets'), 'Administer Field Sets');
 					$aspenEventsAction->addSubAction(new AdminAction('Configure Event Types', 'Define event types to use for Aspen Events.', '/Events/EventTypes'), 'Administer Event Types');
-					$aspenEventsAction->addSubAction(new AdminAction('Aspen Events Settings', 'Aspen Events Settings including indexing and library scope.', '/Events/IndexingSettings'), 'Administer Events for All Locations');
+					$aspenEventsAction->addSubAction(new AdminAction('Indexing Settings', 'Aspen Events Indexing Settings.', '/Events/IndexingSettings'), 'Administer Events for All Locations');
 					$aspenEventsAction->addSubAction(new AdminAction('Event Reports', 'Aspen Events Reporting.', '/Events/EventGraphs'), [
 						'View Event Reports for All Libraries',
 						'View Event Reports for Home Library'
-						]);
+					]);
 				}
 			}
 			$sections['events']->addAction(new AdminAction('Assabet - Interactive Settings', 'Define collections to be loaded into Aspen Discovery.', '/Events/AssabetSettings'), 'Administer Assabet Settings');

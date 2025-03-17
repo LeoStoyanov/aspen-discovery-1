@@ -21,24 +21,24 @@
 		{if !empty($offline) && !$enableEContentWhileOffline}
 			<div class="alert alert-warning"><strong>{translate text=$offlineMessage isPublicFacing=true}</strong></div>
 		{else}
-		{if count($linkedUsers) > 0 && $allowFilteringOfLinkedAccountsInHolds}
-			<div class="row">
-				<div class="col-tn-12">
-					<div id="linkedUserOptions" class="form-group">
-						<label class="control-label" for="linkedUsersDropdown">{translate text="Linked Users" isPublicFacing=true}&nbsp;</label>
-						<select name="selectedUser" id="linkedUsersDropdown" class="form-control" onchange="AspenDiscovery.Account.filterOutLinkedUsers();">
-							<option value="" {if $selectedUser == ""}selected{/if}>All</option>
-							<option value="{$currentUserId}" {if $selectedUser == $currentUserId} selected="selected"{/if}>
-								{$currentUserName}
-							</option>
-							{foreach from=$linkedUsers item=user}
-								<option value="{$user->id}"{if $selectedUser == $user->id} selected="selected"{/if}>{$user->displayName}</option>
-							{/foreach}
-						</select>
+			{if count($linkedUsers) > 0 && $allowFilteringOfLinkedAccountsInHolds}
+				<div class="row">
+					<div class="col-tn-12">
+						<div id="linkedUserOptions" class="form-group">
+							<label class="control-label" for="linkedUsersDropdown">{translate text="Linked Users" isPublicFacing=true}&nbsp;</label>
+							<select name="selectedUser" id="linkedUsersDropdown" class="form-control" onchange="AspenDiscovery.Account.filterOutLinkedUsers();">
+								<option value="" {if $selectedUser == ""}selected{/if}>All</option>
+								<option value="{$currentUserId}" {if $selectedUser == $currentUserId} selected="selected"{/if}>
+									{$currentUserName}
+								</option>
+								{foreach from=$linkedUsers item=user}
+									<option value="{$user->id}"{if $selectedUser == $user->id} selected="selected"{/if}>{$user->displayName}</option>
+								{/foreach}
+							</select>
+						</div>
 					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
 			<ul class="nav nav-tabs" role="tablist" id="holdsTab">
 				{if empty($offline)}
 					<li role="presentation"{if $tab=='all'} class="active"{/if}><a href="#all" aria-controls="all" role="tab" data-toggle="tab">{translate text="All" isPublicFacing=true} <span class="badge"><span class="holds-placeholder">&nbsp;</span></span></a></li>
@@ -58,6 +58,14 @@
 				{/if}
 				{if $user->isValidForEContentSource('axis360')}
 					<li role="presentation"{if $tab=='axis360'} class="active"{/if}><a href="#axis360" aria-controls="axis360" role="tab" data-toggle="tab">{translate text="Boundless" isPublicFacing=true} <span class="badge"><span class="axis360-holds-placeholder">&nbsp;</span></span></a></li>
+				{/if}
+				{if $user->isValidForEContentSource('hoopla')}
+					<li role="presentation"{if $tab=='hoopla'} class="active"{/if}>
+						<a href="#hoopla" aria-controls="hoopla" role="tab" data-toggle="tab">
+							{translate text="Hoopla" isPublicFacing=true}
+							<span class="badge"><span class="hoopla-holds-placeholder">&nbsp;</span></span>
+						</a>
+					</li>
 				{/if}
 			</ul>
 			<div class="refresh-indicator small pull-right">
@@ -85,6 +93,11 @@
 				{if $user->isValidForEContentSource('axis360')}
 					<div role="tabpanel" class="tab-pane{if $tab=='axis360'} active{/if}" id="axis360" aria-label="List of Holds on Boundless Titles"><div id="axis360HoldsPlaceholder">{translate text="Loading holds from Boundless" isPublicFacing=true}</div></div>
 				{/if}
+				{if $user->isValidForEContentSource('hoopla')}
+					<div role="tabpanel" class="tab-pane{if $tab=='hoopla'} active{/if}" id="hoopla" aria-label="List of Holds on Hoopla Titles">
+						<div id="hooplaHoldsPlaceholder">{translate text="Loading holds from Hoopla" isPublicFacing=true}</div>
+					</div>
+				{/if}
 			</div>
 			<script type="text/javascript">
 				{literal}
@@ -109,6 +122,9 @@
 					});
 					$("a[href='#axis360']").on('show.bs.tab', function (e) {
 						AspenDiscovery.Account.loadHolds('axis360');
+					});
+					$("a[href='#hoopla']").on('show.bs.tab', function (e) {
+						AspenDiscovery.Account.loadHolds('hoopla');
 					});
 					{/literal}
 					AspenDiscovery.Account.loadHolds('{$tab}');

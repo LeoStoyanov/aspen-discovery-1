@@ -4,8 +4,8 @@
 		{* Setup the accordion *}
 		<!--suppress HtmlUnknownTarget -->
 		<div id="home-account-links" class="sidebar-links row">
-			<div class="panel-group accordion" id="account-link-accordion">
-				{if !empty($showMyAccount)}
+		<div class="panel-group accordion" id="account-link-accordion">
+			{if !empty($showMyAccount)}
 				<div class="panel active">
 					{* With SidebarMenu on, we should always keep the MyAccount Panel open. *}
 
@@ -57,7 +57,7 @@
 									{/if}
 									{if $user->isValidForEContentSource('palace_project')}
 										<li class="myAccountLink">
-										&nbsp;&nbsp;&raquo;&nbsp;
+											&nbsp;&nbsp;&raquo;&nbsp;
 											<a href="/MyAccount/CheckedOut?tab=palace_project" id="checkedOutPalaceProject" title="View checkouts from Palace Project">
 												{translate text="Palace Project" isPublicFacing=true} {if empty($offline)}<span class="badge"><span class="palace_project-checkouts-placeholder">??</span></span>{/if}
 											</a>
@@ -65,7 +65,7 @@
 									{/if}
 									{if $user->isValidForEContentSource('cloud_library')}
 										<li class="myAccountLink">
-										&nbsp;&nbsp;&raquo;&nbsp;
+											&nbsp;&nbsp;&raquo;&nbsp;
 											<a href="/MyAccount/CheckedOut?tab=cloud_library" id="checkedOutCloudLibrary" title="View checkouts from CloudLibrary">
 												{translate text="cloudLibrary" isPublicFacing=true} {if empty($offline)}<span class="badge"><span class="cloud_library-checkouts-placeholder">??</span></span>{/if}
 											</a>
@@ -73,7 +73,7 @@
 									{/if}
 									{if $user->isValidForEContentSource('axis360')}
 										<li class="myAccountLink">
-										&nbsp;&nbsp;&raquo;&nbsp;
+											&nbsp;&nbsp;&raquo;&nbsp;
 											<a href="/MyAccount/CheckedOut?tab=axis360" id="checkedOutAxis360" title="View checkouts from Boundless">
 												{translate text="Boundless" isPublicFacing=true} {if empty($offline)}<span class="badge"><span class="axis360-checkouts-placeholder">??</span></span>{/if}
 											</a>
@@ -135,6 +135,14 @@
 											</a>
 										</li>
 									{/if}
+									{if $user->isValidForEContentSource('hoopla')}
+										<li class="myAccountLink">
+											&nbsp;&nbsp;&raquo;&nbsp;
+											<a href="/MyAccount/Holds?tab=hoopla" id="holdsHoopla" title="View holds from Hoopla">
+												{translate text="Hoopla" isPublicFacing=true} {if empty($offline)}<span class="badge"><span class="hoopla-holds-placeholder">??</span></span> <span class="hoopla-available-holds" style="display: none"> <span class="label label-success"><span class="hoopla-available-holds-placeholder"></span> {translate text="Available Now" isPublicFacing=true}</span></span>{/if}
+											</a>
+										</li>
+									{/if}
 								</ul>
 
 								{if empty($offline)}
@@ -185,10 +193,10 @@
 								{if !empty($showRatings)}
 									<div class="myAccountLink"><a href="/MyAccount/SuggestedTitles">{translate text='Recommended For You' isPublicFacing=true}</span></a></div>
 									<ul class="account-submenu">
-									{if $user->disableRecommendations == 0}
-										<li class="myAccountLink">&nbsp;&nbsp;&raquo;&nbsp;<a href="/MyAccount/MyRatings">{translate text='Titles You Rated' isPublicFacing=true} <span class="badge"><span class="ratings-placeholder">??</span></span></a></li>
-										<li class="myAccountLink">&nbsp;&nbsp;&raquo;&nbsp;<a href="/MyAccount/MyNotInterestedTitles">{translate text="Not Interested In Titles" isPublicFacing=true} <span class="badge"><span class="notInterested-placeholder">??</span></span></a></li>
-									{/if}
+										{if $user->disableRecommendations == 0}
+											<li class="myAccountLink">&nbsp;&nbsp;&raquo;&nbsp;<a href="/MyAccount/MyRatings">{translate text='Titles You Rated' isPublicFacing=true} <span class="badge"><span class="ratings-placeholder">??</span></span></a></li>
+											<li class="myAccountLink">&nbsp;&nbsp;&raquo;&nbsp;<a href="/MyAccount/MyNotInterestedTitles">{translate text="Not Interested In Titles" isPublicFacing=true} <span class="badge"><span class="notInterested-placeholder">??</span></span></a></li>
+										{/if}
 									</ul>
 								{/if}
 								{if $showFavorites == 1}
@@ -237,8 +245,8 @@
 				{else}
 					{assign var="curSection" value=false}
 				{/if}
-				{/if}
-				{if !empty($showAccountSettings)}
+			{/if}
+			{if !empty($showAccountSettings)}
 				<div class="panel {if ($curSection || !$showMyAccount)}active{/if}">
 					{* Clickable header for account settings section *}
 					<a data-toggle="collapse" href="#mySettingsPanel" aria-label="{translate text="Account Settings Menu" inAttribute="true" isPublicFacing=true}">
@@ -288,17 +296,17 @@
 						</div>
 					</div>
 				</div>
-				{/if}
-			</div>
-
-			{if !empty($allowMasqueradeMode) && !$masqueradeMode}
-				{if !empty($canMasquerade)}
-					<div>
-						<div class="myAccountLink">
-						<a class="btn btn-default btn-sm btn-block" onclick="AspenDiscovery.Account.getMasqueradeForm();" href="#">{translate text="Masquerade" isPublicFacing=true}</a></div>
-					</div>
-				{/if}
 			{/if}
+		</div>
+
+		{if !empty($allowMasqueradeMode) && !$masqueradeMode}
+			{if !empty($canMasquerade)}
+				<div>
+					<div class="myAccountLink">
+						<a class="btn btn-default btn-sm btn-block" onclick="AspenDiscovery.Account.getMasqueradeForm();" href="#">{translate text="Masquerade" isPublicFacing=true}</a></div>
+				</div>
+			{/if}
+		{/if}
 		{if empty($showMyAccount)}</div>{/if}
 		</div>
 	{/if}
@@ -307,7 +315,7 @@
 		$(document).ready(function() {
 			{/literal}
 			{if !empty($userHasCatalogConnection)}
-				AspenDiscovery.Account.loadMenuData();
+			AspenDiscovery.Account.loadMenuData();
 			{/if}
 			{literal}
 			AspenDiscovery.Account.loadListData();
