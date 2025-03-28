@@ -85,9 +85,10 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 	/**
 	 * Get the full title of the record.
 	 *
-	 * @return  string
+	 * @return  ?string
 	 */
-	public function getTitle() {
+	public function getTitle(): ?string
+	{
 		$title = $this->cloudLibraryProduct->title;
 		$subtitle = $this->getSubtitle();
 		if (strlen($subtitle) > 0) {

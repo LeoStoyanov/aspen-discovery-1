@@ -588,9 +588,34 @@ class MarcRecordDriver extends GroupedWorkSubDriver {
 	/**
 	 * Get the full title of the record.
 	 *
-	 * @return  string
+	 * @return  ?string
 	 */
-	public function getTitle() {
+	public function getTitle(): ?string
+	{
+		// Get the title respecting the order of subfields in the MARC record.
+		$marcRecord = $this->getMarcRecord();
+		if ($marcRecord != null) {
+			$titleField = $marcRecord->getField('245');
+			if ($titleField != null) {
+				$relevantSubfields = ['a', 'b', 'f', 'g', 'n', 'p'];
+				$title = '';
+
+				$subfields = $titleField->getSubfields();
+				foreach ($subfields as $subfield) {
+					// Only include subfields we care about
+					if (in_array($subfield->getCode(), $relevantSubfields)) {
+						$data = trim($subfield->getData());
+						if (!empty($data)) {
+							$title .= $data . ' ';
+						}
+					}
+				}
+
+				return trim($title);
+			}
+		}
+
+		// Fallback to old method if no title field found.
 		return $this->getFirstFieldValue('245', [
 			'a',
 			'b',
