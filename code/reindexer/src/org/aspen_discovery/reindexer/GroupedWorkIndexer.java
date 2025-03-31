@@ -1,18 +1,25 @@
 package org.aspen_discovery.reindexer;
 
 import org.apache.commons.lang.math.NumberUtils;
+import org.apache.commons.text.similarity.JaroWinklerDistance;
 import org.aspen_discovery.grouping.*;
 import com.turning_leaf_technologies.indexing.*;
 import com.turning_leaf_technologies.logging.BaseIndexingLogEntry;
 import com.turning_leaf_technologies.marc.MarcUtil;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import com.turning_leaf_technologies.util.MaxSizeHashMap;
+import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.ConcurrentUpdateHttp2SolrClient;
 import org.apache.solr.client.solrj.impl.BaseHttpSolrClient;
 import org.apache.solr.client.solrj.impl.Http2SolrClient;
+import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.UpdateResponse;
+import org.apache.solr.common.SolrDocument;
+import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.common.params.CursorMarkParams;
 import org.ini4j.Ini;
 
 import java.io.*;
@@ -39,6 +46,7 @@ public class GroupedWorkIndexer {
 	private boolean waitAfterDeleteCommit = false;
 	private int totalRecordsHandled = 0;
 	private ConcurrentUpdateHttp2SolrClient updateServer;
+	private Http2SolrClient queryServer; // Added for querying
 	private RecordGroupingProcessor recordGroupingProcessor;
 	private final HashMap<String, MarcRecordProcessor> ilsRecordProcessors = new HashMap<>();
 	private final HashMap<String, SideLoadedEContentProcessor> sideLoadProcessors = new HashMap<>();
@@ -182,6 +190,16 @@ public class GroupedWorkIndexer {
 	private int searchVersion;
 	private boolean enableNovelistSeriesIntegration;
 
+	// --- Added for Potential Merges ---
+	private final JaroWinklerDistance jaroWinklerDistance = new JaroWinklerDistance();
+	private double potentialMergeThreshold = 0.90; // Default value, loaded from config
+	private PreparedStatement insertPotentialMergeStmt;
+	// --- End Potential Merges additions ---
+
+	// Counters for logging merge detection progress
+	private long comparisonCounter = 0;
+	private long lastLogTime = 0;
+
 	public GroupedWorkIndexer(String serverName, Connection dbConn, Ini configIni, boolean fullReindex, boolean clearIndex, BaseIndexingLogEntry logEntry, Logger logger) {
 		this(serverName, dbConn, configIni, fullReindex, clearIndex, false, logEntry, logger);
 	}
@@ -270,23 +288,23 @@ public class GroupedWorkIndexer {
 			removeScopeStmt = dbConn.prepareStatement("DELETE FROM scope where id = ?");
 			getExistingRecordsForWorkStmt = dbConn.prepareStatement("SELECT id, sourceId, recordIdentifier, groupedWorkId, editionId, publisherId, publicationDateId, placeOfPublicationId, physicalDescriptionId, formatId, formatCategoryId, languageId, isClosedCaptioned, hasParentRecord, hasChildRecord from grouped_work_records where groupedWorkId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			addRecordForWorkStmt = dbConn.prepareStatement("INSERT INTO grouped_work_records (groupedWorkId, sourceId, recordIdentifier, editionId, publisherId, publicationDateId, placeOfPublicationId, physicalDescriptionId, formatId, formatCategoryId, languageId, isClosedCaptioned, hasParentRecord, hasChildRecord) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-					"ON DUPLICATE KEY UPDATE groupedWorkId = VALUES(groupedWorkId), editionId = VALUES(editionId), publisherId = VALUES(publisherId), publicationDateId = VALUES(publicationDateId), placeOfPublicationId = VALUES(placeOfPublicationId), physicalDescriptionId = VALUES(physicalDescriptionId), formatId = VALUES(formatId), formatCategoryId = VALUES(formatCategoryId), languageId = VALUES(languageId), isClosedCaptioned = VALUES(isClosedCaptioned), hasParentRecord = VALUES(hasParentRecord), hasChildRecord = VALUES(hasChildRecord)", PreparedStatement.RETURN_GENERATED_KEYS);
+				"ON DUPLICATE KEY UPDATE groupedWorkId = VALUES(groupedWorkId), editionId = VALUES(editionId), publisherId = VALUES(publisherId), publicationDateId = VALUES(publicationDateId), placeOfPublicationId = VALUES(placeOfPublicationId), physicalDescriptionId = VALUES(physicalDescriptionId), formatId = VALUES(formatId), formatCategoryId = VALUES(formatCategoryId), languageId = VALUES(languageId), isClosedCaptioned = VALUES(isClosedCaptioned), hasParentRecord = VALUES(hasParentRecord), hasChildRecord = VALUES(hasChildRecord)", PreparedStatement.RETURN_GENERATED_KEYS);
 			updateRecordForWorkStmt = dbConn.prepareStatement("UPDATE grouped_work_records SET groupedWorkId = ?, editionId = ?, publisherId = ?, publicationDateId = ?, placeOfPublicationId = ?, physicalDescriptionId = ?, formatId = ?, formatCategoryId = ?, languageId = ?, isClosedCaptioned = ?, hasParentRecord = ?, hasChildRecord = ? where id = ?");
 			removeRecordForWorkStmt = dbConn.prepareStatement("DELETE FROM grouped_work_records where id = ?");
 			getIdForRecordStmt = dbConn.prepareStatement("SELECT id from grouped_work_records where sourceId = ? and recordIdentifier = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			getExistingVariationsForWorkStmt = dbConn.prepareStatement("SELECT * from grouped_work_variation where groupedWorkId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			//The entire row is meant to be unique, but we want to get the id back, so we update the language to itself on duplicate
 			addVariationForWorkStmt = dbConn.prepareStatement("INSERT INTO grouped_work_variation (groupedWorkId, primaryLanguageId, eContentSourceId, formatId, formatCategoryId) VALUES (?, ?, ?, ?, ?)" +
-					" ON DUPLICATE KEY " +
-					"UPDATE primaryLanguageId = VALUES(primaryLanguageId)", PreparedStatement.RETURN_GENERATED_KEYS);
+				" ON DUPLICATE KEY " +
+				"UPDATE primaryLanguageId = VALUES(primaryLanguageId)", PreparedStatement.RETURN_GENERATED_KEYS);
 			getIdForVariationStmt = dbConn.prepareStatement("SELECT id from grouped_work_variation where groupedWorkId = ? AND primaryLanguageId = ? AND eContentSourceId = ? AND formatId = ? AND formatCategoryId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			removeVariationStmt = dbConn.prepareStatement("DELETE FROM grouped_work_variation WHERE id = ?");
 			getExistingItemsForRecordStmt = dbConn.prepareStatement("SELECT * from grouped_work_record_items WHERE groupedWorkRecordId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			addItemForRecordStmt = dbConn.prepareStatement("INSERT INTO grouped_work_record_items (groupedWorkRecordId, groupedWorkVariationId, itemId, shelfLocationId, callNumberId, sortableCallNumberId, numCopies, isOrderItem, statusId, dateAdded, locationCodeId, subLocationCodeId, lastCheckInDate, groupedStatusId, available, holdable, inLibraryUseOnly, locationOwnedScopes, libraryOwnedScopes, recordIncludedScopes, isVirtual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" +
-					" ON DUPLICATE KEY " +
-					"UPDATE shelfLocationId = VALUES(shelfLocationId), callNumberId = VALUES(callNumberId), sortableCallNumberId = VALUES(sortableCallNumberId), numCopies = VALUES(numCopies), isOrderItem = VALUES(isOrderItem), statusId = VALUES(statusId), locationCodeId = VALUES(locationCodeId), subLocationCodeId = VALUES(subLocationCodeId), lastCheckInDate = VALUES(lastCheckInDate), groupedStatusId = VALUES(groupedStatusId), available = VALUES(available), inLibraryUseOnly = VALUES(inLibraryUseOnly), holdable = VALUES(holdable), locationOwnedScopes = VALUES(locationOwnedScopes), libraryOwnedScopes = VALUES(libraryOwnedScopes), recordIncludedScopes = VALUES(recordIncludedScopes), isVirtual = VALUES(isVirtual)", PreparedStatement.RETURN_GENERATED_KEYS);
+				" ON DUPLICATE KEY " +
+				"UPDATE shelfLocationId = VALUES(shelfLocationId), callNumberId = VALUES(callNumberId), sortableCallNumberId = VALUES(sortableCallNumberId), numCopies = VALUES(numCopies), isOrderItem = VALUES(isOrderItem), statusId = VALUES(statusId), locationCodeId = VALUES(locationCodeId), subLocationCodeId = VALUES(subLocationCodeId), lastCheckInDate = VALUES(lastCheckInDate), groupedStatusId = VALUES(groupedStatusId), available = VALUES(available), inLibraryUseOnly = VALUES(inLibraryUseOnly), holdable = VALUES(holdable), locationOwnedScopes = VALUES(locationOwnedScopes), libraryOwnedScopes = VALUES(libraryOwnedScopes), recordIncludedScopes = VALUES(recordIncludedScopes), isVirtual = VALUES(isVirtual)", PreparedStatement.RETURN_GENERATED_KEYS);
 			updateItemForRecordStmt = dbConn.prepareStatement("UPDATE grouped_work_record_items set groupedWorkVariationId = ?, shelfLocationId = ?, callNumberId = ?, sortableCallNumberId = ?, numCopies = ?, isOrderItem = ?, statusId = ?, dateAdded = ?, " +
-					"locationCodeId = ?, subLocationCodeId = ?, lastCheckInDate = ?, groupedStatusId = ?, available = ?, holdable = ?, inLibraryUseOnly = ?, locationOwnedScopes = ?, libraryOwnedScopes = ?, recordIncludedScopes = ?, isVirtual = ? WHERE id = ?");
+				"locationCodeId = ?, subLocationCodeId = ?, lastCheckInDate = ?, groupedStatusId = ?, available = ?, holdable = ?, inLibraryUseOnly = ?, locationOwnedScopes = ?, libraryOwnedScopes = ?, recordIncludedScopes = ?, isVirtual = ? WHERE id = ?");
 			getIdForItemStmt = dbConn.prepareStatement("SELECT id from grouped_work_record_items where groupedWorkRecordId = ? and groupedWorkVariationId = ? and itemId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			removeItemStmt = dbConn.prepareStatement("DELETE FROM grouped_work_record_items WHERE id = ?");
 			addItemUrlStmt = dbConn.prepareStatement("INSERT INTO grouped_work_record_item_url (groupedWorkItemId, scopeId, url) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE url = VALUES(url) ");
@@ -373,13 +391,14 @@ public class GroupedWorkIndexer {
 		Http2SolrClient http2Client = new Http2SolrClient.Builder().build();
 		try {
 			updateServer = new ConcurrentUpdateHttp2SolrClient.Builder(solrUrl, http2Client)
-					.withThreadCount(1)
-					.withQueueSize(25)
-					.build();
+				.withThreadCount(3)
+				.withQueueSize(25)
+				.build();
 		}catch (OutOfMemoryError e) {
 			logger.error("Unable to create solr client, out of memory", e);
 			System.exit(-7);
 		}
+		queryServer = new Http2SolrClient.Builder(solrUrl).build(); // Initialize query server
 
 		try {
 			scopes = IndexingUtils.loadScopes(dbConn, logger);
@@ -551,10 +570,40 @@ public class GroupedWorkIndexer {
 		if (clearIndex){
 			clearIndex();
 		}
+
+		// --- Added for Potential Merges ---
+		try {
+			String thresholdStr = configIni.get("Index", "potentialMergeThreshold");
+			if (thresholdStr != null && !thresholdStr.isEmpty()) {
+				potentialMergeThreshold = Double.parseDouble(thresholdStr);
+				logger.info("Using potential merge threshold: " + potentialMergeThreshold);
+			} else {
+				logger.info("Potential merge threshold not found in config, using default: " + potentialMergeThreshold);
+			}
+		} catch (NumberFormatException e) {
+			logger.warn("Invalid potentialMergeThreshold value in config. Using default: " + potentialMergeThreshold, e);
+		} catch (Exception e) {
+			logger.warn("Error reading potentialMergeThreshold from config. Using default: " + potentialMergeThreshold, e);
+		}
+		// Prepare statement for inserting potential merges
+		try {
+			insertPotentialMergeStmt = dbConn.prepareStatement(
+				"INSERT IGNORE INTO potential_grouped_work_merges " +
+					"(grouped_work_id_1, grouped_work_permanent_id_1, grouped_work_id_2, grouped_work_permanent_id_2, " +
+					"title_similarity_score, author_similarity_score, overall_similarity_score, reason, date_added) " +
+					"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+			);
+		} catch (SQLException e) {
+			okToIndex = false;
+			logger.error("Failed to prepare statement for potential_grouped_work_merges insertion.", e);
+			logEntry.incErrors("Database error preparing potential merge statement.");
+		}
+		// --- End Potential Merges additions ---
 	}
 
 	public void close(){
 		updateServer = null;
+		queryServer = null;
 		ilsRecordProcessors.clear();
 		sideLoadProcessors.clear();
 		overDriveProcessor = null;
@@ -575,6 +624,39 @@ public class GroupedWorkIndexer {
 		} catch (Exception e) {
 			logEntry.incErrors("Error closing prepared statements in grouped work indexer", e);
 		}
+		try { if (addEContentSourceStmt != null) addEContentSourceStmt.close(); } catch (SQLException e) { logger.error("Error closing addEContentSourceStmt", e); }
+		try { if (getShelfLocationStmt != null) getShelfLocationStmt.close(); } catch (SQLException e) { logger.error("Error closing getShelfLocationStmt", e); }
+		try { if (addShelfLocationStmt != null) addShelfLocationStmt.close(); } catch (SQLException e) { logger.error("Error closing addShelfLocationStmt", e); }
+		try { if (getCallNumberStmt != null) getCallNumberStmt.close(); } catch (SQLException e) { logger.error("Error closing getCallNumberStmt", e); }
+		try { if (addCallNumberStmt != null) addCallNumberStmt.close(); } catch (SQLException e) { logger.error("Error closing addCallNumberStmt", e); }
+		try { if (getStatusStmt != null) getStatusStmt.close(); } catch (SQLException e) { logger.error("Error closing getStatusStmt", e); }
+		try { if (addStatusStmt != null) addStatusStmt.close(); } catch (SQLException e) { logger.error("Error closing addStatusStmt", e); }
+		try { if (getLocationCodeStmt != null) getLocationCodeStmt.close(); } catch (SQLException e) { logger.error("Error closing getLocationCodeStmt", e); }
+		try { if (addLocationCodeStmt != null) addLocationCodeStmt.close(); } catch (SQLException e) { logger.error("Error closing addLocationCodeStmt", e); }
+		try { if (getSubLocationCodeStmt != null) getSubLocationCodeStmt.close(); } catch (SQLException e) { logger.error("Error closing getSubLocationCodeStmt", e); }
+		try { if (addSubLocationCodeStmt != null) addSubLocationCodeStmt.close(); } catch (SQLException e) { logger.error("Error closing addSubLocationCodeStmt", e); }
+		try { if (getExistingRecordInfoForIdentifierStmt != null) getExistingRecordInfoForIdentifierStmt.close(); } catch (SQLException e) { logger.error("Error closing getExistingRecordInfoForIdentifierStmt", e); }
+		try { if (getRecordForIdentifierStmt != null) getRecordForIdentifierStmt.close(); } catch (SQLException e) { logger.error("Error closing getRecordForIdentifierStmt", e); }
+		try { if (addRecordToDBStmt != null) addRecordToDBStmt.close(); } catch (SQLException e) { logger.error("Error closing addRecordToDBStmt", e); }
+		try { if (updateRecordInDBStmt != null) updateRecordInDBStmt.close(); } catch (SQLException e) { logger.error("Error closing updateRecordInDBStmt", e); }
+		try { if (getHideSubjectsStmt != null) getHideSubjectsStmt.close(); } catch (SQLException e) { logger.error("Error closing getHideSubjectsStmt", e); }
+		try { if (getHideSeriesStmt != null) getHideSeriesStmt.close(); } catch (SQLException e) { logger.error("Error closing getHideSeriesStmt", e); }
+		try { if (getDebugInfoStmt != null) getDebugInfoStmt.close(); } catch (SQLException e) { logger.error("Error closing getDebugInfoStmt", e); }
+		try { if (updateDebuggingInfoStmt != null) updateDebuggingInfoStmt.close(); } catch (SQLException e) { logger.error("Error closing updateDebuggingInfoStmt", e); }
+		try { if (removeItemsForWorkStmt != null) removeItemsForWorkStmt.close(); } catch (SQLException e) { logger.error("Error closing removeItemsForWorkStmt", e); }
+		try { if (removeVariationsForWorkStmt != null) removeVariationsForWorkStmt.close(); } catch (SQLException e) { logger.error("Error closing removeVariationsForWorkStmt", e); }
+		try { if (removeRecordsForWorkStmt != null) removeRecordsForWorkStmt.close(); } catch (SQLException e) { logger.error("Error closing removeRecordsForWorkStmt", e); }
+		try { if (getSeriesStmt != null) getSeriesStmt.close(); } catch (SQLException e) { logger.error("Error closing getSeriesStmt", e); }
+		try { if (getSeriesMemberStmt != null) getSeriesMemberStmt.close(); } catch (SQLException e) { logger.error("Error closing getSeriesMemberStmt", e); }
+		try { if (addSeriesMemberStmt != null) addSeriesMemberStmt.close(); } catch (SQLException e) { logger.error("Error closing addSeriesMemberStmt", e); }
+		try { if (deleteSeriesMemberStmt != null) deleteSeriesMemberStmt.close(); } catch (SQLException e) { logger.error("Error closing deleteSeriesMemberStmt", e); }
+		try { if (deleteSeriesStmt != null) deleteSeriesStmt.close(); } catch (SQLException e) { logger.error("Error closing deleteSeriesStmt", e); }
+		try { if (addSeriesStmt != null) addSeriesStmt.close(); } catch (SQLException e) { logger.error("Error closing addSeriesStmt", e); }
+		try { if (setSeriesDateUpdated != null) setSeriesDateUpdated.close(); } catch (SQLException e) { logger.error("Error closing setSeriesDateUpdated", e); }
+		try { if (updateSeriesAuthor != null) updateSeriesAuthor.close(); } catch (SQLException e) { logger.error("Error closing updateSeriesAuthor", e); }
+		// --- Added for Potential Merges ---
+		try { if (insertPotentialMergeStmt != null) insertPotentialMergeStmt.close(); } catch (SQLException e) { logger.error("Error closing insertPotentialMergeStmt", e); }
+		// --- End Potential Merges additions ---
 	}
 
 	public boolean isOkToIndex(){
@@ -1091,7 +1173,7 @@ public class GroupedWorkIndexer {
 				String newId = permanentId;
 				if (ilsRecordGroupers.containsKey(type)) {
 					MarcRecordGrouper ilsGrouper = ilsRecordGroupers.get(type);
-					org.marc4j.marc.Record record = loadMarcRecordFromDatabase(type, identifier, logEntry);
+					Record record = loadMarcRecordFromDatabase(type, identifier, logEntry);
 					if (record == null) {
 						RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork(type, identifier);
 						if (result.reindexWork) {
@@ -1106,7 +1188,7 @@ public class GroupedWorkIndexer {
 					}
 				} else if (sideLoadRecordGroupers.containsKey(type)) {
 					SideLoadedRecordGrouper sideLoadGrouper = sideLoadRecordGroupers.get(type);
-					org.marc4j.marc.Record record = loadMarcRecordFromDatabase(type, identifier, logEntry);
+					Record record = loadMarcRecordFromDatabase(type, identifier, logEntry);
 					if (record == null) {
 						RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork(type, identifier);
 						if (result.reindexWork) {
@@ -1124,7 +1206,7 @@ public class GroupedWorkIndexer {
 				} else if (type.equals("axis360")) {
 					newId = getRecordGroupingProcessor().groupAxis360Record(identifier);
 				} else if (type.equals("cloud_library")) {
-					org.marc4j.marc.Record cloudLibraryRecord = loadMarcRecordFromDatabase("cloud_library", identifier, logEntry);
+					Record cloudLibraryRecord = loadMarcRecordFromDatabase("cloud_library", identifier, logEntry);
 					if (cloudLibraryRecord == null) {
 						RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork(type, identifier);
 						if (result.reindexWork) {
@@ -1424,12 +1506,7 @@ public class GroupedWorkIndexer {
 				HashMap<String, Integer> seriesInDb = new HashMap<>();
 				while (seriesMemberRS.next()) {
 					// Strip diacritics and switch to lowercase for comparing series names to minimize duplicates
-					String seriesTitle = seriesMemberRS.getString("groupedWorkSeriesTitle");
-					if (seriesTitle == null) {
-						//If the grouped work series title is null, this is a manually created series, so we should skip it.
-						continue;
-					}
-					String normalizedSeriesName = Normalizer.normalize(seriesTitle.toLowerCase(), Normalizer.Form.NFKD).replaceAll("\\p{M}", "");
+					String normalizedSeriesName = Normalizer.normalize(seriesMemberRS.getString("groupedWorkSeriesTitle").toLowerCase(), Normalizer.Form.NFKD).replaceAll("\\p{M}", "");
 					seriesInDb.put(normalizedSeriesName, seriesMemberRS.getInt("seriesId"));
 				}
 				for (String seriesNameWithVolume : groupedWork.seriesWithVolume.keySet()) {
@@ -1522,7 +1599,7 @@ public class GroupedWorkIndexer {
 				seriesMemberRS.close();
 			}
 		} catch (Exception e) {
-			logEntry.incErrors("Unable to update series data for grouped work " + groupedWork.getId(), e);
+			logEntry.incErrors("Unable to update series data", e);
 		}
 	}
 
@@ -1684,11 +1761,11 @@ public class GroupedWorkIndexer {
 	LinkedHashSet<String> translateSystemCollection(String mapName, Set<String> values, String identifier) {
 		LinkedHashSet<String> translatedCollection = new LinkedHashSet<>();
 		for (String value : values){
-				String translatedValue = translateSystemValue(mapName, value, identifier);
-				if (translatedValue != null) {
-						translatedCollection.add(translatedValue);
-					}
+			String translatedValue = translateSystemValue(mapName, value, identifier);
+			if (translatedValue != null) {
+				translatedCollection.add(translatedValue);
 			}
+		}
 		return  translatedCollection;
 	}
 
@@ -2581,8 +2658,8 @@ public class GroupedWorkIndexer {
 						}
 					}
 					SavedItemInfo savedItemInfo = new SavedItemInfo(itemId, recordId, variationId, itemInfo.getItemIdentifier(), shelfLocationId, callNumberId, sortableCallNumberId, itemInfo.getNumCopies(),
-							itemInfo.isOrderItem(), statusId, itemInfo.getDateAdded(), locationCodeId, subLocationId, itemInfo.getLastCheckinDate(), groupedStatusId, itemInfo.isAvailable(),
-							itemInfo.isHoldable(), itemInfo.isInLibraryUseOnly(), itemInfo.getLocationOwnedScopes(), itemInfo.getLibraryOwnedScopes(), itemInfo.getRecordsIncludedScopes());
+						itemInfo.isOrderItem(), statusId, itemInfo.getDateAdded(), locationCodeId, subLocationId, itemInfo.getLastCheckinDate(), groupedStatusId, itemInfo.isAvailable(),
+						itemInfo.isHoldable(), itemInfo.isInLibraryUseOnly(), itemInfo.getLocationOwnedScopes(), itemInfo.getLibraryOwnedScopes(), itemInfo.getRecordsIncludedScopes());
 
 					existingItems.put(itemInfo.getItemIdentifier().toLowerCase(), savedItemInfo);
 				}catch (SQLException e){
@@ -2590,8 +2667,8 @@ public class GroupedWorkIndexer {
 					errorsSavingItem = true;
 				}
 			}else if (savedItem.hasChanged(recordId, variationId, itemInfo.getItemIdentifier(), shelfLocationId, callNumberId, sortableCallNumberId, itemInfo.getNumCopies(),
-					itemInfo.isOrderItem(), statusId, itemInfo.getDateAdded(), locationCodeId, subLocationId, itemInfo.getLastCheckinDate(), groupedStatusId, itemInfo.isAvailable(),
-					itemInfo.isHoldable(), itemInfo.isInLibraryUseOnly(), itemInfo.getLocationOwnedScopes(), itemInfo.getLibraryOwnedScopes(), itemInfo.getRecordsIncludedScopes())){
+				itemInfo.isOrderItem(), statusId, itemInfo.getDateAdded(), locationCodeId, subLocationId, itemInfo.getLastCheckinDate(), groupedStatusId, itemInfo.isAvailable(),
+				itemInfo.isHoldable(), itemInfo.isInLibraryUseOnly(), itemInfo.getLocationOwnedScopes(), itemInfo.getLibraryOwnedScopes(), itemInfo.getRecordsIncludedScopes())){
 				try {
 					updateItemForRecordStmt.setLong(1, variationId);
 					updateItemForRecordStmt.setLong(2, shelfLocationId);
@@ -2777,7 +2854,7 @@ public class GroupedWorkIndexer {
 		UNCHANGED, CHANGED, NEW
 	}
 
-	public AppendItemsToRecordResult appendItemsToExistingRecord(IndexingProfile indexingSettings, org.marc4j.marc.Record recordWithAdditionalItems, String recordNumber, MarcFactory marcFactory, String marcIndex) {
+	public AppendItemsToRecordResult appendItemsToExistingRecord(IndexingProfile indexingSettings, Record recordWithAdditionalItems, String recordNumber, MarcFactory marcFactory, String marcIndex) {
 		MarcStatus marcRecordStatus = MarcStatus.UNCHANGED;
 		//Copy the record to the individual marc path
 		Record mergedRecord = recordWithAdditionalItems;
@@ -2888,7 +2965,7 @@ public class GroupedWorkIndexer {
 	}
 
 	//Create a small cache to hold recently used marc records to avoid time reloading them.
-	public MaxSizeHashMap<String, Record> marcRecordCache = new MaxSizeHashMap<>(100);
+	public MaxSizeHashMap<String, Record> marcRecordCache = new MaxSizeHashMap<>(10);
 	public Record loadMarcRecordFromDatabase(String source, String identifier, BaseIndexingLogEntry logEntry) {
 		String key = source + identifier;
 		Record marcRecord = marcRecordCache.get(key);
@@ -2929,5 +3006,789 @@ public class GroupedWorkIndexer {
 		}catch (Exception e) {
 			logEntry.incErrors("Error forcing record reindex", e);
 		}
+	}
+
+	// --- Added for Potential Merges ---
+	/**
+	 * Calculates the Jaro-Winkler similarity between two strings.
+	 * Handles nulls and converts to lowercase.
+	 */
+	private double calculateSimilarity(String s1, String s2) {
+		if (s1 == null || s2 == null || s1.isEmpty() || s2.isEmpty()) {
+			return 0.0;
+		}
+		return jaroWinklerDistance.apply(s1.toLowerCase(), s2.toLowerCase());
+	}
+
+	/**
+	 * Checks if two grouping categories are compatible for merging.
+	 * ('book'/'comic', 'book'/'other', 'comic'/'other' are compatible, others must match exactly)
+	 */
+	private boolean areCategoriesCompatible(String cat1, String cat2) {
+		if (cat1 == null || cat2 == null) return false;
+		if (cat1.equals(cat2)) return true;
+
+		Set<String> pair = new HashSet<>(Arrays.asList(cat1, cat2));
+		if (pair.contains("other")) return true; // 'other' can group with anything
+		return pair.equals(new HashSet<>(Arrays.asList("book", "comic"))); // 'book' and 'comic' can group
+	}
+
+	/**
+	 * Finds potential merges by comparing all works within compatible categories
+	 * and stores pairs exceeding the similarity threshold in the database.
+	 * This should be called AFTER the main processing loop during a full reindex.
+	 */
+	public void findAndStorePotentialMerges() {
+		if (insertPotentialMergeStmt == null) {
+			logger.error("Cannot find potential merges, database statement not prepared.");
+			return;
+		}
+		if (queryServer == null) {
+			logger.error("Cannot find potential merges, Solr query client is not initialized.");
+			return;
+		}
+
+		logEntry.addNote("Starting post-processing step to find potential grouped work merges using Solr...");
+		logger.info("Starting post-processing step to find potential grouped work merges using Solr...");
+		long startTime = System.currentTimeMillis();
+		int potentialMergesFound = 0;
+		long solrDocsProcessed = 0;
+		long validWorksCount = 0;
+		long comparisonsMade = 0;
+		comparisonCounter = 0; // Reset comparison counter for this run
+		lastLogTime = System.currentTimeMillis(); // Reset log timer
+		final int BATCH_SIZE = 1000;
+		final int SOLR_ROWS = 1000; // Number of rows to fetch per Solr request
+		final int DB_LOOKUP_BATCH_SIZE = 500; // Number of DB IDs to look up at once
+		List<PotentialMergeData> mergeBatch = new ArrayList<>(BATCH_SIZE);
+
+		// 1. Load and preprocess all works from Solr, grouped by category and language
+		logger.info("Beginning Solr data retrieval and preprocessing phase...");
+		Map<String, Map<String, List<WorkData>>> worksByCategoryAndLanguage = new HashMap<>();
+
+		// Temporary storage for works needing DB ID lookup
+		Map<String, WorkData> pendingDbIdLookup = new HashMap<>();
+
+		String cursorMark = CursorMarkParams.CURSOR_MARK_START;
+		boolean done = false;
+
+		try {
+			while (!done) {
+				SolrQuery query = new SolrQuery();
+
+				query.setQuery("recordtype:grouped_work");
+				query.setFields("id", "title_display", "author_display", "grouping_category", "series_facet", "series_with_volume"); // Added series_facet and series_with_volume
+				query.setRows(SOLR_ROWS);
+				query.setSort(SolrQuery.SortClause.asc("id")); // Required for cursorMark
+				query.set(CursorMarkParams.CURSOR_MARK_PARAM, cursorMark);
+
+				logger.info("Querying Solr with cursorMark: " + cursorMark);
+				QueryResponse response = queryServer.query(query);
+				SolrDocumentList results = response.getResults();
+				String nextCursorMark = response.getNextCursorMark();
+
+				if (results.isEmpty()) {
+					logger.info("No more results from Solr.");
+					done = true;
+				} else {
+					logger.info("Retrieved " + results.size() + " documents from Solr.");
+					solrDocsProcessed += results.size();
+
+					for (SolrDocument doc : results) {
+						String permanentId = (String) doc.getFieldValue("id");
+						String title = (String) doc.getFieldValue("title_display");
+						String author = (String) doc.getFieldValue("author_display");
+						String category = (String) doc.getFieldValue("grouping_category");
+						Collection<Object> seriesObj = doc.getFieldValues("series_facet");
+						Collection<Object> seriesWithVolumeObj = doc.getFieldValues("series_with_volume"); // Get the new field
+						Set<String> seriesFacets = new HashSet<>();
+						if (seriesObj != null) {
+							for (Object o : seriesObj) {
+								if (o instanceof String) {
+									seriesFacets.add((String) o);
+								}
+							}
+						}
+
+						// Extract series_with_volume facets
+						Set<String> seriesWithVolumeFacets = new HashSet<>();
+						if (seriesWithVolumeObj != null) {
+							for (Object o : seriesWithVolumeObj) {
+								if (o instanceof String) {
+									seriesWithVolumeFacets.add((String) o);
+								}
+							}
+						}
+
+						if (category == null || category.trim().isEmpty()) {
+							category = "other"; // Assign to 'other' if missing
+						}
+
+						// Simplified validation based on Solr data
+						if (!shouldSkipSolrWork(title, author, permanentId)) {
+							String languageCode = extractLanguageCode(permanentId);
+							String baseId = getBaseIdWithoutLanguageCode(permanentId);
+
+							// Create a WorkData with temporary ID (-1), we'll update it later
+							WorkData workData = new WorkData(-1, permanentId, title, author, category, languageCode, baseId, seriesFacets, seriesWithVolumeFacets); // Updated constructor
+
+							// Add to pending lookup map
+							pendingDbIdLookup.put(permanentId, workData);
+
+							// If we've reached the batch size, perform DB lookup
+							if (pendingDbIdLookup.size() >= DB_LOOKUP_BATCH_SIZE) {
+								processPendingDbIdLookups(pendingDbIdLookup, worksByCategoryAndLanguage);
+								validWorksCount += pendingDbIdLookup.size();
+								pendingDbIdLookup.clear();
+							}
+						}
+
+						if (solrDocsProcessed % 10000 == 0) {
+							logger.info("Processed " + solrDocsProcessed + " docs from Solr, found " + validWorksCount + " valid works so far.");
+						}
+					}
+				}
+
+				if (nextCursorMark.equals(cursorMark)) {
+					logger.info("CursorMark did not change, assuming end of results.");
+					done = true;
+				}
+				cursorMark = nextCursorMark;
+			}
+
+			// Process any remaining works needing DB ID lookup
+			if (!pendingDbIdLookup.isEmpty()) {
+				logger.info("Processing final batch of " + pendingDbIdLookup.size() + " permanent IDs for database lookup");
+				processPendingDbIdLookups(pendingDbIdLookup, worksByCategoryAndLanguage);
+				validWorksCount += pendingDbIdLookup.size();
+				pendingDbIdLookup.clear();
+			}
+
+		} catch (SolrServerException | IOException e) {
+			logger.error("Error querying Solr for potential merges", e);
+			logEntry.incErrors("Solr Query Error: " + e.getMessage());
+			return; // Stop processing if Solr query fails
+		} catch (Exception e) { // Catch broader exceptions during Solr processing
+			logger.error("Unexpected error during Solr data retrieval phase", e);
+			logEntry.incErrors("Unexpected error during Solr retrieval: " + e.getMessage());
+			return;
+		}
+
+		logger.info("Completed Solr retrieval and preprocessing. Total docs processed: " + solrDocsProcessed + ", Valid works: " + validWorksCount + ", Categories with works: " + worksByCategoryAndLanguage.size());
+
+		// --- Comparison Logic (remains mostly the same) ---
+		logger.info("Beginning work comparison phase...");
+		Set<String> processedCategoryPairs = new HashSet<>(); // To avoid comparing cat1-cat2 and cat2-cat1
+		try {
+			for (Map.Entry<String, Map<String, List<WorkData>>> categoryEntry : worksByCategoryAndLanguage.entrySet()) {
+				String category1 = categoryEntry.getKey();
+				Map<String, List<WorkData>> worksByLanguage1 = categoryEntry.getValue();
+
+				// Compare within the same category, but only for the same language
+				String sameCategoryPairKey = category1 + "-" + category1;
+				if (processedCategoryPairs.add(sameCategoryPairKey)) {
+					for (Map.Entry<String, List<WorkData>> langEntry : worksByLanguage1.entrySet()) {
+						String languageCode = langEntry.getKey();
+						List<WorkData> works1 = langEntry.getValue();
+						long langComparisons = 0;
+						logEntry.addNote("Comparing within category: " + category1 + ", Language: " + languageCode + " (" + works1.size() + " works)");
+						logger.info("Comparing within category: " + category1 + ", Language: " + languageCode + " (" + works1.size() + " works)");
+						for (int i = 0; i < works1.size(); i++) {
+							WorkData work1 = works1.get(i);
+							for (int j = i + 1; j < works1.size(); j++) {
+								WorkData work2 = works1.get(j);
+								comparisonsMade++;
+								langComparisons++;
+								PotentialMergeData mergeData = compareWorks(work1, work2); // Languages are guaranteed to match here
+								if (mergeData != null) {
+									mergeBatch.add(mergeData);
+									potentialMergesFound++;
+									if (mergeBatch.size() >= BATCH_SIZE) {
+										logger.info("Batch size reached " + BATCH_SIZE + ", executing batch insert...");
+										executeMergeBatch(mergeBatch);
+										logger.info("Batch insert completed, continuing comparisons...");
+									}
+								}
+							}
+						}
+						logEntry.addNote("Finished comparing within category: " + category1 + ", Language: " + languageCode + " (" + langComparisons + " comparisons)");
+						logger.info("Finished comparing within category: " + category1 + ", Language: " + languageCode + " (" + langComparisons + " comparisons), Total: " + comparisonsMade);
+						logEntry.saveResults();
+					}
+				}
+
+				// Compare against other compatible categories, matching on language
+				for (Map.Entry<String, Map<String, List<WorkData>>> otherCategoryEntry : worksByCategoryAndLanguage.entrySet()) {
+					String category2 = otherCategoryEntry.getKey();
+					Map<String, List<WorkData>> worksByLanguage2 = otherCategoryEntry.getValue();
+
+					// Ensure pair order for processed check (e.g., book-comic, not comic-book again)
+					String catKey1 = category1.compareTo(category2) <= 0 ? category1 : category2;
+					String catKey2 = category1.compareTo(category2) <= 0 ? category2 : category1;
+					String pairKey = catKey1 + "-" + catKey2;
+
+					// Skip if same category (handled above), pair already processed, or categories not compatible
+					if (category1.equals(category2) || !processedCategoryPairs.add(pairKey) || !areCategoriesCompatible(category1, category2)) {
+						continue;
+					}
+
+					// Iterate through languages present in the first category
+					for (Map.Entry<String, List<WorkData>> langEntry1 : worksByLanguage1.entrySet()) {
+						String languageCode = langEntry1.getKey();
+						List<WorkData> works1 = langEntry1.getValue();
+
+						// Check if the second category has works in the same language
+						if (worksByLanguage2.containsKey(languageCode)) {
+							List<WorkData> works2 = worksByLanguage2.get(languageCode);
+							long langComparisons = 0;
+							logEntry.addNote("Comparing " + category1 + " vs " + category2 + ", Language: " + languageCode + " (" + works1.size() + " vs " + works2.size() + " works)");
+							logger.info("Comparing " + category1 + " vs " + category2 + ", Language: " + languageCode + " (" + works1.size() + " vs " + works2.size() + " works)");
+							for (WorkData work1 : works1) {
+								for (WorkData work2 : works2) {
+									comparisonsMade++;
+									langComparisons++;
+									PotentialMergeData mergeData = compareWorks(work1, work2); // Languages are guaranteed to match here
+									if (mergeData != null) {
+										mergeBatch.add(mergeData);
+										potentialMergesFound++;
+										if (mergeBatch.size() >= BATCH_SIZE) {
+											logger.info("Batch size reached " + BATCH_SIZE + ", executing batch insert...");
+											executeMergeBatch(mergeBatch);
+											logger.info("Batch insert completed, continuing comparisons...");
+										}
+									}
+								}
+							}
+							logEntry.addNote("Finished comparing " + category1 + " vs " + category2 + ", Language: " + languageCode + " (" + langComparisons + " comparisons)");
+							logger.info("Finished comparing " + category1 + " vs " + category2 + ", Language: " + languageCode + " (" + langComparisons + " comparisons), Total: " + comparisonsMade);
+							logEntry.saveResults();
+						}
+					}
+				}
+			}
+
+			// Insert any remaining merges in the batch
+			if (!mergeBatch.isEmpty()) {
+				logger.info("Processing final batch with " + mergeBatch.size() + " potential merges...");
+				executeMergeBatch(mergeBatch);
+				logger.info("Final batch processing completed");
+			} else {
+				logger.info("No remaining items in final batch");
+			}
+		} catch (Exception e) { // Catch broader exceptions during comparison phase
+			logger.error("Unexpected error during potential merge comparison phase", e);
+			logEntry.incErrors("Unexpected error during potential merge comparison phase: " + e.getMessage());
+		}
+
+		// --- Final Summary ---
+		long endTime = System.currentTimeMillis();
+		String summary = String.format(
+			"Finished potential merge check using Solr. Docs processed: %,d. Valid works: %,d. Comparisons: %,d. Found %,d pairs. Threshold: %.2f. Took %.2f minutes.",
+			solrDocsProcessed,
+			validWorksCount,
+			comparisonsMade,
+			potentialMergesFound,
+			potentialMergeThreshold,
+			(endTime - startTime) / 60000.0
+		);
+		logEntry.addNote(summary);
+		logger.info(summary);
+	}
+
+	/**
+	 * Executes the batch insert for potential merges.
+	 */
+	private void executeMergeBatch(List<PotentialMergeData> mergeBatch) {
+		if (mergeBatch.isEmpty() || insertPotentialMergeStmt == null) {
+			return;
+		}
+		logger.info("Starting batch insert of " + mergeBatch.size() + " potential merges...");
+		try {
+			dbConn.setAutoCommit(false); // Manage transactions for batch insert
+			logger.info("Setting up batch parameters for database insert...");
+			for (PotentialMergeData merge : mergeBatch) {
+				insertPotentialMergeStmt.setLong(1, merge.id1);
+				insertPotentialMergeStmt.setString(2, merge.permId1);
+				insertPotentialMergeStmt.setLong(3, merge.id2);
+				insertPotentialMergeStmt.setString(4, merge.permId2);
+				insertPotentialMergeStmt.setDouble(5, merge.titleScore);
+				insertPotentialMergeStmt.setDouble(6, merge.authorScore);
+				insertPotentialMergeStmt.setDouble(7, merge.overallScore);
+				insertPotentialMergeStmt.setString(8, merge.reason);
+				insertPotentialMergeStmt.setLong(9, System.currentTimeMillis() / 1000);
+				insertPotentialMergeStmt.addBatch();
+			}
+			logger.info("Executing batch with " + mergeBatch.size() + " statements...");
+			int[] results = insertPotentialMergeStmt.executeBatch();
+			logger.info("Committing transaction...");
+			dbConn.commit();
+			logger.info("Executed potential merge batch insert for " + results.length + " potential pairs.");
+		} catch (SQLException e) {
+			logger.error("SQL Error executing potential merge batch insert", e);
+			logEntry.incErrors("SQL Batch Insert Error: " + e.getMessage());
+			try {
+				logger.info("Rolling back transaction due to error...");
+				dbConn.rollback();
+			} catch (SQLException ex) {
+				logger.error("Rollback failed", ex);
+			}
+		} finally {
+			mergeBatch.clear(); // Clear the batch regardless of success or failure
+			try {
+				logger.info("Resetting auto-commit to true...");
+				dbConn.setAutoCommit(true);
+			} catch (SQLException ex) {
+				logger.error("Failed to reset auto-commit", ex);
+			}
+		}
+	}
+
+	/**
+	 * Renamed and refactored: Helper method to compare two pre-processed WorkData objects.
+	 * Returns PotentialMergeData if they are a potential merge, null otherwise.
+	 */
+	private PotentialMergeData compareWorks(WorkData work1, WorkData work2) {
+		// Basic checks using pre-processed data
+		if (!work1.languageCode.equals(work2.languageCode)) {
+			// This check should technically be redundant if called correctly, but good safety measure
+			logger.warn("Comparing works with different languages - should have been filtered earlier: " + work1.permanentId + " vs " + work2.permanentId);
+			return null;
+		}
+		if (work1.baseId.equals(work2.baseId)) {
+			// Same base ID, likely language variants, skip comparison
+			return null;
+		}
+
+		// Prevent comparison if both works are part of the same series
+		if (!work1.seriesFacets.isEmpty() && !work2.seriesFacets.isEmpty()) {
+			Set<String> intersection = new HashSet<>(work1.seriesFacets);
+			intersection.retainAll(work2.seriesFacets);
+			if (!intersection.isEmpty()) {
+				// They share at least one common series facet, skip comparison
+				logger.debug("Skipping comparison: Works share a common series facet ('{}'): {} vs {}",
+					intersection.iterator().next(), work1.permanentId, work2.permanentId);
+				return null;
+			}
+		}
+
+		// Prevent comparison if both works share the same series_with_volume information
+		if (!work1.seriesWithVolumeFacets.isEmpty() && !work2.seriesWithVolumeFacets.isEmpty()) {
+			Set<String> intersectionVolume = new HashSet<>(work1.seriesWithVolumeFacets);
+			intersectionVolume.retainAll(work2.seriesWithVolumeFacets);
+			if (!intersectionVolume.isEmpty()) {
+				// They share at least one common series_with_volume facet, skip comparison
+				logger.debug("Skipping comparison: Works share a common series_with_volume facet ('{}'): {} vs {}",
+					intersectionVolume.iterator().next(), work1.permanentId, work2.permanentId);
+				return null;
+			}
+		}
+
+		// Perform similarity calculation
+		double titleScore = calculateSimilarity(work1.title, work2.title);
+		double authorScore = calculateSimilarity(work1.author, work2.author);
+		double overallScore = (titleScore * 0.7) + (authorScore * 0.3);
+
+		if (overallScore >= potentialMergeThreshold) {
+			// Ensure consistent order (id1 < id2)
+			long id1, id2;
+			String permId1, permId2;
+			if (work1.id < work2.id) {
+				id1 = work1.id; permId1 = work1.permanentId;
+				id2 = work2.id; permId2 = work2.permanentId;
+			} else {
+				id1 = work2.id; permId1 = work2.permanentId;
+				id2 = work1.id; permId2 = work1.permanentId;
+			}
+
+			String reason = String.format(Locale.US,
+				"High similarity score (%.4f) between Cat:%s and Cat:%s. Title: %.4f, Author: %.4f",
+				overallScore, work1.category, work2.category, titleScore, authorScore
+			);
+
+			// Log when we find a match
+			logger.info("Found potential merge: " + permId1 + " and " + permId2 + " with score " + String.format(Locale.US, "%.4f", overallScore));
+
+			// Return data for batch insertion
+			return new PotentialMergeData(id1, permId1, id2, permId2, titleScore, authorScore, overallScore, reason);
+		}
+		return null; // Not a potential merge
+	}
+
+	/**
+	 * Helper method to extract the language code from a permanent ID
+	 * @param permanentId The permanent ID
+	 * @return The language code (e.g., "eng", "spa", "und")
+	 */
+	private String extractLanguageCode(String permanentId) {
+		if (permanentId == null || permanentId.length() < 4) {
+			return "";
+		}
+		int lastDashPos = permanentId.lastIndexOf("-");
+		if (lastDashPos <= 0 || lastDashPos >= permanentId.length() - 1) {
+			return "";
+		}
+		return permanentId.substring(lastDashPos + 1);
+	}
+
+	/**
+	 * Determines if a grouped work should be skipped in the merge detection process.
+	 * Skips works that:
+	 * 1. Have invalid/empty title or author
+	 * 2. Don't have a valid trailing language code in their permanent ID
+	 * 3. Have no associated records (orphaned/invalid in the system)
+	 */
+	private boolean shouldSkipGroupedWork(String title, String author, String permanentId) {
+		// Skip invalid records
+		if (title == null || title.trim().isEmpty() || author == null || author.trim().isEmpty()) {
+			return true;
+		}
+
+		// Skip works without proper language codes in permanent ID
+		if (permanentId == null) {
+			return true;
+		}
+
+		// Ensure the permanent ID format is correct - must have exactly 5 segments before language code
+		// Format should be: 8-4-4-4-12-lang
+		String[] segments = permanentId.split("-");
+		if (segments.length < 6) {
+			logger.debug("Skipping record with incorrect permanent ID format (missing language code): " + permanentId);
+			return true;
+		}
+
+		// Get the language code (last segment)
+		String languageCode = segments[segments.length - 1];
+
+		// Language codes should be 2 or 3 characters (ISO 639-1 or 639-2)
+		// Valid examples: en, eng, fr, fre, de, ger, etc.
+		if (languageCode.length() < 2 || languageCode.length() > 3) {
+			logger.debug("Skipping record with invalid language code length: " + permanentId);
+			return true;
+		}
+
+		// Check if the language code contains only letters
+		if (!languageCode.matches("[a-z]+")) {
+			logger.debug("Skipping record with non-alphabetic language code: " + permanentId);
+			return true;
+		}
+
+		// Additional check - to skip "und" (undetermined) language code when it's likely invalid
+		if (languageCode.equals("und")) {
+			logger.debug("Skipping record with 'und' language code: " + permanentId);
+			return true;
+		}
+
+		// Verify that the base part of the ID looks like a proper UUID format
+		// The base ID should be in the format: 8-4-4-4-12
+		String baseId = permanentId.substring(0, permanentId.length() - (languageCode.length() + 1));
+		if (!baseId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+			logger.debug("Skipping record with malformed base ID: " + permanentId);
+			return true;
+		}
+
+		// Check if this work has any records associated with it in the database
+		// If not, it might be an invalid/orphaned work
+		try (PreparedStatement checkRecordsStmt = dbConn.prepareStatement(
+			"SELECT COUNT(*) as record_count FROM grouped_work_records " +
+				"INNER JOIN grouped_work ON grouped_work_records.groupedWorkId = grouped_work.id " +
+				"WHERE grouped_work.permanent_id = ?")) {
+
+			checkRecordsStmt.setString(1, permanentId);
+			ResultSet rs = checkRecordsStmt.executeQuery();
+			if (rs.next()) {
+				int recordCount = rs.getInt("record_count");
+				if (recordCount == 0) {
+					// This is an orphaned work with no actual records, skip it
+					logger.debug("Skipping orphaned record with no associated works: " + permanentId);
+					return true;
+				}
+			}
+		} catch (SQLException e) {
+			logger.debug("Error checking if work has associated records: " + e.getMessage());
+			// Continue with other checks even if this one fails
+		}
+
+		return false;
+	}
+
+	/**
+	 * Simplified validation logic specifically for Solr documents.
+	 * Checks title, author, and permanentId format including language code.
+	 * Does NOT check for associated records in the database.
+	 */
+	private boolean shouldSkipSolrWork(String title, String author, String permanentId) {
+		// Basic checks for title and author presence
+		if (title == null || title.trim().isEmpty() || author == null || author.trim().isEmpty()) {
+			logger.debug("Skipping Solr doc due to missing title/author: " + permanentId);
+			return true;
+		}
+
+		if (permanentId == null) {
+			logger.debug("Skipping Solr doc due to null permanentId");
+			return true;
+		}
+
+		// Check permanent ID format (UUID-like structure + language code)
+		String[] segments = permanentId.split("-");
+		if (segments.length < 6) {
+			logger.debug("Skipping Solr doc with incorrect permanent ID format (missing lang?): " + permanentId);
+			return true;
+		}
+
+		String languageCode = segments[segments.length - 1];
+		if (languageCode.length() < 2 || languageCode.length() > 3 || !languageCode.matches("[a-z]+") || languageCode.equals("und")) {
+			logger.debug("Skipping Solr doc with invalid language code: " + permanentId);
+			return true;
+		}
+
+		String baseId = permanentId.substring(0, permanentId.length() - (languageCode.length() + 1));
+		if (!baseId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+			logger.debug("Skipping Solr doc with malformed base ID: " + permanentId);
+			return true;
+		}
+
+		return false;
+	}
+
+	// --- End Potential Merges additions ---
+
+	// Helper class to store pre-processed work data
+	private static class WorkData {
+		final long id;
+		final String permanentId;
+		final String title;
+		final String author;
+		final String category;
+		final String languageCode;
+		final String baseId;
+		final Set<String> seriesFacets; // Added series facets
+		final Set<String> seriesWithVolumeFacets; // Added series_with_volume facets
+
+		WorkData(long id, String permanentId, String title, String author, String category, String languageCode, String baseId, Set<String> seriesFacets, Set<String> seriesWithVolumeFacets) { // Updated constructor
+			this.id = id;
+			this.permanentId = permanentId;
+			this.title = title != null ? title : "";
+			this.author = author != null ? author : "";
+			this.category = category;
+			this.languageCode = languageCode;
+			this.baseId = baseId;
+			this.seriesFacets = seriesFacets != null ? seriesFacets : Collections.emptySet();
+			this.seriesWithVolumeFacets = seriesWithVolumeFacets != null ? seriesWithVolumeFacets : Collections.emptySet(); // Initialize new field
+		}
+	}
+
+	// Helper class to store data for batch insertion
+	private static class PotentialMergeData {
+		final long id1;
+		final String permId1;
+		final long id2;
+		final String permId2;
+		final double titleScore;
+		final double authorScore;
+		final double overallScore;
+		final String reason;
+
+		PotentialMergeData(long id1, String permId1, long id2, String permId2, double titleScore, double authorScore, double overallScore, String reason) {
+			this.id1 = id1;
+			this.permId1 = permId1;
+			this.id2 = id2;
+			this.permId2 = permId2;
+			this.titleScore = titleScore;
+			this.authorScore = authorScore;
+			this.overallScore = overallScore;
+			this.reason = reason;
+		}
+	}
+
+	// Counters for logging merge detection progress
+
+	/**
+	 * Loads works for a given category, preprocesses them (validation, language/base ID extraction),
+	 * and returns a list of valid WorkData objects.
+	 */
+	private List<WorkData> loadAndPreprocessWorks(String category) {
+		List<WorkData> validWorks = new ArrayList<>();
+		logger.info("Starting to load works from database for category: " + category);
+		String sql = "SELECT id, permanent_id, full_title, author FROM grouped_work WHERE grouping_category = ? ORDER BY id ASC";
+		try (PreparedStatement workStmt = dbConn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+			workStmt.setString(1, category);
+			workStmt.setFetchSize(1000); // Fetch in batches
+			logger.info("Executing database query for category: " + category);
+			try (ResultSet rs = workStmt.executeQuery()) {
+				int processedCount = 0;
+				int validCount = 0;
+				logger.info("Processing result set for category: " + category);
+				while (rs.next()) {
+					processedCount++;
+					String title = rs.getString("full_title");
+					String author = rs.getString("author");
+					String permanentId = rs.getString("permanent_id");
+
+					// Perform validation check ONCE per work
+					if (!shouldSkipGroupedWork(title, author, permanentId)) {
+						String languageCode = extractLanguageCode(permanentId);
+						String baseId = getBaseIdWithoutLanguageCode(permanentId);
+						validWorks.add(new WorkData(
+							rs.getLong("id"),
+							permanentId,
+							title,
+							author,
+							category,
+							languageCode,
+							baseId,
+							Collections.emptySet(), // No series facets for this work
+							Collections.emptySet() // No series_with_volume facets for this work
+						));
+						validCount++;
+					}
+
+					// Provide periodic progress updates for large result sets
+					if (processedCount % 10000 == 0) {
+						logger.info("Processed " + processedCount + " works for category " + category + ", found " + validCount + " valid works so far");
+					}
+				}
+				logger.info("Completed processing for category " + category + ": processed " + processedCount + " works, found " + validCount + " valid works");
+			}
+		} catch (SQLException e) {
+			logger.error("Error loading or preprocessing works for category: " + category, e);
+			logEntry.incErrors("Error loading/preprocessing works for category " + category + ": " + e.getMessage());
+		}
+		logEntry.addNote("Loaded and validated " + validWorks.size() + " works for category: " + category);
+		logger.info("Loaded and validated " + validWorks.size() + " works for category: " + category);
+		return validWorks;
+	}
+
+	/**
+	 * Helper method to get the base part of the permanent ID (without the language code)
+	 * @param permanentId The full permanent ID
+	 * @return The base part of the ID (without the language code)
+	 */
+	private String getBaseIdWithoutLanguageCode(String permanentId) {
+		int lastDashPos = permanentId.lastIndexOf("-");
+		if (lastDashPos > 0) {
+			return permanentId.substring(0, lastDashPos);
+		}
+		return permanentId;
+	}
+
+	/**
+	 * Helper method to get the database ID for a given permanent ID.
+	 * Caches results to avoid repeated lookups.
+	 */
+	private final Map<String, Long> permanentIdToDbIdCache = new HashMap<>();
+	private PreparedStatement getDbIdStmt = null;
+	private PreparedStatement getBatchDbIdsStmt = null;
+
+	/**
+	 * Process a batch of permanent IDs to look up their database IDs efficiently.
+	 * Adds valid works (with found DB IDs) to the worksByCategory map.
+	 *
+	 * @param pendingWorks Map of permanent IDs to their temporary WorkData objects
+	 * @param worksByCategoryAndLanguage Target map to store work data grouped by category
+	 */
+	private void processPendingDbIdLookups(Map<String, WorkData> pendingWorks, Map<String, Map<String, List<WorkData>>> worksByCategoryAndLanguage) {
+		if (pendingWorks.isEmpty()) {
+			return;
+		}
+
+		logger.info("Looking up database IDs for " + pendingWorks.size() + " permanent IDs");
+
+		try {
+			// Build the SQL query with a parameterized IN clause
+			StringBuilder sql = new StringBuilder("SELECT id, permanent_id FROM grouped_work WHERE permanent_id IN (");
+			for (int i = 0; i < pendingWorks.size(); i++) {
+				if (i > 0) sql.append(",");
+				sql.append("?");
+			}
+			sql.append(")");
+
+			PreparedStatement stmt = dbConn.prepareStatement(sql.toString());
+
+			// Set the parameters
+			int paramIndex = 1;
+			for (String permanentId : pendingWorks.keySet()) {
+				stmt.setString(paramIndex++, permanentId);
+			}
+
+			// Execute the query
+			try (ResultSet rs = stmt.executeQuery()) {
+				int foundCount = 0;
+				while (rs.next()) {
+					long dbId = rs.getLong("id");
+					String permanentId = rs.getString("permanent_id");
+
+					// Cache the result for future lookups
+					permanentIdToDbIdCache.put(permanentId, dbId);
+
+					// Get the WorkData and update its ID
+					WorkData workData = pendingWorks.get(permanentId);
+					if (workData != null) {
+						// Create a new WorkData with the correct ID and series facets
+						WorkData updatedWorkData = new WorkData(
+							dbId,
+							workData.permanentId,
+							workData.title,
+							workData.author,
+							workData.category,
+							workData.languageCode,
+							workData.baseId,
+							workData.seriesFacets, // Pass series facets along
+							workData.seriesWithVolumeFacets // Pass series_with_volume facets along
+						);
+
+						// Add to the appropriate category and language list
+						worksByCategoryAndLanguage
+							.computeIfAbsent(updatedWorkData.category, k -> new HashMap<>()) // Get or create the category map
+							.computeIfAbsent(updatedWorkData.languageCode, k -> new ArrayList<>()) // Get or create the language list
+							.add(updatedWorkData); // Add the work
+						foundCount++;
+					}
+				}
+				logger.info("Found " + foundCount + " database IDs out of " + pendingWorks.size() + " permanent IDs");
+
+				// For any permanent IDs that weren't found, log a warning and cache the -1 value
+				for (String permanentId : pendingWorks.keySet()) {
+					if (!permanentIdToDbIdCache.containsKey(permanentId)) {
+						logger.debug("Could not find database ID for permanentId: " + permanentId);
+						permanentIdToDbIdCache.put(permanentId, -1L); // Cache the not-found result
+					}
+				}
+			}
+
+			stmt.close();
+		} catch (SQLException e) {
+			logger.error("Error looking up database IDs for permanent IDs", e);
+			logEntry.incErrors("Error in batch DB ID lookup: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Single permanent ID lookup - used for individual lookups when needed
+	 */
+	private long getDatabaseIdForPermanentId(String permanentId) {
+		if (permanentIdToDbIdCache.containsKey(permanentId)) {
+			return permanentIdToDbIdCache.get(permanentId);
+		}
+
+		long dbId = -1;
+		try {
+			if (getDbIdStmt == null) {
+				getDbIdStmt = dbConn.prepareStatement("SELECT id FROM grouped_work WHERE permanent_id = ?");
+			}
+			getDbIdStmt.setString(1, permanentId);
+			try (ResultSet rs = getDbIdStmt.executeQuery()) {
+				if (rs.next()) {
+					dbId = rs.getLong("id");
+				} else {
+					logger.debug("No database ID found for permanent ID: " + permanentId);
+				}
+			}
+		} catch (SQLException e) {
+			logger.error("Error fetching database ID for permanent ID: " + permanentId, e);
+		}
+
+		// Cache the result (even if it's -1 to avoid re-querying for invalid IDs)
+		permanentIdToDbIdCache.put(permanentId, dbId);
+		return dbId;
 	}
 }

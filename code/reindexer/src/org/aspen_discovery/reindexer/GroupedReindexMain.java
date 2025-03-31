@@ -38,7 +38,7 @@ public class GroupedReindexMain {
 
 	/**
 	 * Starts the re-indexing process
-	 * 
+	 *
 	 * @param args String[] The server name to index with optional parameter for properties of indexing
 	 */
 	public static void main(String[] args) {
@@ -50,6 +50,7 @@ public class GroupedReindexMain {
 		serverName = args[0];
 
 		boolean checkNightlyIndexRunning = false;
+		boolean findMergesOnly = false;
 		if (args.length >= 2 && args[1].equalsIgnoreCase("processEmpty")) {
 			fullReindex = false;
 			clearIndex = false;
@@ -63,6 +64,11 @@ public class GroupedReindexMain {
 			isNightlyReindex = args[1].equalsIgnoreCase("nightly");
 		}else if (args.length >= 2 && args[1].equalsIgnoreCase("isNightlyIndexRunning")){
 			checkNightlyIndexRunning = true;
+		}else if (args.length >= 2 && args[1].equalsIgnoreCase("findMerges")){
+			// Just run the potential merge detection without reindexing
+			fullReindex = false;
+			clearIndex = false;
+			findMergesOnly = true;
 		}else if (args.length >= 2 && args[1].equalsIgnoreCase("singleWork")){
 			//Process a specific work
 			//Prompt for the work to process
@@ -80,9 +86,9 @@ public class GroupedReindexMain {
 				System.exit(1);
 			}
 		}
-		
+
 		initializeReindex();
-		
+
 		logEntry.addNote("Initialized Reindex ");
 		if (checkNightlyIndexRunning) {
 			boolean isNightlyIndexRunning = IndexingUtils.isNightlyIndexRunning(configIni, serverName, logger);
@@ -97,49 +103,76 @@ public class GroupedReindexMain {
 
 		//Process grouped works
 		try {
-			boolean regroupAllRecords = false;
-			if (fullReindex){
-				//Check to see if we should regroup all records
-				try {
-					PreparedStatement getRegroupAllRecordsStmt = dbConn.prepareStatement("SELECT regroupAllRecordsDuringNightlyIndex from system_variables");
-					ResultSet regroupAllRecordsRS = getRegroupAllRecordsStmt.executeQuery();
-					if (regroupAllRecordsRS.next()) {
-						regroupAllRecords = regroupAllRecordsRS.getBoolean("regroupAllRecordsDuringNightlyIndex");
-					}
-					getRegroupAllRecordsStmt.close();
-				} catch (Exception e) {
-					logger.error("Unable to determine if we should regroup all records", e);
-				}
-			}
+			// If running only merge detection, use a simpler initialization
+			if (findMergesOnly) {
+				logger.info("Running potential merge detection only");
 
-			GroupedWorkIndexer groupedWorkIndexer = new GroupedWorkIndexer(serverName, dbConn, configIni, fullReindex, clearIndex, regroupAllRecords, logEntry, logger);
-			if (groupedWorkIndexer.isOkToIndex()) {
-				if (individualWorkToProcess != null) {
-					//Get more information about the work
+				clearPotentialGroupedWorkMergesTable();
+
+				// Create a special version of GroupedWorkIndexer just for merge detection
+				GroupedWorkIndexer mergeDetector = new GroupedWorkIndexer(serverName, dbConn, configIni, false, false, false, logEntry, logger);
+
+				// Only run the merge detection algorithm
+				mergeDetector.findAndStorePotentialMerges();
+
+				logger.info("Finished potential merge detection");
+
+				// Close the connections but skip the full indexing process
+				mergeDetector.close();
+			} else {
+				// Clear potential merges table if doing a full reindex
+				if (fullReindex) {
+					clearPotentialGroupedWorkMergesTable();
+				}
+
+				boolean regroupAllRecords = false;
+				if (fullReindex){
+					//Check to see if we should regroup all records
 					try {
-						PreparedStatement getInfoAboutWorkStmt = dbConn.prepareStatement("SELECT * from grouped_work where permanent_id = ?");
-						getInfoAboutWorkStmt.setString(1, individualWorkToProcess);
-						ResultSet infoAboutWork = getInfoAboutWorkStmt.executeQuery();
-						if (infoAboutWork.next()) {
-							groupedWorkIndexer.setRegroupAllRecords(true);
-							groupedWorkIndexer.processGroupedWork(infoAboutWork.getLong("id"), individualWorkToProcess, infoAboutWork.getString("grouping_category"));
-							groupedWorkIndexer.setRegroupAllRecords(regroupAllRecords);
-						} else {
-							logger.error("Could not find a work with id " + individualWorkToProcess);
+						PreparedStatement getRegroupAllRecordsStmt = dbConn.prepareStatement("SELECT regroupAllRecordsDuringNightlyIndex from system_variables");
+						ResultSet regroupAllRecordsRS = getRegroupAllRecordsStmt.executeQuery();
+						if (regroupAllRecordsRS.next()) {
+							regroupAllRecords = regroupAllRecordsRS.getBoolean("regroupAllRecordsDuringNightlyIndex");
 						}
-						getInfoAboutWorkStmt.close();
+						getRegroupAllRecordsStmt.close();
 					} catch (Exception e) {
-						logger.error("Unable to process individual work " + individualWorkToProcess, e);
+						logger.error("Unable to determine if we should regroup all records", e);
 					}
-				} else if (processEmptyWorks) {
-					logger.info("Processing Empty Works");
-					groupedWorkIndexer.processEmptyGroupedWorks();
-				} else {
-					logger.info("Running Reindex");
-					groupedWorkIndexer.processGroupedWorks();
 				}
-				groupedWorkIndexer.finishIndexing();
 
+				GroupedWorkIndexer groupedWorkIndexer = new GroupedWorkIndexer(serverName, dbConn, configIni, fullReindex, clearIndex, regroupAllRecords, logEntry, logger);
+				if (groupedWorkIndexer.isOkToIndex()) {
+					if (individualWorkToProcess != null) {
+						//Get more information about the work
+						try {
+							PreparedStatement getInfoAboutWorkStmt = dbConn.prepareStatement("SELECT * from grouped_work where permanent_id = ?");
+							getInfoAboutWorkStmt.setString(1, individualWorkToProcess);
+							ResultSet infoAboutWork = getInfoAboutWorkStmt.executeQuery();
+							if (infoAboutWork.next()) {
+								groupedWorkIndexer.setRegroupAllRecords(true);
+								groupedWorkIndexer.processGroupedWork(infoAboutWork.getLong("id"), individualWorkToProcess, infoAboutWork.getString("grouping_category"));
+								groupedWorkIndexer.setRegroupAllRecords(regroupAllRecords);
+							} else {
+								logger.error("Could not find a work with id " + individualWorkToProcess);
+							}
+							getInfoAboutWorkStmt.close();
+						} catch (Exception e) {
+							logger.error("Unable to process individual work " + individualWorkToProcess, e);
+						}
+					} else if (processEmptyWorks) {
+						logger.info("Processing Empty Works");
+						groupedWorkIndexer.processEmptyGroupedWorks();
+					} else {
+						logger.info("Running Reindex");
+						groupedWorkIndexer.processGroupedWorks();
+						if (fullReindex) {
+							logger.info("Starting potential merge check after processing works.");
+							groupedWorkIndexer.findAndStorePotentialMerges();
+							logger.info("Finished potential merge check.");
+						}
+					}
+					groupedWorkIndexer.finishIndexing();
+				}
 			}
 		} catch (Error e) {
 			logEntry.incErrors("Error processing reindex " + e);
@@ -162,6 +195,19 @@ public class GroupedReindexMain {
 		}
 
 		System.exit(0);
+	}
+
+	private static void clearPotentialGroupedWorkMergesTable() {
+		try {
+			logger.info("Clearing potential_grouped_work_merges table for full reindex.");
+			PreparedStatement clearPotentialMergesStmt = dbConn.prepareStatement("DELETE FROM potential_grouped_work_merges");
+			clearPotentialMergesStmt.executeUpdate();
+			clearPotentialMergesStmt.close();
+			logEntry.addNote("Cleared potential_grouped_work_merges table.");
+		} catch (SQLException e) {
+			logger.error("Error clearing potential_grouped_work_merges table", e);
+			logEntry.incErrors("Error clearing potential_grouped_work_merges table.");
+		}
 	}
 
 	private static void initializeReindex() {
