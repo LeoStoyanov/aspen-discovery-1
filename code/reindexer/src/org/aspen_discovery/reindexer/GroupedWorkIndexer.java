@@ -1466,8 +1466,16 @@ public class GroupedWorkIndexer {
 						} else {
 							// Add the series first
 							String[] displayTitle = groupedWork.seriesWithVolume.get(seriesNameWithVolume).split("\\|");
-							addSeriesStmt.setString(1, displayTitle[0]); //displayTitle (user can edit)
-							addSeriesStmt.setString(6, displayTitle[0]); //groupedWorkSeriesTitle (to match on)
+
+							// Truncate the series displayName if it's too long.
+							String seriesDisplayName = displayTitle[0];
+							if (seriesDisplayName != null && seriesDisplayName.length() > 500) {
+								seriesDisplayName = seriesDisplayName.substring(0, 500);
+								logEntry.addNote("Series display name for " + groupedWork.getId() + "... was truncated.");
+							}
+
+							addSeriesStmt.setString(1, seriesDisplayName); //displayTitle (user can edit)
+							addSeriesStmt.setString(6, seriesDisplayName); //groupedWorkSeriesTitle (to match on)
 							addSeriesStmt.setString(2, groupedWork.getTargetAudiencesAsString());
 							addSeriesStmt.setLong(3, timeNow);
 							addSeriesStmt.setLong(4, timeNow);
@@ -1491,7 +1499,15 @@ public class GroupedWorkIndexer {
 							addSeriesMemberStmt.setLong(8, 0);
 						}
 						addSeriesMemberStmt.setLong(4, groupedWork.earliestPublicationDate != null ? groupedWork.earliestPublicationDate : 0);
-						addSeriesMemberStmt.setString(5, groupedWork.displayTitle);
+
+						// Truncate the series member displayName if it's too long.
+						String displayName = groupedWork.displayTitle;
+						if (displayName != null && displayName.length() > 500) {
+							displayName = displayName.substring(0, 500);
+							logEntry.addNote("Series member display name for " + groupedWork.getId() + " was truncated.");
+						}
+
+						addSeriesMemberStmt.setString(5, displayName);;
 						addSeriesMemberStmt.setString(6, groupedWork.getPrimaryAuthor());
 						addSeriesMemberStmt.setString(7, groupedWork.displayDescription);
 						addSeriesMemberStmt.executeUpdate();

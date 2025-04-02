@@ -57,6 +57,14 @@ function getUpdates25_04_00(): array {
 		//Yanjun Li - ByWater
 
 		// Leo Stoyanov - BWS
+		'alter-series-member-table' => [
+			'title' => 'Increase series_member field sizes',
+			'description' => 'Increases the size of author and volume fields in the series_member table to prevent data truncation',
+			'sql' => [
+				"ALTER TABLE series_member MODIFY COLUMN author VARCHAR(500)",
+				"ALTER TABLE series_member MODIFY COLUMN volume VARCHAR(255)"
+			]
+		], //alter-series-member-table
 
 		//alexander - PTFS-Europe
 
