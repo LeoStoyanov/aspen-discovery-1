@@ -1434,6 +1434,12 @@ public class GroupedWorkIndexer {
 				}
 				for (String seriesNameWithVolume : groupedWork.seriesWithVolume.keySet()) {
 					String[] series = seriesNameWithVolume.split("\\|");
+
+					if (series.length == 0) {
+						logEntry.addNote("Skipping empty series for grouped work " + groupedWork.getId() + ".");
+						continue;
+					}
+
 					String normalizedSeriesName = Normalizer.normalize(series[0], Normalizer.Form.NFKD).replaceAll("\\p{M}", "");
 					if (!seriesInDb.containsKey(normalizedSeriesName)) { // Skip if this work is already in the series
 						// Check if series exists
@@ -1471,7 +1477,7 @@ public class GroupedWorkIndexer {
 							String seriesDisplayName = displayTitle[0];
 							if (seriesDisplayName != null && seriesDisplayName.length() > 500) {
 								seriesDisplayName = seriesDisplayName.substring(0, 500);
-								logEntry.addNote("Series display name for " + groupedWork.getId() + "... was truncated.");
+                                logger.warn("Series display name for {}... was truncated.", groupedWork.getId());
 							}
 
 							addSeriesStmt.setString(1, seriesDisplayName); //displayTitle (user can edit)
@@ -1504,7 +1510,7 @@ public class GroupedWorkIndexer {
 						String displayName = groupedWork.displayTitle;
 						if (displayName != null && displayName.length() > 500) {
 							displayName = displayName.substring(0, 500);
-							logEntry.addNote("Series member display name for " + groupedWork.getId() + " was truncated.");
+                            logger.warn("Series member display name for {} was truncated.", groupedWork.getId());
 						}
 
 						addSeriesMemberStmt.setString(5, displayName);;
