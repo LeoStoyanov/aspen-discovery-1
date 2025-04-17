@@ -114,6 +114,14 @@ public abstract class AbstractGroupedWorkSolr {
 	protected long debugId = -1L;
 	protected ArrayList<String> debugMessages = new ArrayList<>();
 
+	private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
+	private static final Pattern OPENING_DELIMITER_AFTER_SPACE_PATTERN = Pattern.compile("([(\\[{])\\s+");
+	private static final Pattern OPENING_DELIMITER_BEFORE_SPACE_PATTERN = Pattern.compile("(?<![\\s(\\[{^])([(\\[{])");
+	private static final Pattern CLOSING_DELIMITER_BEFORE_SPACE_PATTERN = Pattern.compile("\\s+([)\\]}])");
+	private static final Pattern CLOSING_DELIMITER_AFTER_SPACE_PATTERN = Pattern.compile("([)\\]}])(?=[\\p{IsLatin}\\p{IsDigit}])");
+	private static final Pattern PUNCTUATION_BEFORE_SPACE_PATTERN = Pattern.compile("\\s+([,.;:?!])");
+	private static final Pattern PUNCTUATION_AFTER_SPACE_PATTERN = Pattern.compile("([,.;:?!])(?![\\s)\\]}])");
+
 	public AbstractGroupedWorkSolr(GroupedWorkIndexer groupedWorkIndexer, Logger logger) {
 		this.logger = logger;
 		this.groupedWorkIndexer = groupedWorkIndexer;
@@ -499,8 +507,7 @@ public abstract class AbstractGroupedWorkSolr {
 					}
 				}else {
 					setSubTitle(subTitle);
-					subTitle = AspenStringUtils.trimTrailingPunctuation(subTitle);
-					this.displayTitle = shortTitle.concat(": ").concat(subTitle);
+					this.displayTitle = shortTitle.concat(": ").concat(this.subTitle);
 				}
 			}
 
@@ -524,8 +531,8 @@ public abstract class AbstractGroupedWorkSolr {
 //			if (!tmpTitle.isEmpty()) {
 //				subTitle = tmpTitle;
 //			}
-			this.subTitle = subTitle;
-			keywords.add(subTitle);
+			this.subTitle = normalizeSpacing(subTitle);
+			keywords.add(this.subTitle);
 		}
 	}
 
@@ -1608,5 +1615,88 @@ public abstract class AbstractGroupedWorkSolr {
 			debugInfo.append(debugMessage);
 		}
 		return debugInfo.toString();
+	}
+
+	/**
+	 * Normalizes spacing around common punctuation and delimiters in text content
+	 * to ensure consistent formatting, especially when different pieces of text
+	 * (e.g., subfields) are concatenated.
+	 *
+	 * This method aims to enforce standard English spacing rules:
+	 * - One space after commas, semicolons, colons, periods, question marks, exclamation points (unless followed by whitespace or end of string).
+	 * - One space before opening parentheses, brackets, braces (unless preceded by whitespace or start of string).
+	 * - No space immediately after opening parentheses, brackets, braces.
+	 * - No space immediately before closing parentheses, brackets, braces, commas, semicolons, colons, periods, question marks, exclamation points.
+	 * - One space after closing parentheses, brackets, braces (unless followed by whitespace, punctuation, or end of string).
+	 * - Collapses multiple whitespace characters into a single space.
+	 * - Trims leading and trailing whitespace.
+	 *
+	 * This normalization is only applied to works in English.
+	 *
+	 * @param text The text to normalize spacing in. Can be null or empty.
+	 * @return The text with normalized spacing, or the original text if null or empty or not in English.
+	 */
+	private String normalizeSpacing(String text) {
+		if (text == null || text.isEmpty()) {
+			return text;
+		}
+
+		// Only apply English spacing rules to English language works
+		// The "languages" HashSet is not populated by this point, so the trailing language tag will suffice.
+		boolean isEnglish = false;
+		if (id != null) {
+			isEnglish = id.toLowerCase().endsWith("-eng");
+		}
+
+		// If not an English language work, return the original text
+		if (!isEnglish) {
+			return text;
+		}
+
+		// Trim initial/final whitespace and collapse internal multiple whitespace first
+		// This simplifies subsequent rules by ensuring single spaces between words/punctuation.
+		text = text.trim();
+		text = WHITESPACE_PATTERN.matcher(text).replaceAll(" ");
+
+		// --- Rules for Opening Delimiters: ( [ { ---
+
+		// 1. Ensure NO space immediately AFTER opening delimiters
+		// Example: "( text" -> "(text"
+		text = OPENING_DELIMITER_AFTER_SPACE_PATTERN.matcher(text).replaceAll("$1");
+
+		// 2. Ensure one space BEFORE opening delimiters, unless at the start or preceded by whitespace/opening delimiter
+		// Example: "word(" -> "word (", but " (" remains " (" and "((" remains "(("
+		text = OPENING_DELIMITER_BEFORE_SPACE_PATTERN.matcher(text).replaceAll(" $1");
+
+
+		// --- Rules for Closing Delimiters: ) ] } ---
+
+		// 3. Ensure NO space immediately BEFORE closing delimiters
+		// Example: "text )" -> "text)"
+		text = CLOSING_DELIMITER_BEFORE_SPACE_PATTERN.matcher(text).replaceAll("$1");
+
+		// 4. Ensure one space AFTER closing delimiters, if followed by a non-punctuation, non-whitespace, non-delimiter character.
+		// Example: ")word" -> ") word", but ") (" remains ") (", "). " remains "). "
+		text = CLOSING_DELIMITER_AFTER_SPACE_PATTERN.matcher(text).replaceAll("$1 ");
+
+
+		// --- Rules for Punctuation: , . ; : ? ! ---
+
+		// 5. Ensure NO space immediately BEFORE common punctuation
+		// Example: "word ," -> "word,"
+		text = PUNCTUATION_BEFORE_SPACE_PATTERN.matcher(text).replaceAll("$1");
+
+		// 6. Ensure one space AFTER common punctuation, unless followed by whitespace or a closing delimiter
+		// Example: "word," -> "word, ", "word.)" -> "word.)", "word. " -> "word. "
+		text = PUNCTUATION_AFTER_SPACE_PATTERN.matcher(text).replaceAll("$1 ");
+
+
+		// --- Final Cleanup ---
+
+		// 7. Collapse multiple spaces again (just in case any rule inadvertently created them)
+		// and trim again (although initial trim should handle most cases).
+		text = WHITESPACE_PATTERN.matcher(text).replaceAll(" ").trim();
+
+		return text;
 	}
 }
