@@ -880,17 +880,38 @@ class Evergreen extends AbstractIlsDriver {
 	 * @throws Exception
 	 */
 	public function getReadingHistory($patron, $page = 1, $recordsPerPage = -1, $sortOption = "checkedOut") {
+		global $logger;
+		$logger->log("Evergreen driver: Starting getReadingHistory for patron {$patron->id}", Logger::LOG_ERROR);
+		$logger->log("Evergreen memory usage: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
+
+		if (session_status() === PHP_SESSION_ACTIVE) {
+			$logger->log("Closing active session before processing reading history", Logger::LOG_ERROR);
+			session_write_close();
+		}
+
+
 		$historyActive = false;
 		$readingHistoryTitles = [];
 		$numTitles = 0;
-		$offset = 0;
-		$hasMoreHistory = true;
+		if ($recordsPerPage > 0) {
+			$offset = ($page - 1) * $recordsPerPage;
+			$limit  = $recordsPerPage;
+			$loop   = false;
+		} else {
+			$offset = 0;
+			$limit  = 100;
+			$loop   = true;
+		}
 
 		set_time_limit(0);
-		while ($hasMoreHistory) {
+		$batchCount = 0;
+		do {
+			$batchCount++;
+			$logger->log("Evergreen: Processing batch $batchCount with offset $offset", Logger::LOG_ERROR);
 			$authToken = $this->getAPIAuthToken($patron, false);
 			if ($authToken != null) {
 				//Get a list of checkouts
+				$logger->log("Evergreen: Got valid auth token, fetching checkouts", Logger::LOG_ERROR);
 
 				$evergreenUrl = $this->accountProfile->patronApiUrl . '/osrf-gateway-v1';
 				$headers = [
@@ -901,16 +922,28 @@ class Evergreen extends AbstractIlsDriver {
 				$params = 'service=open-ils.actor';
 				$params .= '&method=open-ils.actor.history.circ';
 				$params .= '&param=' . json_encode($authToken);
-				$params .= '&param={"offset":' . $offset . ',"limit":100}';
+				$params .= '&param={"offset":' . $offset . ',"limit":' . $limit . '}';
 				$apiResponse = $this->apiCurlWrapper->curlPostPage($evergreenUrl, $params);
 
 				ExternalRequestLogEntry::logRequest('evergreen.getReadingHistory', 'POST', $evergreenUrl, $this->apiCurlWrapper->getHeaders(), $params, $this->apiCurlWrapper->getResponseCode(), $apiResponse, []);
+				$logger->log("Evergreen: Got API response with code " . $this->apiCurlWrapper->getResponseCode(), Logger::LOG_ERROR);
+
 				if ($this->apiCurlWrapper->getResponseCode() == 200) {
 					$circHistoryDecoded = json_decode($apiResponse);
 					if (empty($circHistoryDecoded->payload)) {
 						$hasMoreHistory = false;
+						$logger->log("Evergreen: No more history entries found", Logger::LOG_ERROR);
+					} else {
+						$logger->log("Evergreen: Processing " . count($circHistoryDecoded->payload) . " history entries", Logger::LOG_ERROR);
 					}
+
+					$entriesProcessed = 0;
 					foreach ($circHistoryDecoded->payload as $circEntry) {
+						$entriesProcessed++;
+						if ($entriesProcessed % 20 == 0) {
+							$logger->log("Evergreen: Processed $entriesProcessed entries in current batch, memory: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
+						}
+
 						$circEntryMapped = $this->mapEvergreenFields($circEntry->__p, $this->fetchIdl('auch'));
 
 						require_once ROOT_DIR . '/sys/User/Checkout.php';
@@ -941,6 +974,10 @@ class Evergreen extends AbstractIlsDriver {
 								} else {
 									$curTitle['checkin'] = null;
 								}
+
+								$marcRecordDriver->__destruct();
+								unset($marcRecordDriver);
+								unset($modsForCopy);
 							} else {
 								continue;
 							}
@@ -960,20 +997,39 @@ class Evergreen extends AbstractIlsDriver {
 								} else {
 									$curTitle['checkin'] = null;
 								}
+
+								unset($checkout);
 							}
 						}
+						unset($circEntryMapped);
 						$readingHistoryTitles[] = $curTitle;
 						$numTitles++;
 					}
+					unset($circHistoryDecoded, $apiResponse);
+					$circEntry = null;
 				}
 			}
-			$offset += 100;
-		}
+			$logger->log("Evergreen: After batch $batchCount, total entries: $numTitles, memory: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
+			if ($loop) {
+				$offset += $limit;
+			}
+			gc_collect_cycles();
+			$logger->log("Evergreen: After batch $batchCount, total entries: $numTitles, memory: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
+		} while ($loop);
+
+		$logger->log("Evergreen: Finished fetching all history batches, enriching entries with additional information", Logger::LOG_ERROR);
+		$logger->log("Evergreen: Total entries to process: " . count($readingHistoryTitles) . ", memory: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 
 		$systemVariables = SystemVariables::getSystemVariables();
 		global $aspen_db;
 		require_once ROOT_DIR . '/RecordDrivers/GroupedWorkDriver.php';
+		$processedEntries = 0;
 		foreach ($readingHistoryTitles as $key => $historyEntry) {
+			$processedEntries++;
+			if ($processedEntries % 50 == 0) {
+				$logger->log("Evergreen: Processed $processedEntries of " . count($readingHistoryTitles) . " entries with additional info, memory: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
+			}
+
 			//Get additional information from resources table
 			$historyEntry['ratingData'] = null;
 			$historyEntry['permanentId'] = null;
@@ -1001,6 +1057,10 @@ class Evergreen extends AbstractIlsDriver {
 								$historyEntry['title'] = $groupedWorkDriver->getTitle();
 								$historyEntry['author'] = $groupedWorkDriver->getPrimaryAuthor();
 							}
+							unset($groupedWorkDriver);
+							$groupedWorkDriver = null;
+							$results->closeCursor();
+							unset($results, $result);
 						}
 					}
 				} else {
@@ -1015,6 +1075,7 @@ class Evergreen extends AbstractIlsDriver {
 						$historyEntry['author'] = $recordDriver->getPrimaryAuthor();
 					}
 					$recordDriver->__destruct();
+					unset($marcRecordDriver);
 					$recordDriver = null;
 				}
 			}
@@ -1022,6 +1083,14 @@ class Evergreen extends AbstractIlsDriver {
 		}
 
 		$numTitles = count($readingHistoryTitles);
+		$logger->log("Evergreen: Completed reading history processing", Logger::LOG_ERROR);
+		$logger->log("Evergreen: Final title count: $numTitles, memory: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
+
+		// Clean up before returning
+		unset($systemVariables);
+
+		// Force garbage collection
+		gc_collect_cycles();
 
 		return [
 			'historyActive' => $historyActive,

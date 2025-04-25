@@ -3781,6 +3781,43 @@ class UserAPI extends AbstractAPI {
 	}
 
 	/** @noinspection PhpUnused */
+	function updateAllPatronReadingHistory(): array {
+		global $offlineMode;
+		if ($offlineMode) {
+			return [
+				'success' => true,
+				'message' => 'Circulation system is offline',
+			];
+		} else {
+			$username = $_REQUEST['username'];
+			$user = new User();
+			$user->ils_barcode = $username;
+			if ($user->find(true)) {
+				$updateResult = $user->getReadingHistory();
+
+				return [
+					'success' => true,
+					'message' => $updateResult['message'],
+					'skipped' => $updateResult['skipped']
+				];
+			} else {
+				if ($user->count() == 0) {
+					return [
+						'success' => false,
+						'message' => 'Could not find a user with that barcode',
+					];
+				}else{
+					return [
+						'success' => false,
+						'message' => 'More than one user found with that barcode, merge the barcodes',
+					];
+				}
+
+			}
+		}
+	}
+
+	/** @noinspection PhpUnused */
 	function updatePatronReadingHistory(): array {
 		global $offlineMode;
 		if ($offlineMode) {

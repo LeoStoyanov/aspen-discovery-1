@@ -619,7 +619,10 @@ class CatalogConnection {
 	function getReadingHistory($patron, $page = 1, $recordsPerPage = 20, $sortOption = "checkedOut", $filter = "", $forExport = false) {
 		global $timer;
 		global $offlineMode;
+		global $logger;
 		$timer->logTime("Starting to load reading history");
+		$logger->log("Starting to load reading history for patron {$patron->id}", Logger::LOG_ERROR);
+		$logger->log("Memory usage: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 
 		//Get reading history from the database unless we specifically want to load from the driver.
 		$result = [
@@ -632,6 +635,7 @@ class CatalogConnection {
 		}
 		if (!$offlineMode) {
 			if (!$patron->initialReadingHistoryLoaded) {
+				$logger->log("Initial reading history not loaded yet for {$patron->id}", Logger::LOG_ERROR);
 				$okToLoadFromIls = true;
 				$masqueradeMode = UserAccount::isUserMasquerading();
 				if ($masqueradeMode) {
@@ -639,37 +643,56 @@ class CatalogConnection {
 				}
 				if ($okToLoadFromIls) {
 					if ($this->driver->hasNativeReadingHistory()) {
-						//Load existing reading history from the ILS
-						$result = $this->driver->getReadingHistory($patron, -1, -1, $sortOption);
-						if ($result['numTitles'] > 0) {
-							foreach ($result['titles'] as $title) {
-								//if ($title['permanentId'] != null) {
-								$userReadingHistoryEntry = new ReadingHistoryEntry();
-								$userReadingHistoryEntry->userId = $patron->id;
-								$userReadingHistoryEntry->groupedWorkPermanentId = $title['permanentId'];
-								$userReadingHistoryEntry->source = $this->accountProfile->recordSource;
-								$userReadingHistoryEntry->sourceId = $title['recordId'];
-								$userReadingHistoryEntry->title = substr($title['title'], 0, 150);
-								$userReadingHistoryEntry->author = substr($title['author'], 0, 75);
-								$userReadingHistoryEntry->format = $title['format'];
-								$userReadingHistoryEntry->checkOutDate = $title['checkout'];
-								if (!empty($title['checkin'])) {
-									$userReadingHistoryEntry->checkInDate = $title['checkin'];
-								} else {
-									$userReadingHistoryEntry->checkInDate = null;
-								}
-								if (empty($title['isIll'])) {
-									$userReadingHistoryEntry->isIll = 0;
-								} else {
-									$userReadingHistoryEntry->isIll = 1;
-								}
-								$userReadingHistoryEntry->deleted = 0;
-								$userReadingHistoryEntry->insert();
-								$userReadingHistoryEntry = null;
-								//}
+						$page     = 1;
+						$pageSize = 100;
+
+						while (true) {
+							$batch  = $this->driver->getReadingHistory($patron, $page, $pageSize, $sortOption);
+							$titles = $batch['titles'] ?? [];
+
+							// No more entries?
+							if (empty($titles)) {
+								break;
 							}
+
+							// Keep track of count before we unset
+							$countTitles = count($titles);
+
+							// Insert each entry immediately
+							foreach ($titles as $title) {
+								$entry = new ReadingHistoryEntry();
+								$entry->userId                 = $patron->id;
+								$entry->groupedWorkPermanentId = $title['permanentId'];
+								$entry->source                 = $this->accountProfile->recordSource;
+								$entry->sourceId               = $title['recordId'];
+								$entry->title                  = substr($title['title'],  0, 150);
+								$entry->author                 = substr($title['author'], 0,  75);
+								$entry->format                 = $title['format'];
+								$entry->checkOutDate           = $title['checkout'];
+								$entry->checkInDate            = $title['checkin'] ?? null;
+								$entry->isIll                  = !empty($title['isIll']) ? 1 : 0;
+								$entry->deleted                = 0;
+								$entry->insert();
+
+								// Free memory
+								unset($entry);
+							}
+
+							// Clear batch data from memory
+							unset($batch, $titles);
+
+							// Run garbage collection between batches
+							gc_collect_cycles();
+							$logger->log("After processing batch $page, memory: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
+
+							// If we got fewer than a full page, we're done
+							if ($countTitles < $pageSize) {
+								break;
+							}
+
+							// Otherwise, go fetch the next page
+							$page++;
 						}
-						$timer->logTime("Finished loading native reading history");
 					}
 					$patron->initialReadingHistoryLoaded = true;
 					$patron->update();
@@ -677,7 +700,10 @@ class CatalogConnection {
 			}
 			//Update the reading history based on titles that the patron currently has checked out if we are on the first page.
 			if ($page == 1 && empty($filter)) {
+				$logger->log("Updating reading history based on current checkouts", Logger::LOG_ERROR);
+				$logger->log("Memory before current checkouts update: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 				$this->updateReadingHistoryBasedOnCurrentCheckouts($patron, false);
+				$logger->log("Memory after current checkouts update: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 				$timer->logTime("Finished updating reading history based on current checkouts");
 			}
 		}
@@ -716,7 +742,11 @@ class CatalogConnection {
 			'author'
 		]);
 
+		$logger->log("Counting titles in reading history", Logger::LOG_ERROR);
+		$logger->log("Memory before count: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 		$numTitles = $readingHistoryDB->count();
+		$logger->log("Found $numTitles titles in reading history", Logger::LOG_ERROR);
+		$logger->log("Memory after count: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 
 		if ($recordsPerPage != -1) {
 			$firstIndex = ($page - 1) * $recordsPerPage;
@@ -724,16 +754,22 @@ class CatalogConnection {
 		} else {
 			$firstIndex = 0;
 		}
+		$logger->log("Fetching reading history titles with limit $firstIndex, $recordsPerPage", Logger::LOG_ERROR);
+		$logger->log("Memory before fetch: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 		$readingHistoryDB->find();
 		$readingHistoryTitles = [];
 
+		$logger->log("Processing database results", Logger::LOG_ERROR);
 		while ($readingHistoryDB->fetch()) {
 			$historyEntry = $this->getHistoryEntryForDatabaseEntry($readingHistoryDB, $forExport);
 			$historyEntry['index'] = ++$firstIndex;
 			$readingHistoryTitles[] = $historyEntry;
 		}
+		$logger->log("Memory after fetch and processing: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 		$timer->logTime("Loaded " . count($readingHistoryTitles) . " titles from the reading history");
 
+		$logger->log("Completed reading history load", Logger::LOG_ERROR);
+		$logger->log("Final memory usage: " . memory_get_usage(true) . " bytes", Logger::LOG_ERROR);
 		return [
 			'historyActive' => $patron->trackReadingHistory,
 			'titles' => $readingHistoryTitles,
