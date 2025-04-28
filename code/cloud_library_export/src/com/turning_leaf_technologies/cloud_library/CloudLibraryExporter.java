@@ -27,6 +27,9 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.TimeZone;
+import org.marc4j.MarcReader;
+import org.marc4j.MarcStreamReader;
+import org.marc4j.marc.Record;
 
 public class CloudLibraryExporter {
 	private final String serverName;
@@ -247,6 +250,95 @@ public class CloudLibraryExporter {
 		return numChanges;
 	}
 
+	/**
+	 * Extract a single CloudLibrary record by ID
+	 *
+	 * @param singleRecordId The CloudLibrary ID of the record to extract
+	 * @return Number of changes made
+	 */
+	public int extractSingleRecord(String singleRecordId) {
+		int numChanges = 0;
+
+		//Get a list of all existing records in the database
+		loadExistingTitles(settings.getSettingsId());
+
+		// Log that we're doing a single record extract
+		logEntry.addNote("Extracting single CloudLibrary record: " + singleRecordId);
+		logEntry.saveResults();
+
+		// Create a handler for the MARC records
+		CloudLibraryMarcHandler handler = new CloudLibraryMarcHandler(this, settings.getSettingsId(), existingRecords, true, startTimeForLogging, aspenConn, getRecordGroupingProcessor(), getGroupedWorkIndexer(), logEntry, logger);
+
+		// Call CloudLibrary API to get the specific record
+		String apiPath = "/cirrus/library/" + settings.getLibraryId() + "/data/marc/" + singleRecordId;
+
+		for (int curTry = 1; curTry <= 4; curTry++) {
+			WebServiceResponse response = callCloudLibrary(apiPath);
+			if (response == null) {
+				// Something bad happened, we're done.
+				break;
+			} else if (!response.isSuccess()) {
+				if (response.getResponseCode() != 502) {
+					logEntry.incErrors("Error " + response.getResponseCode() + " calling " + apiPath + ": " + response.getMessage());
+					break;
+				} else {
+					if (curTry == 4) {
+						logEntry.incErrors("Error (after 3 tries) " + response.getResponseCode() + " calling " + apiPath + ": " + response.getMessage());
+						logEntry.addNote(response.getMessage());
+						break;
+					} else {
+						try {
+							Thread.sleep(1000);
+						} catch (InterruptedException e) {
+							logger.error("Thread was interrupted while waiting to retry for cloudLibrary");
+						}
+					}
+				}
+			} else {
+				// TODO: Remove later!
+				//logger.error("Received response for single record " + singleRecordId + ": " + response.getMessage());
+				try {
+					SAXParserFactory saxParserFactory = SAXParserFactory.newInstance();
+					SAXParser saxParser = saxParserFactory.newSAXParser();
+					saxParser.parse(new ByteArrayInputStream(response.getMessage().getBytes(StandardCharsets.UTF_8)), handler);
+
+					numChanges += handler.getNumDocuments();
+					logEntry.saveResults();
+				} catch (SAXException | ParserConfigurationException | IOException e) {
+					logger.error("Error parsing response", e);
+					logEntry.incErrors("Error parsing response: ", e);
+				}
+				break;
+			}
+		}
+
+		// Get availability for this record
+		CloudLibraryAvailability availability = loadAvailabilityForRecord(singleRecordId);
+		if (availability != null) {
+			numChanges++;
+		}
+
+		// Process records to reload
+		processRecordsToReload(logEntry);
+
+		if (recordGroupingProcessorSingleton != null) {
+			recordGroupingProcessorSingleton.close();
+			recordGroupingProcessorSingleton = null;
+		}
+
+		if (groupedWorkIndexer != null) {
+			groupedWorkIndexer.finishIndexingFromExtract(logEntry);
+			groupedWorkIndexer.close();
+			groupedWorkIndexer = null;
+			existingRecords = null;
+		}
+
+		logger.info("Finished extracting single record: {} changes", numChanges);
+		logEntry.setFinished();
+
+		return numChanges;
+	}
+
 	private void createDbLogEntry(Date startTime, Connection aspenConn) {
 		//Remove log entries older than 45 days
 		long earliestLogToKeep = (startTime.getTime() / 1000) - (60 * 60 * 24 * 45);
@@ -336,9 +428,9 @@ public class CloudLibraryExporter {
 
 	private void processRecordsToReload(CloudLibraryExtractLogEntry logEntry) {
 		try {
-			PreparedStatement getRecordsToReloadStmt = aspenConn.prepareStatement("SELECT * from record_identifiers_to_reload WHERE processed = 0 and type='cloud_library'", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			PreparedStatement markRecordToReloadAsProcessedStmt = aspenConn.prepareStatement("UPDATE record_identifiers_to_reload SET processed = 1 where id = ?");
-			PreparedStatement getItemDetailsForRecordStmt = aspenConn.prepareStatement("SELECT title, subTitle, author, format from cloud_library_title where cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			PreparedStatement getRecordsToReloadStmt = aspenConn.prepareStatement("SELECT * FROM record_identifiers_to_reload WHERE processed = 0 AND type='cloud_library'", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			PreparedStatement markRecordToReloadAsProcessedStmt = aspenConn.prepareStatement("UPDATE record_identifiers_to_reload SET processed = 1 WHERE id = ?");
+			PreparedStatement getItemDetailsForRecordStmt = aspenConn.prepareStatement("SELECT rawResponse FROM cloud_library_title WHERE cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 
 			ResultSet getRecordsToReloadRS = getRecordsToReloadStmt.executeQuery();
 			int numRecordsToReloadProcessed = 0;
@@ -349,34 +441,67 @@ public class CloudLibraryExporter {
 				getItemDetailsForRecordStmt.setString(1, cloudLibraryId);
 				ResultSet getItemDetailsForRecordRS = getItemDetailsForRecordStmt.executeQuery();
 				if (getItemDetailsForRecordRS.next()){
-					String title = getItemDetailsForRecordRS.getString("title");
-					String subTitle = getItemDetailsForRecordRS.getString("subTitle");
-					String author = getItemDetailsForRecordRS.getString("author");
-					String format = getItemDetailsForRecordRS.getString("format");
-					RecordIdentifier primaryIdentifier = new RecordIdentifier("cloud_library", cloudLibraryId);
+//					String title = getItemDetailsForRecordRS.getString("title");
+//					String subTitle = getItemDetailsForRecordRS.getString("subTitle");
+//					String author = getItemDetailsForRecordRS.getString("author");
+//					String format = getItemDetailsForRecordRS.getString("format");
+//					RecordIdentifier primaryIdentifier = new RecordIdentifier("cloud_library", cloudLibraryId);
 
-					org.marc4j.marc.Record cloudLibraryRecord = getGroupedWorkIndexer().loadMarcRecordFromDatabase("cloud_library", cloudLibraryId, logEntry);
-					if (cloudLibraryRecord != null) {
-						String primaryLanguage = getRecordGroupingProcessor().getLanguageBasedOnMarcRecord(cloudLibraryRecord);
+					// Get the raw MARC response
+					String rawResponse = getItemDetailsForRecordRS.getString("rawResponse");
 
-						String groupedWorkId = getRecordGroupingProcessor().processRecord(primaryIdentifier, title, subTitle, author, format, primaryLanguage, true);
-						//Reindex the record
-						getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
-					}else{
-						RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork("cloud_library", cloudLibraryId);
-						if (result.reindexWork) {
-							getGroupedWorkIndexer().processGroupedWork(result.permanentId);
-						} else if (result.deleteWork) {
-							//Delete the work from solr and the database
-							getGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
+					if (rawResponse != null && !rawResponse.isEmpty()) {
+						// Parse the raw MARC response string into a Record object
+						MarcReader reader = new MarcStreamReader(new ByteArrayInputStream(rawResponse.getBytes(StandardCharsets.UTF_8)));
+						if (reader.hasNext()) {
+							Record marcRecord = reader.next();
+							// Use the dedicated groupCloudLibraryRecord method
+							String groupedWorkId = getRecordGroupingProcessor().groupCloudLibraryRecord(cloudLibraryId, marcRecord);
+							//Reindex the record
+							getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
+						} else {
+							logEntry.incErrors("Could not parse MARC data for Cloud Library record to reload " + cloudLibraryId + ".");
 						}
+					} else {
+						// Handle cases where rawResponse might be null or empty
+						logEntry.incErrors("Missing rawResponse data for Cloud Library record to reload " + cloudLibraryId + ".");
 					}
+
+//					org.marc4j.marc.Record cloudLibraryRecord = getGroupedWorkIndexer().loadMarcRecordFromDatabase("cloud_library", cloudLibraryId, logEntry);
+//					if (cloudLibraryRecord != null) {
+//						logger.error("CloudLibrary record is not null!");
+//						String primaryLanguage = getRecordGroupingProcessor().getLanguageBasedOnMarcRecord(cloudLibraryRecord);
+//
+//						String groupedWorkId = getRecordGroupingProcessor().processRecord(primaryIdentifier, title, subTitle, author, format, primaryLanguage, true);
+//						//Reindex the record
+//						getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
+//					}else{
+//						logger.error("CloudLibrary record is null!");
+//						RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork("cloud_library", cloudLibraryId);
+//						if (result.reindexWork) {
+//							getGroupedWorkIndexer().processGroupedWork(result.permanentId);
+//							logger.error("CloudLibrary record is null and has been reindexed!");
+//						} else if (result.deleteWork) {
+//							//Delete the work from solr and the database
+//							getGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
+//							logger.error("CloudLibrary record is null and has been deleted!");
+//						}
+//					}
 
 					markRecordToReloadAsProcessedStmt.setLong(1, recordToReloadId);
 					markRecordToReloadAsProcessedStmt.executeUpdate();
 					numRecordsToReloadProcessed++;
 				}else{
 					logEntry.incErrors("Could not get details for record to reload " + cloudLibraryId);
+					RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork("cloud_library", cloudLibraryId);
+					if (result.reindexWork) {
+						getGroupedWorkIndexer().processGroupedWork(result.permanentId);
+						logger.error("CloudLibrary record is null and has been reindexed!");
+					} else if (result.deleteWork) {
+						//Delete the work from solr and the database
+						getGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
+						logger.error("CloudLibrary record is null and has been deleted!");
+					}
 				}
 				getItemDetailsForRecordRS.close();
 			}
