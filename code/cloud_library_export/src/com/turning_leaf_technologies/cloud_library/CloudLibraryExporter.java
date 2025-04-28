@@ -437,79 +437,49 @@ public class CloudLibraryExporter {
 			while (getRecordsToReloadRS.next()){
 				long recordToReloadId = getRecordsToReloadRS.getLong("id");
 				String cloudLibraryId = getRecordsToReloadRS.getString("identifier");
-				//Regroup the record
 				getItemDetailsForRecordStmt.setString(1, cloudLibraryId);
 				ResultSet getItemDetailsForRecordRS = getItemDetailsForRecordStmt.executeQuery();
-				if (getItemDetailsForRecordRS.next()){
-//					String title = getItemDetailsForRecordRS.getString("title");
-//					String subTitle = getItemDetailsForRecordRS.getString("subTitle");
-//					String author = getItemDetailsForRecordRS.getString("author");
-//					String format = getItemDetailsForRecordRS.getString("format");
-//					RecordIdentifier primaryIdentifier = new RecordIdentifier("cloud_library", cloudLibraryId);
 
-					// Get the raw MARC response
+				// Regroup the record.
+				if (getItemDetailsForRecordRS.next()){
 					String rawResponse = getItemDetailsForRecordRS.getString("rawResponse");
 
 					if (rawResponse != null && !rawResponse.isEmpty()) {
-						// Parse the raw MARC response string into a Record object
+						// Parse the raw MARC response string into a Record object.
 						MarcReader reader = new MarcStreamReader(new ByteArrayInputStream(rawResponse.getBytes(StandardCharsets.UTF_8)));
 						if (reader.hasNext()) {
 							Record marcRecord = reader.next();
-							// Use the dedicated groupCloudLibraryRecord method
 							String groupedWorkId = getRecordGroupingProcessor().groupCloudLibraryRecord(cloudLibraryId, marcRecord);
-							//Reindex the record
+							// Reindex the record.
 							getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
 						} else {
-							logEntry.incErrors("Could not parse MARC data for Cloud Library record to reload " + cloudLibraryId + ".");
+							logEntry.incErrors("Could not parse MARC data for CloudLibrary record to reload " + cloudLibraryId + ".");
 						}
 					} else {
-						// Handle cases where rawResponse might be null or empty
-						logEntry.incErrors("Missing rawResponse data for Cloud Library record to reload " + cloudLibraryId + ".");
+						logEntry.incErrors("Missing rawResponse data for CloudLibrary record to reload " + cloudLibraryId + ".");
 					}
 
-//					org.marc4j.marc.Record cloudLibraryRecord = getGroupedWorkIndexer().loadMarcRecordFromDatabase("cloud_library", cloudLibraryId, logEntry);
-//					if (cloudLibraryRecord != null) {
-//						logger.error("CloudLibrary record is not null!");
-//						String primaryLanguage = getRecordGroupingProcessor().getLanguageBasedOnMarcRecord(cloudLibraryRecord);
-//
-//						String groupedWorkId = getRecordGroupingProcessor().processRecord(primaryIdentifier, title, subTitle, author, format, primaryLanguage, true);
-//						//Reindex the record
-//						getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
-//					}else{
-//						logger.error("CloudLibrary record is null!");
-//						RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork("cloud_library", cloudLibraryId);
-//						if (result.reindexWork) {
-//							getGroupedWorkIndexer().processGroupedWork(result.permanentId);
-//							logger.error("CloudLibrary record is null and has been reindexed!");
-//						} else if (result.deleteWork) {
-//							//Delete the work from solr and the database
-//							getGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
-//							logger.error("CloudLibrary record is null and has been deleted!");
-//						}
-//					}
-
-					markRecordToReloadAsProcessedStmt.setLong(1, recordToReloadId);
-					markRecordToReloadAsProcessedStmt.executeUpdate();
-					numRecordsToReloadProcessed++;
-				}else{
-					logEntry.incErrors("Could not get details for record to reload " + cloudLibraryId);
+                } else {
+					logEntry.incErrors("Could not get details for record to reload " + cloudLibraryId + ", as it has likely been deleted.");
 					RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork("cloud_library", cloudLibraryId);
 					if (result.reindexWork) {
 						getGroupedWorkIndexer().processGroupedWork(result.permanentId);
-						logger.error("CloudLibrary record is null and has been reindexed!");
 					} else if (result.deleteWork) {
-						//Delete the work from solr and the database
+						// Delete the work from Solr and the database.
 						getGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
-						logger.error("CloudLibrary record is null and has been deleted!");
 					}
-				}
-				getItemDetailsForRecordRS.close();
+
+                }
+                markRecordToReloadAsProcessedStmt.setLong(1, recordToReloadId);
+                markRecordToReloadAsProcessedStmt.executeUpdate();
+                numRecordsToReloadProcessed++;
+                getItemDetailsForRecordRS.close();
 			}
 			if (numRecordsToReloadProcessed > 0){
 				logEntry.addNote("Regrouped " + numRecordsToReloadProcessed + " records marked for reprocessing");
 			}
 			getRecordsToReloadRS.close();
-		}catch (Exception e){
+		} catch (Exception e){
 			logEntry.incErrors("Error processing records to reload ", e);
 		}
 	}
