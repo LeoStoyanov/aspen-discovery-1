@@ -430,35 +430,16 @@ public class CloudLibraryExporter {
 		try {
 			PreparedStatement getRecordsToReloadStmt = aspenConn.prepareStatement("SELECT * FROM record_identifiers_to_reload WHERE processed = 0 AND type='cloud_library'", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			PreparedStatement markRecordToReloadAsProcessedStmt = aspenConn.prepareStatement("UPDATE record_identifiers_to_reload SET processed = 1 WHERE id = ?");
-			PreparedStatement getItemDetailsForRecordStmt = aspenConn.prepareStatement("SELECT rawResponse FROM cloud_library_title WHERE cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 
 			ResultSet getRecordsToReloadRS = getRecordsToReloadStmt.executeQuery();
 			int numRecordsToReloadProcessed = 0;
 			while (getRecordsToReloadRS.next()){
 				long recordToReloadId = getRecordsToReloadRS.getLong("id");
 				String cloudLibraryId = getRecordsToReloadRS.getString("identifier");
-				getItemDetailsForRecordStmt.setString(1, cloudLibraryId);
-				ResultSet getItemDetailsForRecordRS = getItemDetailsForRecordStmt.executeQuery();
-
 				// Regroup the record.
-				if (getItemDetailsForRecordRS.next()){
-					String rawResponse = getItemDetailsForRecordRS.getString("rawResponse");
-
-					if (rawResponse != null && !rawResponse.isEmpty()) {
-						// Parse the raw MARC response string into a Record object.
-						MarcReader reader = new MarcStreamReader(new ByteArrayInputStream(rawResponse.getBytes(StandardCharsets.UTF_8)));
-						if (reader.hasNext()) {
-							Record marcRecord = reader.next();
-							String groupedWorkId = getRecordGroupingProcessor().groupCloudLibraryRecord(cloudLibraryId, marcRecord);
-							// Reindex the record.
-							getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
-						} else {
-							logEntry.incErrors("Could not parse MARC data for CloudLibrary record to reload " + cloudLibraryId + ".");
-						}
-					} else {
-						logEntry.incErrors("Missing rawResponse data for CloudLibrary record to reload " + cloudLibraryId + ".");
-					}
-
+				String groupedWorkId = getRecordGroupingProcessor().groupCloudLibraryRecord(cloudLibraryId);
+				if (groupedWorkId != null) {
+					getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
                 } else {
 					logEntry.incErrors("Could not get details for record to reload " + cloudLibraryId + ", as it has likely been deleted.");
 					RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork("cloud_library", cloudLibraryId);
@@ -473,10 +454,9 @@ public class CloudLibraryExporter {
                 markRecordToReloadAsProcessedStmt.setLong(1, recordToReloadId);
                 markRecordToReloadAsProcessedStmt.executeUpdate();
                 numRecordsToReloadProcessed++;
-                getItemDetailsForRecordRS.close();
 			}
 			if (numRecordsToReloadProcessed > 0){
-				logEntry.addNote("Regrouped " + numRecordsToReloadProcessed + " records marked for reprocessing");
+				logEntry.addNote("Regrouped " + numRecordsToReloadProcessed + " records marked for reprocessing.");
 			}
 			getRecordsToReloadRS.close();
 		} catch (Exception e){

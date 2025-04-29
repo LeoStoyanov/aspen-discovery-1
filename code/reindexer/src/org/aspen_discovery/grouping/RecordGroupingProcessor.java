@@ -10,8 +10,11 @@ import org.aspen_discovery.format_classification.FormatInfo;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.marc4j.MarcReader;
+import org.marc4j.MarcStreamReader;
 import org.marc4j.marc.*;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
@@ -56,6 +59,7 @@ public class RecordGroupingProcessor {
 
 	private PreparedStatement getAxis360DetailsForRecordStmt;
 	private PreparedStatement getCloudLibraryDetailsForRecordStmt;
+	private PreparedStatement getCloudLibraryRecordStmt;
 	private PreparedStatement getHooplaRecordStmt;
 	private PreparedStatement getPalaceProjectRecordStmt;
 
@@ -124,6 +128,7 @@ public class RecordGroupingProcessor {
 
 			getAxis360DetailsForRecordStmt.close();
 			getCloudLibraryDetailsForRecordStmt.close();
+			getCloudLibraryRecordStmt.close();
 			getHooplaRecordStmt.close();
 			getPalaceProjectRecordStmt.close();
 			getProductIdForPalaceProjectIdStmt.close();
@@ -240,7 +245,8 @@ public class RecordGroupingProcessor {
 			markWorkAsNeedingReindexStmt = dbConnection.prepareStatement("INSERT into grouped_work_scheduled_index (permanent_id, indexAfter) VALUES (?, ?)");
 
 			getAxis360DetailsForRecordStmt = dbConnection.prepareStatement("SELECT title, subtitle, primaryAuthor, formatType, rawResponse from axis360_title where axis360Id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			getCloudLibraryDetailsForRecordStmt =  dbConnection.prepareStatement("SELECT title, subTitle, author, format from cloud_library_title where cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			getCloudLibraryDetailsForRecordStmt =  dbConnection.prepareStatement("SELECT title, subTitle, author, format FROM cloud_library_title WHERE cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			getCloudLibraryRecordStmt = dbConnection.prepareStatement("SELECT rawResponse FROM cloud_library_title WHERE cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getHooplaRecordStmt = dbConnection.prepareStatement("SELECT UNCOMPRESS(rawResponse) as rawResponse from hoopla_export where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getPalaceProjectRecordStmt = dbConnection.prepareStatement("SELECT UNCOMPRESS(rawResponse) as rawResponse from palace_project_title where id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getProductIdForPalaceProjectIdStmt = dbConnection.prepareStatement("SELECT id from palace_project_title where palaceProjectId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
@@ -869,6 +875,33 @@ public class RecordGroupingProcessor {
 			}
 		}
 		return processRecord(primaryIdentifier, title, subtitle, primaryAuthor, formatType, language, true);
+	}
+
+	public String groupCloudLibraryRecord(String cloudLibraryId) {
+		try {
+			getCloudLibraryRecordStmt.setString(1, cloudLibraryId);
+			ResultSet cloudLibraryRS = getCloudLibraryRecordStmt.executeQuery();
+			Record cloudLibraryRecord;
+			if (cloudLibraryRS.next()) {
+				String rawResponse = cloudLibraryRS.getString("rawResponse");
+				if (rawResponse != null && !rawResponse.isEmpty()) {
+					try {
+						cloudLibraryRecord = MarcUtil.readJsonFormattedRecord(cloudLibraryId, rawResponse, logEntry);
+						return groupCloudLibraryRecord(cloudLibraryId, cloudLibraryRecord);
+					} catch (Exception e) {
+						logEntry.incErrors("Could not parse MARC data for CloudLibrary record " + cloudLibraryId + ".", e);
+					}
+				} else {
+					logEntry.incErrors("No rawResponse data found for CloudLibrary record " + cloudLibraryId + ".");
+				}
+			} else {
+				logEntry.incErrors("Could not find CloudLibrary record " + cloudLibraryId + " in the database.");
+			}
+		} catch (Exception e) {
+			logger.error("Error grouping CloudLibrary record " + cloudLibraryId, e);
+			logEntry.incErrors("Error grouping CloudLibrary record " + cloudLibraryId, e);
+		}
+		return null;
 	}
 
 	public String groupCloudLibraryRecord(String cloudLibraryId, org.marc4j.marc.Record cloudLibraryRecord){
