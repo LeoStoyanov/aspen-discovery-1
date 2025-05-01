@@ -6,6 +6,7 @@ import com.turning_leaf_technologies.marc.MarcUtil;
 import org.aspen_discovery.reindexer.GroupedWorkIndexer;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -19,6 +20,7 @@ import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 
 import com.turning_leaf_technologies.strings.AspenStringUtils;
+import com.turning_leaf_technologies.util.CompressionUtils;
 import org.apache.logging.log4j.Logger;
 import org.marc4j.MarcStreamWriter;
 import org.marc4j.MarcWriter;
@@ -70,18 +72,18 @@ class CloudLibraryMarcHandler extends DefaultHandler {
 			updateCloudLibraryItemStmt = dbConn.prepareStatement(
 					"INSERT INTO cloud_library_title " +
 							"(cloudLibraryId, title, subTitle, author, format, targetAudience, rawChecksum, rawResponse, lastChange, dateFirstDetected) " +
-							"VALUES (?, ?, ?, ?, ?, ?, ?, COMPRESS(?), ?, ?) " +
+							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
 							"ON DUPLICATE KEY UPDATE title = VALUES(title), subTitle = VALUES(subTitle), author = VALUES(author), format = VALUES(format), " +
-							"targetAudience = VALUES(targetAudience), rawChecksum = VALUES(rawChecksum), rawResponse = COMPRESS(VALUES(rawResponse)), lastChange = VALUES(lastChange), deleted = 0");
+							"targetAudience = VALUES(targetAudience), rawChecksum = VALUES(rawChecksum), rawResponse = VALUES(rawResponse), lastChange = VALUES(lastChange), deleted = 0");
 			getExistingCloudLibraryAvailabilityStmt = dbConn.prepareStatement("SELECT id, rawChecksum, typeRawChecksum from cloud_library_availability WHERE cloudLibraryId = ?");
 			updateCloudLibraryAvailabilityStmt = dbConn.prepareStatement(
 					"INSERT INTO cloud_library_availability " +
 							"(cloudLibraryId, settingId, totalCopies, sharedCopies, totalLoanCopies, totalHoldCopies, sharedLoanCopies, rawChecksum, rawResponse, lastChange, availabilityType, typeRawChecksum, typeRawResponse) " +
-							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, COMPRESS(?), ?, ?, ?, COMPRESS(?)) " +
+							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
 							"ON DUPLICATE KEY UPDATE totalCopies = VALUES(totalCopies), sharedCopies = VALUES(sharedCopies), " +
 							"totalLoanCopies = VALUES(totalLoanCopies), totalHoldCopies = VALUES(totalHoldCopies), sharedLoanCopies = VALUES(sharedLoanCopies), " +
-							"rawChecksum = VALUES(rawChecksum), rawResponse = COMPRESS(VALUES(rawResponse)), lastChange = VALUES(lastChange), " +
-							"availabilityType = VALUES(availabilityType), typeRawChecksum = VALUES(typeRawChecksum), typeRawResponse = COMPRESS(VALUES(typeRawResponse))");
+							"rawChecksum = VALUES(rawChecksum), rawResponse = VALUES(rawResponse), lastChange = VALUES(lastChange), " +
+							"availabilityType = VALUES(availabilityType), typeRawChecksum = VALUES(typeRawChecksum), typeRawResponse = VALUES(typeRawResponse)");
 		} catch (Exception e) {
 			logger.error("Error connecting to aspen database", e);
 			System.exit(1);
@@ -343,7 +345,16 @@ class CloudLibraryMarcHandler extends DefaultHandler {
 				updateCloudLibraryItemStmt.setString(5, format);
 				updateCloudLibraryItemStmt.setString(6, targetAudience);
 				updateCloudLibraryItemStmt.setLong(7, itemChecksum);
-				updateCloudLibraryItemStmt.setString(8, marcAsString);
+
+				byte[] compressedData;
+				try {
+					compressedData = CompressionUtils.compress(marcAsString);
+				} catch (IOException e) {
+					logEntry.incErrors("Error compressing data for " + cloudLibraryId, e);
+					compressedData = marcAsString.getBytes(StandardCharsets.UTF_8);
+				}
+
+				updateCloudLibraryItemStmt.setBytes(8, compressedData);
 				updateCloudLibraryItemStmt.setLong(9, startTimeForLogging);
 				updateCloudLibraryItemStmt.setLong(10, startTimeForLogging);
 				int result = updateCloudLibraryItemStmt.executeUpdate();
@@ -367,11 +378,29 @@ class CloudLibraryMarcHandler extends DefaultHandler {
 				updateCloudLibraryAvailabilityStmt.setLong(6, availability.getTotalHoldCopies());
 				updateCloudLibraryAvailabilityStmt.setLong(7, availability.getSharedLoanCopies());
 				updateCloudLibraryAvailabilityStmt.setLong(8, availabilityChecksum);
-				updateCloudLibraryAvailabilityStmt.setString(9, rawAvailabilityResponse);
+
+				byte[] compressedAvailabilityData;
+				try {
+					compressedAvailabilityData = CompressionUtils.compress(rawAvailabilityResponse);
+				} catch (IOException e) {
+					logEntry.incErrors("Error compressing availability data for " + cloudLibraryId, e);
+					compressedAvailabilityData = rawAvailabilityResponse.getBytes(StandardCharsets.UTF_8);
+				}
+
+				updateCloudLibraryAvailabilityStmt.setBytes(9, compressedAvailabilityData);
 				updateCloudLibraryAvailabilityStmt.setLong(10, startTimeForLogging);
 				updateCloudLibraryAvailabilityStmt.setLong(11, availabilityType.getAvailabilityType());
 				updateCloudLibraryAvailabilityStmt.setLong(12, availabilityTypeChecksum);
-				updateCloudLibraryAvailabilityStmt.setString(13, rawAvailabilityTypeResponse);
+
+				byte[] compressedTypeData;
+				try {
+					compressedTypeData = CompressionUtils.compress(rawAvailabilityTypeResponse);
+				} catch (IOException e) {
+					logEntry.incErrors("Error compressing availability type data for " + cloudLibraryId, e);
+					compressedTypeData = rawAvailabilityTypeResponse.getBytes(StandardCharsets.UTF_8);
+				}
+
+				updateCloudLibraryAvailabilityStmt.setBytes(13, compressedTypeData);
 				updateCloudLibraryAvailabilityStmt.executeUpdate();
 			} catch (SQLException e) {
 				logEntry.incErrors("Error saving availability", e);

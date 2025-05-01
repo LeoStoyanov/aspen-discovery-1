@@ -5,13 +5,14 @@ import com.turning_leaf_technologies.indexing.RecordIdentifier;
 import com.turning_leaf_technologies.logging.BaseIndexingLogEntry;
 import com.turning_leaf_technologies.marc.MarcUtil;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
+import com.turning_leaf_technologies.util.CompressionUtils;
 import org.apache.logging.log4j.Logger;
 import org.aspen_discovery.format_classification.FormatInfo;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.marc4j.MarcPermissiveStreamReader;
 import org.marc4j.MarcReader;
-import org.marc4j.MarcStreamReader;
 import org.marc4j.marc.*;
 
 import java.io.ByteArrayInputStream;
@@ -883,11 +884,37 @@ public class RecordGroupingProcessor {
 			ResultSet cloudLibraryRS = getCloudLibraryRecordStmt.executeQuery();
 			Record cloudLibraryRecord;
 			if (cloudLibraryRS.next()) {
-				String rawResponse = cloudLibraryRS.getString("rawResponse");
-				if (rawResponse != null && !rawResponse.isEmpty()) {
+				byte[] rawResponseBytes = cloudLibraryRS.getBytes("rawResponse");
+				if (rawResponseBytes != null && rawResponseBytes.length > 0) {
 					try {
-						cloudLibraryRecord = MarcUtil.readJsonFormattedRecord(cloudLibraryId, rawResponse, logEntry);
-						return groupCloudLibraryRecord(cloudLibraryId, cloudLibraryRecord);
+
+						// Decompress the raw response using Java GZIP.
+						byte[] compressedData = cloudLibraryRS.getBytes("rawResponse");
+						String rawResponse = "";
+						if (compressedData != null && compressedData.length > 0) {
+							try {
+								// Check if the data is actually compressed
+								if (CompressionUtils.isCompressed(compressedData)) {
+									rawResponse = CompressionUtils.decompress(compressedData);
+								} else {
+									// Handle uncompressed data
+									rawResponse = new String(compressedData, StandardCharsets.UTF_8);
+								}
+							} catch (IOException e) {
+								logEntry.incErrors("Error decompressing CloudLibrary data for " + cloudLibraryId, e);
+								// Fallback to treating as uncompressed
+								rawResponse = new String(compressedData, StandardCharsets.UTF_8);
+							}
+						}
+
+						MarcReader reader = new MarcPermissiveStreamReader(new ByteArrayInputStream(rawResponse.getBytes(StandardCharsets.UTF_8)), true, false, "UTF-8");
+						Record marcRecord;
+						if (reader.hasNext()) {
+							marcRecord = reader.next();
+							return groupCloudLibraryRecord(cloudLibraryId, marcRecord);
+						} else {
+							logEntry.incErrors("Error parsing MARC record for CloudLibrary record " + cloudLibraryId);
+						}
 					} catch (Exception e) {
 						logEntry.incErrors("Could not parse MARC data for CloudLibrary record " + cloudLibraryId + ".", e);
 					}

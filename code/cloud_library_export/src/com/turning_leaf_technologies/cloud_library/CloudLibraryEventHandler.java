@@ -5,11 +5,14 @@ import org.aspen_discovery.reindexer.GroupedWorkIndexer;
 import org.apache.logging.log4j.Logger;
 import org.xml.sax.helpers.DefaultHandler;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.zip.CRC32;
+import com.turning_leaf_technologies.util.CompressionUtils;
 
 class CloudLibraryEventHandler extends DefaultHandler {
 	private final CloudLibraryExporter exporter;
@@ -40,10 +43,10 @@ class CloudLibraryEventHandler extends DefaultHandler {
 			updateCloudLibraryAvailabilityStmt = aspenConn.prepareStatement(
 					"INSERT INTO cloud_library_availability " +
 							"(cloudLibraryId, settingId, totalCopies, sharedCopies, totalLoanCopies, totalHoldCopies, sharedLoanCopies, rawChecksum, rawResponse, lastChange) " +
-							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, COMPRESS(?), ?) " +
+							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
 							"ON DUPLICATE KEY UPDATE totalCopies = VALUES(totalCopies), sharedCopies = VALUES(sharedCopies), " +
 							"totalLoanCopies = VALUES(totalLoanCopies), totalHoldCopies = VALUES(totalHoldCopies), sharedLoanCopies = VALUES(sharedLoanCopies), " +
-							"rawChecksum = VALUES(rawChecksum), rawResponse = COMPRESS(VALUES(rawResponse)), lastChange = VALUES(lastChange)");
+							"rawChecksum = VALUES(rawChecksum), rawResponse = VALUES(rawResponse), lastChange = VALUES(lastChange)");
 		} catch (Exception e) {
 			logger.error("Error connecting to aspen database", e);
 			System.exit(1);
@@ -106,7 +109,17 @@ class CloudLibraryEventHandler extends DefaultHandler {
 				updateCloudLibraryAvailabilityStmt.setLong(6, availability.getTotalHoldCopies());
 				updateCloudLibraryAvailabilityStmt.setLong(7, availability.getSharedLoanCopies());
 				updateCloudLibraryAvailabilityStmt.setLong(8, availabilityChecksum);
-				updateCloudLibraryAvailabilityStmt.setString(9, rawAvailabilityResponse);
+				// Compress the data using GZIP instead of SQL COMPRESS
+				byte[] compressedData;
+				try {
+					compressedData = CompressionUtils.compress(rawAvailabilityResponse);
+				} catch (IOException e) {
+					logEntry.incErrors("Error compressing data for " + cloudLibraryId, e);
+					// Fallback to uncompressed if compression fails.
+					compressedData = rawAvailabilityResponse.getBytes(StandardCharsets.UTF_8);
+				}
+
+				updateCloudLibraryAvailabilityStmt.setBytes(9, compressedData);
 				updateCloudLibraryAvailabilityStmt.setLong(10, startTimeForLogging);
 				updateCloudLibraryAvailabilityStmt.executeUpdate();
 			} catch (SQLException e) {
