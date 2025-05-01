@@ -914,7 +914,6 @@ public class RecordGroupingProcessor {
 				String author = getItemDetailsForRecordRS.getString("author");
 				String format = getItemDetailsForRecordRS.getString("format");
 				RecordIdentifier primaryIdentifier = new RecordIdentifier("cloud_library", cloudLibraryId);
-
 				String primaryLanguage = getLanguageBasedOnMarcRecord(cloudLibraryRecord);
 
 				return processRecord(primaryIdentifier, title, subTitle, author, format, primaryLanguage, true);

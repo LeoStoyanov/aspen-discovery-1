@@ -439,6 +439,7 @@ public class CloudLibraryExporter {
 				// Regroup the record.
 				String groupedWorkId = getRecordGroupingProcessor().groupCloudLibraryRecord(cloudLibraryId);
 				if (groupedWorkId != null) {
+					logEntry.incRecordsRegrouped();
 					getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
                 } else {
 					logEntry.incErrors("Could not get details for record to reload " + cloudLibraryId + ", as it has likely been deleted.");
@@ -447,6 +448,7 @@ public class CloudLibraryExporter {
 						getGroupedWorkIndexer().processGroupedWork(result.permanentId);
 					} else if (result.deleteWork) {
 						// Delete the work from Solr and the database.
+						logEntry.incDeleted();
 						getGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
 					}
 

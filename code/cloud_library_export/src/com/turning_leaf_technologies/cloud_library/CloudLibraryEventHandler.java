@@ -40,10 +40,10 @@ class CloudLibraryEventHandler extends DefaultHandler {
 			updateCloudLibraryAvailabilityStmt = aspenConn.prepareStatement(
 					"INSERT INTO cloud_library_availability " +
 							"(cloudLibraryId, settingId, totalCopies, sharedCopies, totalLoanCopies, totalHoldCopies, sharedLoanCopies, rawChecksum, rawResponse, lastChange) " +
-							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, COMPRESS(?), ?) " +
 							"ON DUPLICATE KEY UPDATE totalCopies = VALUES(totalCopies), sharedCopies = VALUES(sharedCopies), " +
 							"totalLoanCopies = VALUES(totalLoanCopies), totalHoldCopies = VALUES(totalHoldCopies), sharedLoanCopies = VALUES(sharedLoanCopies), " +
-							"rawChecksum = VALUES(rawChecksum), rawResponse = VALUES(rawResponse), lastChange = VALUES(lastChange)");
+							"rawChecksum = VALUES(rawChecksum), rawResponse = COMPRESS(VALUES(rawResponse)), lastChange = VALUES(lastChange)");
 		} catch (Exception e) {
 			logger.error("Error connecting to aspen database", e);
 			System.exit(1);

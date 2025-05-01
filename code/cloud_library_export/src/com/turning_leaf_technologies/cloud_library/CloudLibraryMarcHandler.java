@@ -70,18 +70,18 @@ class CloudLibraryMarcHandler extends DefaultHandler {
 			updateCloudLibraryItemStmt = dbConn.prepareStatement(
 					"INSERT INTO cloud_library_title " +
 							"(cloudLibraryId, title, subTitle, author, format, targetAudience, rawChecksum, rawResponse, lastChange, dateFirstDetected) " +
-							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+							"VALUES (?, ?, ?, ?, ?, ?, ?, COMPRESS(?), ?, ?) " +
 							"ON DUPLICATE KEY UPDATE title = VALUES(title), subTitle = VALUES(subTitle), author = VALUES(author), format = VALUES(format), " +
-							"targetAudience = VALUES(targetAudience), rawChecksum = VALUES(rawChecksum), rawResponse = VALUES(rawResponse), lastChange = VALUES(lastChange), deleted = 0");
+							"targetAudience = VALUES(targetAudience), rawChecksum = VALUES(rawChecksum), rawResponse = COMPRESS(VALUES(rawResponse)), lastChange = VALUES(lastChange), deleted = 0");
 			getExistingCloudLibraryAvailabilityStmt = dbConn.prepareStatement("SELECT id, rawChecksum, typeRawChecksum from cloud_library_availability WHERE cloudLibraryId = ?");
 			updateCloudLibraryAvailabilityStmt = dbConn.prepareStatement(
 					"INSERT INTO cloud_library_availability " +
 							"(cloudLibraryId, settingId, totalCopies, sharedCopies, totalLoanCopies, totalHoldCopies, sharedLoanCopies, rawChecksum, rawResponse, lastChange, availabilityType, typeRawChecksum, typeRawResponse) " +
-							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+							"VALUES (?, ?, ?, ?, ?, ?, ?, ?, COMPRESS(?), ?, ?, ?, COMPRESS(?)) " +
 							"ON DUPLICATE KEY UPDATE totalCopies = VALUES(totalCopies), sharedCopies = VALUES(sharedCopies), " +
 							"totalLoanCopies = VALUES(totalLoanCopies), totalHoldCopies = VALUES(totalHoldCopies), sharedLoanCopies = VALUES(sharedLoanCopies), " +
-							"rawChecksum = VALUES(rawChecksum), rawResponse = VALUES(rawResponse), lastChange = VALUES(lastChange), " +
-							"availabilityType = VALUES(availabilityType), typeRawChecksum = VALUES(typeRawChecksum), typeRawResponse = VALUES(typeRawResponse)");
+							"rawChecksum = VALUES(rawChecksum), rawResponse = COMPRESS(VALUES(rawResponse)), lastChange = VALUES(lastChange), " +
+							"availabilityType = VALUES(availabilityType), typeRawChecksum = VALUES(typeRawChecksum), typeRawResponse = COMPRESS(VALUES(typeRawResponse))");
 		} catch (Exception e) {
 			logger.error("Error connecting to aspen database", e);
 			System.exit(1);
