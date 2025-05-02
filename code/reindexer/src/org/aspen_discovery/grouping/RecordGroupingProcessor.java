@@ -881,13 +881,18 @@ public class RecordGroupingProcessor {
 		try {
 			getCloudLibraryRecordStmt.setString(1, cloudLibraryId);
 			ResultSet cloudLibraryRS = getCloudLibraryRecordStmt.executeQuery();
-			Record cloudLibraryRecord;
 			if (cloudLibraryRS.next()) {
 				String rawResponse = cloudLibraryRS.getString("rawResponse");
 				if (rawResponse != null && !rawResponse.isEmpty()) {
 					try {
-						cloudLibraryRecord = MarcUtil.readJsonFormattedRecord(cloudLibraryId, rawResponse, logEntry);
-						return groupCloudLibraryRecord(cloudLibraryId, cloudLibraryRecord);
+						MarcReader reader = new MarcPermissiveStreamReader(new ByteArrayInputStream(rawResponse.getBytes(StandardCharsets.UTF_8)), true, false, "UTF-8");
+						Record marcRecord;
+						if (reader.hasNext()) {
+							marcRecord = reader.next();
+							return groupCloudLibraryRecord(cloudLibraryId, marcRecord);
+						} else {
+							logEntry.incErrors("Error parsing MARC record for CloudLibrary record " + cloudLibraryId + ".");
+						}
 					} catch (Exception e) {
 						logEntry.incErrors("Could not parse MARC data for CloudLibrary record " + cloudLibraryId + ":", e);
 					}
