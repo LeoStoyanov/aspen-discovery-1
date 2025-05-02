@@ -5,7 +5,6 @@ import com.turning_leaf_technologies.indexing.RecordIdentifier;
 import com.turning_leaf_technologies.logging.BaseIndexingLogEntry;
 import com.turning_leaf_technologies.marc.MarcUtil;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
-import com.turning_leaf_technologies.util.CompressionUtils;
 import org.apache.logging.log4j.Logger;
 import org.aspen_discovery.format_classification.FormatInfo;
 import org.json.JSONArray;
@@ -884,39 +883,13 @@ public class RecordGroupingProcessor {
 			ResultSet cloudLibraryRS = getCloudLibraryRecordStmt.executeQuery();
 			Record cloudLibraryRecord;
 			if (cloudLibraryRS.next()) {
-				byte[] rawResponseBytes = cloudLibraryRS.getBytes("rawResponse");
-				if (rawResponseBytes != null && rawResponseBytes.length > 0) {
+				String rawResponse = cloudLibraryRS.getString("rawResponse");
+				if (rawResponse != null && !rawResponse.isEmpty()) {
 					try {
-
-						// Decompress the raw response using Java GZIP.
-						byte[] compressedData = cloudLibraryRS.getBytes("rawResponse");
-						String rawResponse = "";
-						if (compressedData != null && compressedData.length > 0) {
-							try {
-								// Check if the data is actually compressed
-								if (CompressionUtils.isCompressed(compressedData)) {
-									rawResponse = CompressionUtils.decompress(compressedData);
-								} else {
-									// Handle uncompressed data
-									rawResponse = new String(compressedData, StandardCharsets.UTF_8);
-								}
-							} catch (IOException e) {
-								logEntry.incErrors("Error decompressing CloudLibrary data for " + cloudLibraryId, e);
-								// Fallback to treating as uncompressed
-								rawResponse = new String(compressedData, StandardCharsets.UTF_8);
-							}
-						}
-
-						MarcReader reader = new MarcPermissiveStreamReader(new ByteArrayInputStream(rawResponse.getBytes(StandardCharsets.UTF_8)), true, false, "UTF-8");
-						Record marcRecord;
-						if (reader.hasNext()) {
-							marcRecord = reader.next();
-							return groupCloudLibraryRecord(cloudLibraryId, marcRecord);
-						} else {
-							logEntry.incErrors("Error parsing MARC record for CloudLibrary record " + cloudLibraryId);
-						}
+						cloudLibraryRecord = MarcUtil.readJsonFormattedRecord(cloudLibraryId, rawResponse, logEntry);
+						return groupCloudLibraryRecord(cloudLibraryId, cloudLibraryRecord);
 					} catch (Exception e) {
-						logEntry.incErrors("Could not parse MARC data for CloudLibrary record " + cloudLibraryId + ".", e);
+						logEntry.incErrors("Could not parse MARC data for CloudLibrary record " + cloudLibraryId + ":", e);
 					}
 				} else {
 					logEntry.incErrors("No rawResponse data found for CloudLibrary record " + cloudLibraryId + ".");
@@ -925,8 +898,8 @@ public class RecordGroupingProcessor {
 				logEntry.incErrors("Could not find CloudLibrary record " + cloudLibraryId + " in the database.");
 			}
 		} catch (Exception e) {
-			logger.error("Error grouping CloudLibrary record " + cloudLibraryId, e);
-			logEntry.incErrors("Error grouping CloudLibrary record " + cloudLibraryId, e);
+			logger.error("Error grouping CloudLibrary record " + (cloudLibraryId != null ? cloudLibraryId : "NULL") + ":", e);
+			logEntry.incErrors("Error grouping CloudLibrary record " + cloudLibraryId + ":", e);
 		}
 		return null;
 	}

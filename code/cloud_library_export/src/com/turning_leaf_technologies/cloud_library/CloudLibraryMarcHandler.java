@@ -6,7 +6,6 @@ import com.turning_leaf_technologies.marc.MarcUtil;
 import org.aspen_discovery.reindexer.GroupedWorkIndexer;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -20,7 +19,6 @@ import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 
 import com.turning_leaf_technologies.strings.AspenStringUtils;
-import com.turning_leaf_technologies.util.CompressionUtils;
 import org.apache.logging.log4j.Logger;
 import org.marc4j.MarcStreamWriter;
 import org.marc4j.MarcWriter;
@@ -345,16 +343,7 @@ class CloudLibraryMarcHandler extends DefaultHandler {
 				updateCloudLibraryItemStmt.setString(5, format);
 				updateCloudLibraryItemStmt.setString(6, targetAudience);
 				updateCloudLibraryItemStmt.setLong(7, itemChecksum);
-
-				byte[] compressedData;
-				try {
-					compressedData = CompressionUtils.compress(marcAsString);
-				} catch (IOException e) {
-					logEntry.incErrors("Error compressing data for " + cloudLibraryId, e);
-					compressedData = marcAsString.getBytes(StandardCharsets.UTF_8);
-				}
-
-				updateCloudLibraryItemStmt.setBytes(8, compressedData);
+				updateCloudLibraryItemStmt.setString(8, marcAsString);
 				updateCloudLibraryItemStmt.setLong(9, startTimeForLogging);
 				updateCloudLibraryItemStmt.setLong(10, startTimeForLogging);
 				int result = updateCloudLibraryItemStmt.executeUpdate();
@@ -378,29 +367,11 @@ class CloudLibraryMarcHandler extends DefaultHandler {
 				updateCloudLibraryAvailabilityStmt.setLong(6, availability.getTotalHoldCopies());
 				updateCloudLibraryAvailabilityStmt.setLong(7, availability.getSharedLoanCopies());
 				updateCloudLibraryAvailabilityStmt.setLong(8, availabilityChecksum);
-
-				byte[] compressedAvailabilityData;
-				try {
-					compressedAvailabilityData = CompressionUtils.compress(rawAvailabilityResponse);
-				} catch (IOException e) {
-					logEntry.incErrors("Error compressing availability data for " + cloudLibraryId, e);
-					compressedAvailabilityData = rawAvailabilityResponse.getBytes(StandardCharsets.UTF_8);
-				}
-
-				updateCloudLibraryAvailabilityStmt.setBytes(9, compressedAvailabilityData);
+				updateCloudLibraryAvailabilityStmt.setString(9, rawAvailabilityResponse);
 				updateCloudLibraryAvailabilityStmt.setLong(10, startTimeForLogging);
 				updateCloudLibraryAvailabilityStmt.setLong(11, availabilityType.getAvailabilityType());
 				updateCloudLibraryAvailabilityStmt.setLong(12, availabilityTypeChecksum);
-
-				byte[] compressedTypeData;
-				try {
-					compressedTypeData = CompressionUtils.compress(rawAvailabilityTypeResponse);
-				} catch (IOException e) {
-					logEntry.incErrors("Error compressing availability type data for " + cloudLibraryId, e);
-					compressedTypeData = rawAvailabilityTypeResponse.getBytes(StandardCharsets.UTF_8);
-				}
-
-				updateCloudLibraryAvailabilityStmt.setBytes(13, compressedTypeData);
+				updateCloudLibraryAvailabilityStmt.setString(13, rawAvailabilityTypeResponse);
 				updateCloudLibraryAvailabilityStmt.executeUpdate();
 			} catch (SQLException e) {
 				logEntry.incErrors("Error saving availability", e);

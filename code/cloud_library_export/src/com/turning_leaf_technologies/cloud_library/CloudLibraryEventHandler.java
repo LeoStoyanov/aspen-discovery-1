@@ -5,14 +5,11 @@ import org.aspen_discovery.reindexer.GroupedWorkIndexer;
 import org.apache.logging.log4j.Logger;
 import org.xml.sax.helpers.DefaultHandler;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.zip.CRC32;
-import com.turning_leaf_technologies.util.CompressionUtils;
 
 class CloudLibraryEventHandler extends DefaultHandler {
 	private final CloudLibraryExporter exporter;
@@ -109,17 +106,7 @@ class CloudLibraryEventHandler extends DefaultHandler {
 				updateCloudLibraryAvailabilityStmt.setLong(6, availability.getTotalHoldCopies());
 				updateCloudLibraryAvailabilityStmt.setLong(7, availability.getSharedLoanCopies());
 				updateCloudLibraryAvailabilityStmt.setLong(8, availabilityChecksum);
-				// Compress the data using GZIP instead of SQL COMPRESS
-				byte[] compressedData;
-				try {
-					compressedData = CompressionUtils.compress(rawAvailabilityResponse);
-				} catch (IOException e) {
-					logEntry.incErrors("Error compressing data for " + cloudLibraryId, e);
-					// Fallback to uncompressed if compression fails.
-					compressedData = rawAvailabilityResponse.getBytes(StandardCharsets.UTF_8);
-				}
-
-				updateCloudLibraryAvailabilityStmt.setBytes(9, compressedData);
+				updateCloudLibraryAvailabilityStmt.setString(9, rawAvailabilityResponse);
 				updateCloudLibraryAvailabilityStmt.setLong(10, startTimeForLogging);
 				updateCloudLibraryAvailabilityStmt.executeUpdate();
 			} catch (SQLException e) {

@@ -30,40 +30,11 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 	/**
 	 * @return ?File_MARC_Record
 	 */
-	public function getMarcRecord(): ?File_MARC_Record
-	{
+	public function getMarcRecord(): ?File_MARC_Record {
 		if ($this->marcRecord == null) {
-			require_once ROOT_DIR . '/sys/CloudLibrary/CloudLibraryProduct.php';
-			$cloudLibraryTitle = new CloudLibraryProduct();
-			$cloudLibraryTitle->cloudLibraryId = $this->id;
-			if (!$cloudLibraryTitle->find(true)) {
-				return null;
-			}
-
-			$compressedData = $cloudLibraryTitle->rawResponse;
-			if (!$compressedData) {
-				return null;
-			}
-
-			// Check if GZIP compressed.
-			if (ord($compressedData[0]) == 0x1f && ord($compressedData[1]) == 0x8b) {
-				$marcData = gzdecode($compressedData);
-				if ($marcData === false) {
-					AspenError::raiseError(new AspenError("Failed to decompress GZIP data for CloudLibrary record: " . $this->id) . ".");
-					return null;
-				}
-			} else {
-				// Assume uncompressed data.
-				$marcData = $compressedData;
-			}
-
-			// Parse the MARC record.
+			$marcData = $this->cloudLibraryProduct->rawResponse;
 			$marcRecordList = new File_MARC($marcData, File_MARC::SOURCE_STRING);
 			$this->marcRecord = $marcRecordList->next();
-			if (!$this->marcRecord) {
-				AspenError::raiseError(new AspenError("Failed to parse MARC record for CloudLibrary record: " . $this->id . "."));
-				return null;
-			}
 		}
 		return $this->marcRecord;
 	}

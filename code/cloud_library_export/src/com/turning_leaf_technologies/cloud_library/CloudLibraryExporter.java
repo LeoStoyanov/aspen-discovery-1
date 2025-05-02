@@ -27,9 +27,6 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.TimeZone;
-import org.marc4j.MarcReader;
-import org.marc4j.MarcStreamReader;
-import org.marc4j.marc.Record;
 
 public class CloudLibraryExporter {
 	private final String serverName;
@@ -295,8 +292,6 @@ public class CloudLibraryExporter {
 					}
 				}
 			} else {
-				// TODO: Remove later!
-				//logger.error("Received response for single record " + singleRecordId + ": " + response.getMessage());
 				try {
 					SAXParserFactory saxParserFactory = SAXParserFactory.newInstance();
 					SAXParser saxParser = saxParserFactory.newSAXParser();

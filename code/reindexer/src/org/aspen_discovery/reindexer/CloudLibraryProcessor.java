@@ -4,7 +4,6 @@ import com.turning_leaf_technologies.indexing.CloudLibraryScope;
 import com.turning_leaf_technologies.indexing.Scope;
 import com.turning_leaf_technologies.logging.BaseIndexingLogEntry;
 import com.turning_leaf_technologies.marc.MarcUtil;
-import com.turning_leaf_technologies.util.CompressionUtils;
 import org.apache.logging.log4j.Logger;
 import org.marc4j.MarcPermissiveStreamReader;
 import org.marc4j.MarcReader;
@@ -13,7 +12,6 @@ import org.marc4j.marc.DataField;
 import org.marc4j.marc.Subfield;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -31,7 +29,7 @@ class CloudLibraryProcessor extends MarcRecordProcessor {
 
 		try {
 			getProductInfoStmt = dbConn.prepareStatement("SELECT * from cloud_library_title where cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			getAvailabilityStmt = dbConn.prepareStatement("SELECT id, cloudLibraryId, settingId, totalCopies, sharedCopies, totalLoanCopies, totalHoldCopies, sharedLoanCopies, rawChecksum, rawResponse, lastChange, availabilityType, typeRawChecksum, typeRawResponse FROM cloud_library_availability WHERE cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			getAvailabilityStmt = dbConn.prepareStatement("SELECT * FROM cloud_library_availability WHERE cloudLibraryId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 		} catch (SQLException e) {
 			logger.error("Error setting up cloudLibrary processor", e);
 		}
@@ -51,23 +49,7 @@ class CloudLibraryProcessor extends MarcRecordProcessor {
 				RecordInfo cloudLibraryRecord = groupedWork.addRelatedRecord("cloud_library", identifier);
 				cloudLibraryRecord.setRecordIdentifier("cloud_library", identifier);
 
-				byte[] compressedData = productRS.getBytes("rawResponse");
-				String rawMarc = "";
-				if (compressedData != null && compressedData.length > 0) {
-					try {
-						// Check if the data is actually compressed
-						if (CompressionUtils.isCompressed(compressedData)) {
-							rawMarc = CompressionUtils.decompress(compressedData);
-						} else {
-							// Handle uncompressed data
-							rawMarc = new String(compressedData, StandardCharsets.UTF_8);
-						}
-					} catch (IOException e) {
-						logEntry.incErrors("Error decompressing CloudLibrary data for " + identifier, e);
-						// Fallback to treating as uncompressed
-						rawMarc = new String(compressedData, StandardCharsets.UTF_8);
-					}
-				}
+				String rawMarc = productRS.getString("rawResponse");
 
 				MarcReader reader = new MarcPermissiveStreamReader(new ByteArrayInputStream(rawMarc.getBytes(StandardCharsets.UTF_8)), true, false, "UTF-8");
 				String targetAudience = "Adult";
