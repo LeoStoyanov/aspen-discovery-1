@@ -151,7 +151,7 @@ public class CloudLibraryExportMain {
 	}
 
 	private static int extractSingleCloudLibraryRecord(String singleRecordId) {
-		logger.info("Extracting single CloudLibrary record: {}", singleRecordId);
+		logger.info("Extracting single CloudLibrary record: {}.", singleRecordId);
 		int numChanges = 0;
 
 		try {
@@ -165,10 +165,10 @@ public class CloudLibraryExportMain {
 				numChanges += exporter.extractSingleRecord(singleRecordId);
 			}
 			if (numSettings == 0) {
-				logger.error("Unable to find settings for CloudLibrary, please add settings to the database");
+				logger.error("Unable to find settings for CloudLibrary; please add settings to the database.");
 			}
 		} catch (SQLException e) {
-			logger.error("Error loading settings from the database", e);
+			logger.error("Failed to load CloudLibrary settings from the database:", e);
 		}
 
 		return numChanges;

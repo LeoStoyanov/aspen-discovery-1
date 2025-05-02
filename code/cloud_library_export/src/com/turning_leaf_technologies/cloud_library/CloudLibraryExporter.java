@@ -256,17 +256,12 @@ public class CloudLibraryExporter {
 	public int extractSingleRecord(String singleRecordId) {
 		int numChanges = 0;
 
-		//Get a list of all existing records in the database
 		loadExistingTitles(settings.getSettingsId());
 
-		// Log that we're doing a single record extract
 		logEntry.addNote("Extracting single CloudLibrary record: " + singleRecordId);
 		logEntry.saveResults();
 
-		// Create a handler for the MARC records
 		CloudLibraryMarcHandler handler = new CloudLibraryMarcHandler(this, settings.getSettingsId(), existingRecords, true, startTimeForLogging, aspenConn, getRecordGroupingProcessor(), getGroupedWorkIndexer(), logEntry, logger);
-
-		// Call CloudLibrary API to get the specific record
 		String apiPath = "/cirrus/library/" + settings.getLibraryId() + "/data/marc/" + singleRecordId;
 
 		for (int curTry = 1; curTry <= 4; curTry++) {
@@ -300,20 +295,18 @@ public class CloudLibraryExporter {
 					numChanges += handler.getNumDocuments();
 					logEntry.saveResults();
 				} catch (SAXException | ParserConfigurationException | IOException e) {
-					logger.error("Error parsing response", e);
+					logger.error("Error parsing response:", e);
 					logEntry.incErrors("Error parsing response: ", e);
 				}
 				break;
 			}
 		}
 
-		// Get availability for this record
 		CloudLibraryAvailability availability = loadAvailabilityForRecord(singleRecordId);
 		if (availability != null) {
 			numChanges++;
 		}
 
-		// Process records to reload
 		processRecordsToReload(logEntry);
 
 		if (recordGroupingProcessorSingleton != null) {
@@ -328,7 +321,7 @@ public class CloudLibraryExporter {
 			existingRecords = null;
 		}
 
-		logger.info("Finished extracting single record: {} changes", numChanges);
+		logger.info("Finished extracting single record: {} change(s).", numChanges);
 		logEntry.setFinished();
 
 		return numChanges;

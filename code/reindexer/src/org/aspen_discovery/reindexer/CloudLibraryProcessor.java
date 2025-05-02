@@ -50,7 +50,6 @@ class CloudLibraryProcessor extends MarcRecordProcessor {
 				cloudLibraryRecord.setRecordIdentifier("cloud_library", identifier);
 
 				String rawMarc = productRS.getString("rawResponse");
-
 				MarcReader reader = new MarcPermissiveStreamReader(new ByteArrayInputStream(rawMarc.getBytes(StandardCharsets.UTF_8)), true, false, "UTF-8");
 				String targetAudience = "Adult";
 				org.marc4j.marc.Record marcRecord = null;
