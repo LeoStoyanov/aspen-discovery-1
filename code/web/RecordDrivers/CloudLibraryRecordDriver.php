@@ -28,56 +28,41 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 	}
 
 	/**
-	 * @return File_MARC_Record
+	 * @return ?File_MARC_Record
 	 */
-	public function getMarcRecord() {
+	public function getMarcRecord(): ?File_MARC_Record
+	{
 		if ($this->marcRecord == null) {
-			global $aspen_db;
-			global $logger;
-			try {
-				// Fetch the raw *compressed* data
-				$query = "SELECT rawResponse FROM cloud_library_title WHERE cloudLibraryId = :cloudLibraryId";
-				$stmt = $aspen_db->prepare($query);
-				$stmt->bindParam(':cloudLibraryId', $this->id);
-				$stmt->execute();
-				// Fetch as binary/lob if possible, though fetchColumn should be ok
-				$compressedMarcData = $stmt->fetchColumn();
-				$stmt->closeCursor();
+			require_once ROOT_DIR . '/sys/CloudLibrary/CloudLibraryProduct.php';
+			$cloudLibraryTitle = new CloudLibraryProduct();
+			$cloudLibraryTitle->cloudLibraryId = $this->id;
+			if (!$cloudLibraryTitle->find(true)) {
+				return null;
+			}
 
-				if ($compressedMarcData) {
-					// MySQL COMPRESS adds a 4-byte length header - strip it before gzuncompress
-					if (strlen($compressedMarcData) < 4) {
-						throw new Exception("Compressed data too short, likely invalid.");
-					}
-					$marcDataToDecompress = substr($compressedMarcData, 4);
-					// Try using zlib_decode instead of gzuncompress
-					$marcData = zlib_decode($marcDataToDecompress);
+			$compressedData = $cloudLibraryTitle->rawResponse;
+			if (!$compressedData) {
+				return null;
+			}
 
-					if ($marcData === false) {
-						// Handle zlib_decode failure
-						throw new Exception("zlib_decode failed. Data might be corrupt or not zlib compressed.");
-					}
-
-					$logger->log("Decompressed Marc Data Preview (zlib_decode): " . substr($marcData, 0, 50), Logger::LOG_ERROR);
-
-					$marcRecordList = new File_MARC($marcData, File_MARC::SOURCE_STRING);
-					$this->marcRecord = $marcRecordList->next();
-					if (!$this->marcRecord) {
-						// File_MARC::next() returns false if no record is found (e.g., empty string after decompression?)
-						throw new Exception("File_MARC::next() failed to return a record after decompression.");
-					}
-				} else {
-					// Handle case where rawResponse is null or record not found
-					$logger->log("Could not retrieve rawResponse for CloudLibrary record: " . $this->id, Logger::LOG_ERROR);
-					$this->marcRecord = null; // Ensure it stays null
+			// Check if GZIP compressed.
+			if (ord($compressedData[0]) == 0x1f && ord($compressedData[1]) == 0x8b) {
+				$marcData = gzdecode($compressedData);
+				if ($marcData === false) {
+					AspenError::raiseError(new AspenError("Failed to decompress GZIP data for CloudLibrary record: " . $this->id) . ".");
+					return null;
 				}
-			} catch (PDOException $e) {
-				$logger->log("Database error fetching rawResponse for CloudLibrary record: " . $this->id . ' ' . $e->getMessage(), Logger::LOG_ERROR);
-				$this->marcRecord = null;
-			} catch (Exception $e) {
-				// Catch potential gzuncompress or File_MARC parsing errors
-				$logger->log("MARC processing error for CloudLibrary record: " . $this->id . ' ' . $e->getMessage(), Logger::LOG_ERROR);
-				$this->marcRecord = null;
+			} else {
+				// Assume uncompressed data.
+				$marcData = $compressedData;
+			}
+
+			// Parse the MARC record.
+			$marcRecordList = new File_MARC($marcData, File_MARC::SOURCE_STRING);
+			$this->marcRecord = $marcRecordList->next();
+			if (!$this->marcRecord) {
+				AspenError::raiseError(new AspenError("Failed to parse MARC record for CloudLibrary record: " . $this->id . "."));
+				return null;
 			}
 		}
 		return $this->marcRecord;
