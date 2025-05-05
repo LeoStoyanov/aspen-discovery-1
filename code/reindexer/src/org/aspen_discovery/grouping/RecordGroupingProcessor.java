@@ -899,8 +899,6 @@ public class RecordGroupingProcessor {
 				} else {
 					logEntry.incErrors("No rawResponse data found for CloudLibrary record " + cloudLibraryId + ".");
 				}
-			} else {
-				logEntry.incErrors("Could not find CloudLibrary record " + cloudLibraryId + " in the database.");
 			}
 		} catch (Exception e) {
 			logger.error("Error grouping CloudLibrary record " + (cloudLibraryId != null ? cloudLibraryId : "NULL") + ":", e);
