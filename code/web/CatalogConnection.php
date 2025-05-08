@@ -696,7 +696,7 @@ class CatalogConnection {
 		$readingHistoryDB->selectAdd('MAX(author) as author');
 		$readingHistoryDB->selectAdd('MAX(checkInDate) as checkInDate');
 		$readingHistoryDB->selectAdd('MAX(checkOutDate) as checkOutDate');
-		$readingHistoryDB->selectAdd('SUM(CASE WHEN checkInDate IS NULL THEN 1 END) as checkedOut');
+		$readingHistoryDB->selectAdd('SUM(CASE WHEN checkInDate IS NULL AND isIll = 0 THEN 1 END) AS checkedOut');
 		$readingHistoryDB->selectAdd('COUNT(id) as timesUsed');
 		$readingHistoryDB->selectAdd('GROUP_CONCAT(DISTINCT(format)) as format');
 		if ($sortOption == "checkedOut") {
@@ -1179,6 +1179,23 @@ class CatalogConnection {
 			$historyEntry['ids'] = [];
 			$historyEntry['ids'][] = $readingHistoryDB->id;
 			$key = strtolower($historyEntry['source'] . ':' . $historyEntry['sourceId']);
+
+			// If the grouped work no longer exists in the DB, close the history line immediately.
+			// Ex: Sierra deletes the ILL record as soon as it’s returned.
+			require_once ROOT_DIR . '/sys/Grouping/GroupedWork.php';
+			$permId = $readingHistoryDB->groupedWorkPermanentId;
+			$workExists = false;
+			if (!empty($permId)) {
+				$groupedWork = new GroupedWork();
+				$groupedWork->permanent_id = $permId;
+				$workExists = $groupedWork->find(true);
+			}
+			if ($permId === '' || !$workExists) {
+				$readingHistoryDB->checkInDate = time();
+				$readingHistoryDB->update();
+				continue;
+			}
+
 			if (array_key_exists($key, $activeHistoryTitles)) {
 				if (IPAddress::showDebuggingInformation()) {
 					$logger->log("Adding {$readingHistoryDB->id} to active history entry $key.", Logger::LOG_ERROR);
