@@ -188,11 +188,11 @@ public class GroupedWorkSolr2 extends AbstractGroupedWorkSolr implements Cloneab
 							if (!(item.getGroupedStatus().equals("On Order") || item.getDetailedStatus().equals("On Order") || item.getDetailedStatus().equals("Coming Soon"))) {
 								allItemsOnOrder = false;
 							}
-							if (!item.getDetailedStatus().equals("Under Consideration")) {
-								allItemsUnderConsideration = false;
-							}
 							if (!item.getDetailedStatus().equals("In-Process")) {
 								allItemsInProcess = false;
+							}
+							if (!item.getDetailedStatus().equals("Under Consideration")) {
+								allItemsUnderConsideration = false;
 							}
 						}else{
 							allItemsOnOrder = false;
@@ -636,15 +636,18 @@ public class GroupedWorkSolr2 extends AbstractGroupedWorkSolr implements Cloneab
 	private Long daysAddedSincePubDate = null;
 	private Long loadScopedDaysAdded(ItemInfo curItem) {
 		Long daysSinceAdded;
-		if (curItem.isOrderItem() || (curItem.getStatusCode() != null &&
-				(curItem.getGroupedStatus().equals("On Order") ||
-						curItem.getDetailedStatus().equals("On Order") ||
-						curItem.getDetailedStatus().equals("Coming Soon") ||
-						curItem.getDetailedStatus().equals("Under Consideration") ||
-						curItem.getDetailedStatus().equals("In-Process")))) {
-			if (curItem.getDetailedStatus().equals("Under Consideration")) {
+		if (curItem.isOrderItem() ||
+			curItem.getStatusCode() != null &&
+			(curItem.getGroupedStatus().equals("On Order") ||
+			curItem.getGroupedStatus().equals("In Processing") ||
+			curItem.getDetailedStatus().equals("Coming Soon") ||
+			curItem.getDetailedStatus().equals("Under Consideration")))
+		{
+			if (curItem.getDetailedStatus().equals("Under Consideration") ||
+				curItem.getGroupedStatus().equals("Under Consideration"))
+			{
 				daysSinceAdded = (long)Integer.MAX_VALUE;
-			} else if (curItem.getDetailedStatus().equals("In-Process")) {
+			} else if (curItem.getGroupedStatus().equals("In-Process")) {
 				daysSinceAdded = -2L;
 			} else {
 				daysSinceAdded = -1L;
