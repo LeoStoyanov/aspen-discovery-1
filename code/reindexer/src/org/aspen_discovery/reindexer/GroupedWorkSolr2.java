@@ -188,10 +188,10 @@ public class GroupedWorkSolr2 extends AbstractGroupedWorkSolr implements Cloneab
 							if (!(item.getGroupedStatus().equals("On Order") || item.getDetailedStatus().equals("On Order") || item.getDetailedStatus().equals("Coming Soon"))) {
 								allItemsOnOrder = false;
 							}
-							if (!item.getDetailedStatus().equals("In-Process")) {
+							if (!(item.getGroupedStatus().equals("In Processing") || item.getDetailedStatus().equals("In-Process"))) {
 								allItemsInProcess = false;
 							}
-							if (!item.getDetailedStatus().equals("Under Consideration")) {
+							if (!(item.getGroupedStatus().equals("Under Consideration") || item.getDetailedStatus().equals("Under Consideration"))) {
 								allItemsUnderConsideration = false;
 							}
 						}else{
@@ -640,14 +640,12 @@ public class GroupedWorkSolr2 extends AbstractGroupedWorkSolr implements Cloneab
 			curItem.getStatusCode() != null &&
 			(curItem.getGroupedStatus().equals("On Order") ||
 			curItem.getGroupedStatus().equals("In Processing") ||
-			curItem.getDetailedStatus().equals("Coming Soon") ||
-			curItem.getDetailedStatus().equals("Under Consideration")))
+			curItem.getDetailedStatus().equals("Coming Soon") || // Falls under the "On Order" facet, so only consider the item's status to find it.
+			curItem.getGroupedStatus().equals("Under Consideration")))
 		{
-			if (curItem.getDetailedStatus().equals("Under Consideration") ||
-				curItem.getGroupedStatus().equals("Under Consideration"))
-			{
+			if (curItem.getGroupedStatus().equals("Under Consideration")) {
 				daysSinceAdded = (long)Integer.MAX_VALUE;
-			} else if (curItem.getGroupedStatus().equals("In-Process")) {
+			} else if (curItem.getGroupedStatus().equals("In Processing")) {
 				daysSinceAdded = -2L;
 			} else {
 				daysSinceAdded = -1L;
