@@ -102,4 +102,24 @@ class Admin_DonationsReport extends ObjectEditor {
         ]);
 	}
 
+	/**
+	 * Define special filter mappings for fields that require custom handling
+	 */
+	protected function getSpecialFilterMappings(): array {
+		return [
+			'donationValue' => [
+				'sourceField'    => 'paymentId',
+				'targetClass'    => 'UserPayment',
+				'targetProperty' => 'totalPaid',
+				'classPath'      => 'sys/Account/UserPayment.php'
+			],
+			'dateCompleted' => [
+				'sourceField'    => 'paymentId',
+				'targetClass'    => 'UserPayment',
+				'targetProperty' => 'transactionDate',
+				'classPath'      => 'sys/Account/UserPayment.php'
+			]
+		];
+	}
+
 }

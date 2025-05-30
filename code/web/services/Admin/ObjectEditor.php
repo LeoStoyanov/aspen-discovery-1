@@ -1467,14 +1467,40 @@ abstract class ObjectEditor extends Admin_Admin {
 	 * @param array $filter
 	 * @return bool
 	 */
+	/**
+	 * Check if a value matches the filter criteria
+	 * @param string $value
+	 * @param array $filter
+	 * @return bool
+	 */
 	protected function matchesFilterValue(string $value, array $filter): bool {
-		$filterValue = $filter['filterValue'];
+		$filterType = $filter['filterType'];
+		$filterValue = $filter['filterValue'] ?? '';
+		$filterValue2 = $filter['filterValue2'] ?? '';
 
-		return match ($filter['filterType']) {
-			'matches' => ($value === $filterValue),
-			'contains' => (stripos($value, $filterValue) !== false),
-			'startsWith' => (stripos($value, $filterValue) === 0),
-			default => false,
-		};
+		switch ($filterType) {
+			case 'matches':
+				return ($value === $filterValue);
+			case 'contains':
+				return (stripos($value, $filterValue) !== false);
+			case 'startsWith':
+				return (stripos($value, $filterValue) === 0);
+			case 'afterTime':
+				// Convert only for time-based filters
+				$time = is_numeric($value) ? (int)$value : strtotime($value);
+				$compare = strtotime($filterValue);
+				return $time !== false && $compare !== false && $time > $compare;
+			case 'beforeTime':
+				$time = is_numeric($value) ? (int)$value : strtotime($value);
+				$compare2 = strtotime($filterValue2);
+				return $time !== false && $compare2 !== false && $time < $compare2;
+			case 'betweenTimes':
+				$time = is_numeric($value) ? (int)$value : strtotime($value);
+				$start = strtotime($filterValue);
+				$end = strtotime($filterValue2);
+				return $time !== false && $start !== false && $end !== false && $time >= $start && $time <= $end;
+			default:
+				return false;
+		}
 	}
 }
