@@ -1118,8 +1118,16 @@ abstract class ObjectEditor extends Admin_Admin {
 	function applyFilters(DataObject $object) {
 		$filterFields = $this->getFilterFields($object::getObjectStructure($this->getContext()));
 		$appliedFilters = $this->getAppliedFilters($filterFields);
+		$specialMappings = $this->getSpecialFilterMappings();
+
 		foreach ($appliedFilters as $fieldName => $filter) {
-			$this->applyFilter($object, $fieldName, $filter);
+			if (isset($specialMappings[$fieldName])) {
+				// Handle special filter
+				$this->applySpecialFilter($object, $specialMappings[$fieldName], $filter);
+			} else {
+				// Handle normal filter
+				$this->applyFilter($object, $fieldName, $filter);
+			}
 		}
 	}
 
@@ -1340,5 +1348,133 @@ abstract class ObjectEditor extends Admin_Admin {
 
 	public function hasMultiStepAddNew() : bool {
 		return false;
+	}
+
+	/**
+	 * Define mappings for special filters that require custom handling
+	 * Override in subclasses to add custom mappings
+	 *
+	 * @return array Array of field mappings in format:
+	 *   'filterFieldName' => [
+	 *     'sourceField' => 'database_field_name',
+	 *     'targetClass' => 'ClassName',
+	 *     'targetMethod' => 'methodName',
+	 *     'targetProperty' => 'propertyName', // alternative to targetMethod
+	 *     'classPath' => 'optional/path/to/Class.php' // optional, will try common paths if not provided
+	 *   ]
+	 */
+	protected function getSpecialFilterMappings(): array {
+		return [];
+	}
+
+	/**
+	 * Apply a special filter by loading related objects and filtering in PHP
+	 */
+	protected function applySpecialFilter(DataObject $object, array $mapping, array $filter): void {
+		global $logger;
+		$logger->log("applySpecialFilter called with mapping: " . print_r($mapping, true), Logger::LOG_ERROR);
+		$logger->log("applySpecialFilter called with filter: " . print_r($filter, true), Logger::LOG_ERROR);
+
+		$sourceField = $mapping['sourceField'];
+		$targetClass = $mapping['targetClass'];
+
+		// Get all possible IDs from the source field.
+		$allIds = [];
+		$objectType = $this->getObjectType();
+
+		// Query distinct sourceField values.
+		$tempObj = new $objectType();
+		$tempObj->selectAdd();  // Clear default selects.
+		$tempObj->selectAdd("DISTINCT $sourceField as $sourceField");
+		$tempObj->find();
+
+		while ($tempObj->fetch()) {
+			if (!empty($tempObj->$sourceField)) {
+				$allIds[] = $tempObj->$sourceField;
+			}
+		}
+
+		if (!empty($allIds)) {
+			// Load the target class: use provided path or try common paths.
+			$classLoaded = false;
+
+			if (!empty($mapping['classPath'])) {
+				// Use explicitly provided class path
+				$classPath = $mapping['classPath'];
+				if (file_exists(ROOT_DIR . '/' . $classPath)) {
+					require_once ROOT_DIR . '/' . $classPath;
+					$classLoaded = true;
+				}
+			} else {
+				// Try common class paths as fallback
+				$classPaths = [
+					ROOT_DIR . '/sys/Account/' . $targetClass . '.php',
+					ROOT_DIR . '/sys/' . $targetClass . '.php',
+					ROOT_DIR . '/sys/Grouping/' . $targetClass . '.php',
+				];
+
+				foreach ($classPaths as $classPath) {
+					if (file_exists($classPath)) {
+						require_once $classPath;
+						$classLoaded = true;
+						$logger->log("Loaded class from: $classPath", Logger::LOG_DEBUG);
+						break;
+					}
+				}
+			}
+
+			if (!$classLoaded) {
+				// Class not found, skip this filter.
+				$logger->log("Could not load class $targetClass.", Logger::LOG_ERROR);
+				return;
+			}
+
+			$matchingIds = [];
+			$relatedObj = new $targetClass();
+			$relatedObj->whereAddIn('id', $allIds, false);
+			$relatedObj->find();
+
+			while ($relatedObj->fetch()) {
+				// Get the value to compare against.
+				$compareValue = '';
+				if (isset($mapping['targetMethod'])) {
+					$method = $mapping['targetMethod'];
+					$compareValue = $relatedObj->$method();
+				} elseif (isset($mapping['targetProperty'])) {
+					$property = $mapping['targetProperty'];
+					$compareValue = $relatedObj->$property;
+				}
+
+				// Check if this object matches the filter.
+				if ($this->matchesFilterValue($compareValue, $filter)) {
+					$matchingIds[] = $relatedObj->id;
+				}
+			}
+
+			// Apply the filter to the main query.
+			if (count($matchingIds) > 0) {
+				$object->whereAddIn($sourceField, $matchingIds, false);
+			} else {
+				// No objects match the filter, return no results.
+				$object->whereAdd('0=1');
+			}
+		}
+	}
+
+	/**
+	 * Check if a value matches the filter criteria
+	 * @param string $value
+	 * @param array $filter
+	 * @return bool
+	 */
+	protected function matchesFilterValue(string $value, array $filter): bool {
+		$filterValue = $filter['filterValue'];
+
+		return match ($filter['filterType']) {
+			'matches' => ($value === $filterValue),
+			'contains' => (stripos($value, $filterValue) !== false),
+			'startsWith' => (stripos($value, $filterValue) === 0),
+			default => false,
+		};
 	}
 }

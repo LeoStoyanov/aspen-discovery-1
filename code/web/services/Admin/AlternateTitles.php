@@ -68,4 +68,44 @@ class Admin_AlternateTitles extends ObjectEditor {
 	function canAddNew() {
 		return false;
 	}
+
+	/**
+	 * Define special filter mappings for fields that require custom handling
+	 */
+	protected function getSpecialFilterMappings(): array {
+		return [
+			'addedByName' => [
+				'sourceField' => 'addedBy',
+				'targetClass' => 'User',
+				'targetMethod' => 'getDisplayName'
+			]
+		];
+	}
+
+	/**
+	 * Override applyFilters to add debugging for the special filter
+	 */
+	function applyFilters(DataObject $object) {
+		$filterFields = $this->getFilterFields($object::getObjectStructure($this->getContext()));
+		$appliedFilters = $this->getAppliedFilters($filterFields);
+		$specialMappings = $this->getSpecialFilterMappings();
+
+		// Debug: Check what filters are being applied
+		global $logger;
+		$logger->log("Applied filters: " . print_r($appliedFilters, true), Logger::LOG_ERROR);
+		$logger->log("Special mappings: " . print_r($specialMappings, true), Logger::LOG_ERROR);
+
+		foreach ($appliedFilters as $fieldName => $filter) {
+			$logger->log("Processing filter for field: $fieldName", Logger::LOG_ERROR);
+			if (isset($specialMappings[$fieldName])) {
+				$logger->log("Using special filter for: $fieldName", Logger::LOG_ERROR);
+				// Handle special filter
+				$this->applySpecialFilter($object, $specialMappings[$fieldName], $filter);
+			} else {
+				$logger->log("Using normal filter for: $fieldName", Logger::LOG_ERROR);
+				// Handle normal filter
+				$this->applyFilter($object, $fieldName, $filter);
+			}
+		}
+	}
 }
