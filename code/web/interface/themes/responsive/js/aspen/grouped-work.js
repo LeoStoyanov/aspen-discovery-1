@@ -108,47 +108,39 @@ AspenDiscovery.GroupedWork = (function(){
 			return false;
 		},
 
-		loadEnrichmentInfo: function (id, forceReload) {
-			var url = Globals.path + "/GroupedWork/" + encodeURIComponent(id) + "/AJAX",
-					params = {'method':'getEnrichmentInfo'};
-			if (forceReload !== undefined){
+		loadEnrichmentInfo(id, forceReload, callback) {
+			const url = Globals.path + "/GroupedWork/" + encodeURIComponent(id) + "/AJAX",
+				params = {'method': 'getEnrichmentInfo'};
+			if (forceReload !== undefined) {
 				params['reload'] = true;
 			}
 			$.getJSON(url, params, function(data) {
-				try{
-					var seriesData = data.seriesInfo;
+				try {
+					const seriesData = data.seriesInfo;
 					if (seriesData && seriesData.titles.length > 0) {
-						//Create an unordered list for display
-						var html = '<ul>';
-
+						let html = '<ul>';
 						$.each(seriesData.titles, function() {
 							html += '<li class="carouselTitleWrapper">' + this.formattedTitle + '</li>';
 						});
-
 						html += '</ul>';
-
-						var carouselElement = $('#seriesCarousel');
+						const carouselElement = $('#seriesCarousel');
 						carouselElement.html(html);
-						var jCarousel = carouselElement.jcarousel({wrap:null});
-
-						// Reload carousel
+						const jCarousel = carouselElement.jcarousel({wrap: null});
 						jCarousel.jcarousel('reload');
 						jCarousel.jcarousel('scroll', seriesData.currentIndex)
 						$('.seriesLoadingNote').hide();
 						$('#seriesInfo').show();
-					}else{
+					} else {
 						$('#seriesPanel').hide();
 					}
-					var seriesSummary = data.seriesSummary;
+					const seriesSummary = data.seriesSummary;
 					if (seriesSummary){
 						$('#seriesPlaceholder' + id).html(seriesSummary);
 					}
-					var showGoDeeperData = data.showGoDeeper;
+					const showGoDeeperData = data.showGoDeeper;
 					if (showGoDeeperData) {
-						//$('#goDeeperLink').show();
-						var goDeeperOptions = data.goDeeperOptions;
-						//add a tab before citation for each item
-						for (var option in goDeeperOptions){
+						const goDeeperOptions = data.goDeeperOptions;
+						for (let option in goDeeperOptions){
 							if (option === 'excerpt') {
 								$("#excerptPanel").show();
 							} else if (option === 'avSummary') {
@@ -163,34 +155,37 @@ AspenDiscovery.GroupedWork = (function(){
 					if (AspenDiscovery.GroupedWork.hasTableOfContentsInRecord){
 						$("#tableofcontentstab_label,#tableOfContentsPlaceholder,#tableOfContentsPanel").show();
 					}
-					var similarTitlesNovelist = data.similarTitlesNovelist;
-					if (similarTitlesNovelist && similarTitlesNovelist.length > 0){
+					const similarTitlesNovelist = data.similarTitlesNovelist;
+					if (similarTitlesNovelist && similarTitlesNovelist.length > 0) {
 						$("#novelistTitlesPlaceholder").html(similarTitlesNovelist);
-						$("#novelistTab_label,#similarTitlesPanel").show()
-						;
+						$("#novelistTab_label,#similarTitlesPanel").show();
 					}
-
-					var similarAuthorsNovelist = data.similarAuthorsNovelist;
-					if (similarAuthorsNovelist && similarAuthorsNovelist.length > 0){
+					const similarAuthorsNovelist = data.similarAuthorsNovelist;
+					if (similarAuthorsNovelist && similarAuthorsNovelist.length > 0) {
 						$("#novelistAuthorsPlaceholder").html(similarAuthorsNovelist);
 						$("#novelistTab_label,#similarAuthorsPanel").show();
 					}
-
-					var similarSeriesNovelist = data.similarSeriesNovelist;
-					if (similarSeriesNovelist && similarSeriesNovelist.length > 0){
+					const similarSeriesNovelist = data.similarSeriesNovelist;
+					if (similarSeriesNovelist && similarSeriesNovelist.length > 0) {
 						$("#novelistSeriesPlaceholder").html(similarSeriesNovelist);
 						$("#novelistTab_label,#similarSeriesPanel").show();
 					}
-
-					// Show Explore More Sidebar Section loaded above
 					$('.ajax-carousel', '#explore-more-body')
 						.parents('.jcarousel-wrapper').show()
 						.prev('.sectionHeader').show();
-					// Initiate Any Explore More JCarousels
 					AspenDiscovery.initCarousels('.ajax-carousel');
 
+					if (typeof callback === 'function') {
+						callback(true, data);
+					}
 				} catch (e) {
-					alert("error loading enrichment: " + e);
+					if (typeof callback === 'function') {
+						callback(false, { message: "Error loading enrichment: " + e });
+					}
+				}
+			}).fail(function(jqxhr, textStatus, error) {
+				if (typeof callback === 'function') {
+					callback(false, { message: "Failed to reload enrichment: " + error });
 				}
 			});
 		},
@@ -282,8 +277,14 @@ AspenDiscovery.GroupedWork = (function(){
 			return false;
 		},
 
-		reloadEnrichment: function (id){
-			AspenDiscovery.GroupedWork.loadEnrichmentInfo(id, true);
+		reloadEnrichment(id) {
+			this.loadEnrichmentInfo(id, true, function(success, data) {
+				if (success) {
+					AspenDiscovery.showMessage('Success', 'Enrichment reloaded successfully.', true, true);
+				} else {
+					AspenDiscovery.showMessage('Error', data.message || 'Failed to reload Syndetics enrichment. Please try again.');
+				}
+			});
 		},
 
 		saveReview: function(id){
