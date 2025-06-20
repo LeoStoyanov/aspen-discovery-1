@@ -4,6 +4,7 @@ import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
 import org.apache.http.StatusLine;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -55,6 +56,12 @@ class SpringshareLibCalIndexer {
 	private PreparedStatement deleteRegistrantStmt;
 
 	private final ConcurrentUpdateHttp2SolrClient solrUpdateServer;
+
+	private static final RequestConfig REQUEST_CONFIG = RequestConfig.custom()
+			.setConnectTimeout(10000)			// 10 sec
+			.setConnectionRequestTimeout(10000)	// 10 sec
+			.setSocketTimeout(60000)			// 60 sec
+			.build();
 
 	private String oAuthTokenType;
 	private String oAuthAccessToken;
@@ -516,8 +523,10 @@ class SpringshareLibCalIndexer {
 	}
 
 	private JSONArray getLibCalEvents() {
-		try {
-			CloseableHttpClient httpclient = HttpClients.createDefault();
+		try (CloseableHttpClient httpclient = HttpClients.custom()
+				.setDefaultRequestConfig(REQUEST_CONFIG)
+				.build()) {
+
 			HttpRequestBase apiRequest;
 			String authTokenUrl = baseUrl + "/1.1/oauth/token";
 			ArrayList<NameValuePair> params = new ArrayList<>();
@@ -582,9 +591,11 @@ class SpringshareLibCalIndexer {
 	private JSONArray getRegistrations(Integer eventId) {
 		try {
 			JSONArray eventRegistrations;
-			try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-				HttpRequestBase apiRequest;
+			try (CloseableHttpClient httpclient = HttpClients.custom()
+					.setDefaultRequestConfig(REQUEST_CONFIG)
+					.build()) {
 
+				HttpRequestBase apiRequest;
 				eventRegistrations = new JSONArray();
 				String apiRegistrationsURL = baseUrl + "/1.1/events/" + eventId + "/registrations?waitlist=1";
 				apiRequest = new HttpGet(apiRegistrationsURL);
