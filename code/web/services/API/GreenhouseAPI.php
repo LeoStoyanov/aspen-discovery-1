@@ -769,6 +769,7 @@ class GreenhouseAPI extends AbstractAPI {
 		$scheduledUpdate->greenhouseId = $_REQUEST['greenhouseId'];
 		$scheduledUpdate->remoteUpdate = false;
 		$scheduledUpdate->siteId = $_REQUEST['greenhouseSiteId'] ?? '';
+		$scheduledUpdate->gitRemote = $_REQUEST['gitRemote'] ?? 'origin';
 		if($scheduledUpdate->insert()) {
 			$result = [
 				'success' => true,

@@ -31,6 +31,12 @@
 			</div>
 		</div>
 		<div class="form-group">
+			<label for="gitRemote" class="col-sm-3">{translate text='Git Remote' isAdminFacing=true}</label>
+			<div class="col-sm-9">
+				<input type="text" name="gitRemote" id="gitRemote" value="origin" class="form-control" aria-label="{translate text='Git Remote' isAdminFacing=true}">
+			</div>
+		</div>
+		<div class="form-group">
 			<label class="col-sm-3">{translate text='Run Update' isAdminFacing=true}</label>
 			<div class="col-sm-9">
 				<div class="row">

@@ -16,6 +16,7 @@ class ScheduledUpdate extends DataObject {
 	public $greenhouseId;
 	public $currentVersion;
 	public $remoteUpdate;
+	public $gitRemote;
 
 	public static function getObjectStructure($context = ''): array {
 		global $interface;
@@ -91,6 +92,14 @@ class ScheduledUpdate extends DataObject {
 				'label' => 'Update Type',
 				'values' => $updateTypes,
 				'description' => 'The type of update (patch or complete)',
+			],
+			'gitRemote' => [
+				'property' => 'gitRemote',
+				'type' => 'text',
+				'label' => 'Git Remote',
+				'description' => 'The git remote from which to fetch and pull.',
+				'maxLength' => 50,
+				'default' => 'origin',
 			],
 			'remoteUpdate' => [
 				'property' => 'remoteUpdate',

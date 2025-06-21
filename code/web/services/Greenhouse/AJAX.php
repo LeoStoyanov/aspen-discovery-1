@@ -346,6 +346,7 @@ class Greenhouse_AJAX extends Action {
 				$scheduledUpdate->updateToVersion = $_REQUEST['updateToVersion'];
 				$scheduledUpdate->status = 'pending';
 				$scheduledUpdate->remoteUpdate = true;
+				$scheduledUpdate->gitRemote = $_REQUEST['gitRemote'] ?? 'origin';
 				if (!$scheduledUpdate->insert()) {
 					return [
 						'success' => false,
@@ -369,6 +370,7 @@ class Greenhouse_AJAX extends Action {
 					'dateScheduled' => $scheduledUpdate->dateScheduled,
 					'updateToVersion' => $scheduledUpdate->updateToVersion,
 					'status' => $scheduledUpdate->status,
+					'gitRemote' => $scheduledUpdate->gitRemote,
 					'greenhouseId' => $scheduledUpdate->id,
 					'greenhouseSiteId' => $scheduledUpdate->siteId,
 				];
@@ -467,6 +469,7 @@ class Greenhouse_AJAX extends Action {
 					$scheduledUpdate->updateToVersion = $_REQUEST['updateToVersion'];
 					$scheduledUpdate->status = 'pending';
 					$scheduledUpdate->remoteUpdate = true;
+					$scheduledUpdate->gitRemote = $_REQUEST['gitRemote'] ?? 'origin';
 					if(!$scheduledUpdate->insert()) {
 						if($errors == '') {
 							$errors = 'Error saving update for ' . $siteToUpdate->name . ": " . $scheduledUpdate->getLastError();
@@ -481,8 +484,8 @@ class Greenhouse_AJAX extends Action {
 							'dateScheduled' => $scheduledUpdate->dateScheduled,
 							'updateToVersion' => $scheduledUpdate->updateToVersion,
 							'status' => $scheduledUpdate->status,
+							'gitRemote' => $scheduledUpdate->gitRemote,
 							'greenhouseId' => $scheduledUpdate->id,
-							//'isRemoteUpdate' => true,
 							'greenhouseSiteId' => $scheduledUpdate->siteId,
 						];
 						$response = json_decode($curl->curlPostPage($siteToUpdate->baseUrl . '/API/GreenhouseAPI?method=addScheduledUpdate', $body));

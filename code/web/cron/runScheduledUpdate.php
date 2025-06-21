@@ -210,13 +210,14 @@ function updateGitAndRunDatabaseUpdates($operatingSystem, $versionToUpdateTo, Sc
 	} else {
 		$installDir = '/usr/local/aspen-discovery';
 	}
-	executeCommand("Fetching all changes from git", "cd $installDir; git fetch origin", $scheduledUpdate);
+	$gitRemote = !empty($scheduledUpdate->gitRemote) ? $scheduledUpdate->gitRemote : 'origin';
+	executeCommand("Fetching all changes from git", "cd $installDir; git fetch $gitRemote", $scheduledUpdate);
 	if (!hasErrors($scheduledUpdate->notes)) {
-		executeCommand("Resetting git to branch $versionToUpdateTo", "cd $installDir; git reset --hard origin/$versionToUpdateTo 2>&1", $scheduledUpdate);
+		executeCommand("Resetting git to branch $versionToUpdateTo", "cd $installDir; git reset --hard $gitRemote/$versionToUpdateTo 2>&1", $scheduledUpdate);
 	}
 
 	if (!hasErrors($scheduledUpdate->notes)) {
-		executeCommand("Pulling branch $versionToUpdateTo", "cd $installDir; git pull origin $versionToUpdateTo", $scheduledUpdate);
+		executeCommand("Pulling branch $versionToUpdateTo", "cd $installDir; git pull $gitRemote $versionToUpdateTo", $scheduledUpdate);
 	}
 
 	if (!hasErrors($scheduledUpdate->notes)) {
