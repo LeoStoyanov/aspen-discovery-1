@@ -3732,7 +3732,40 @@ class MyAccount_AJAX extends JSON_Action {
 				$interface->assign('defaultSortOption', $selectedSortOption);
 				$allCheckedOut = $this->sortCheckouts($selectedSortOption, $allCheckedOut);
 
-				$interface->assign('transList', $allCheckedOut);
+				$page = isset($_REQUEST['page']) ? (int)$_REQUEST['page'] : 1;
+				$recordsPerPage = 100; // Could be made configurable in the future if requested.
+				$totalCheckouts = count($allCheckedOut);
+				global $logger;
+				$logger->log("Total checkouts: $totalCheckouts", Logger::LOG_ERROR);
+				if ($recordsPerPage != -1) {
+					// Prepare pagination links
+					$interface->assign('page', $page);
+					$link = $_SERVER['REQUEST_URI'];
+					if (preg_match('/[&?]page=/', $link)) {
+						$link = preg_replace('/page=\d+/', 'page=%d', $link);
+					} else {
+						$link .= (str_contains($link, '?') ? '&' : '?') . 'page=%d';
+					}
+					$options = [
+						'totalItems' => $totalCheckouts,
+						'fileName' => $link,
+						'perPage' => $recordsPerPage,
+						'append' => false,
+						'linkRenderingObject' => $this,
+						'linkRenderingFunction' => 'renderCheckoutPaginationLink',
+						'source' => $source,
+						'sort' => $selectedSortOption,
+						'selectedUser' => $selectedUser,
+					];
+					$pager = new Pager($options);
+					$interface->assign('pageLinks', $pager->getLinks());
+					$interface->assign('recordsPerPage', $recordsPerPage);
+					$interface->assign('startIndex', ($page - 1) * $recordsPerPage);
+					$displayedCheckouts = array_slice($allCheckedOut, ($page - 1) * $recordsPerPage, $recordsPerPage);
+				} else {
+					$displayedCheckouts = $allCheckedOut;
+				}
+				$interface->assign('transList', $displayedCheckouts);
 
 				$result['success'] = true;
 				$result['message'] = "";
@@ -4328,8 +4361,18 @@ class MyAccount_AJAX extends JSON_Action {
 		return $result;
 	}
 
-	function renderReadingHistoryPaginationLink($page, $options) {
-		return "<a class='page-link btn btn-default btn-sm' onclick='AspenDiscovery.Account.loadReadingHistory(\"{$options['patronId']}\", \"{$options['sort']}\", \"{$page}\", undefined, \"{$options['filter']}\");AspenDiscovery.goToAnchor(\"topOfList\")'>";
+	/** @noinspection PhpUnused */
+	function renderReadingHistoryPaginationLink(int $page, array $options): string {
+		$currentPage = isset($_REQUEST['page']) && is_numeric($_REQUEST['page']) ? $_REQUEST['page'] : 1;
+		$activeClass = ($currentPage == $page) ? ' active' : '';
+		return "<a class='page-link btn btn-default btn-sm $activeClass' onclick='AspenDiscovery.Account.loadReadingHistory(\"{$options['patronId']}\", \"{$options['sort']}\", \"{$page}\", undefined, \"{$options['filter']}\")'>";
+	}
+
+	/** @noinspection PhpUnused */
+	function renderCheckoutPaginationLink(int $page, array $options): string {
+		$currentPage = isset($_REQUEST['page']) && is_numeric($_REQUEST['page']) ? $_REQUEST['page'] : 1;
+		$activeClass = ($currentPage == $page) ? ' active' : '';
+		return "<a class='page-link btn btn-default btn-sm $activeClass' onclick='AspenDiscovery.Account.loadCheckouts(\"{$options['source']}\", \"{$options['sort']}\", undefined, \"{$options['selectedUser']}\", \"{$page}\")'>";
 	}
 
 	private function isValidTimeStamp($timestamp) {
@@ -7007,7 +7050,7 @@ class MyAccount_AJAX extends JSON_Action {
 				$paymentResponse = $paymentRequest->curlPostBodyData($url, $postParams);
 				$decodedPaymentResponse = json_decode($paymentResponse);
 
-				ExternalRequestLogEntry::logRequest('fine_payment.createInvoiceCloudOrder','POST', $url, $paymentRequest->getHeaders(),json_encode($postParams), $paymentRequest->getResponseCode(), $paymentRegitsponse, []);
+				ExternalRequestLogEntry::logRequest('fine_payment.createInvoiceCloudOrder','POST', $url, $paymentRequest->getHeaders(),json_encode($postParams), $paymentRequest->getResponseCode(), $paymentResponse, []);
 
 				if ($decodedPaymentResponse->Message != 'SUCCESS') {
 					return [
