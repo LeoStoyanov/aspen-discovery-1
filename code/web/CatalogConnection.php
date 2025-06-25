@@ -1255,6 +1255,8 @@ class CatalogConnection {
 			}
 		}
 
+		$this->processIllEntries($patron, $isNightlyUpdate);
+
 		//Set the last update time
 		$patron->__set('lastReadingHistoryUpdate', time());
 		$patron->update();
@@ -1977,5 +1979,65 @@ class CatalogConnection {
 
 	public function hasIlsConsentSupport(): bool {
 		return $this->driver->hasIlsConsentSupport();
+	}
+
+	/**
+	 * Handle ILL reading history entries during nightly updates.
+	 *
+	 * @param User $patron
+	 * @param bool $isNightlyUpdate
+	 */
+	private function processIllEntries(User $patron, bool $isNightlyUpdate): void {
+//		if (!$isNightlyUpdate) {
+//			return;
+//		}
+		require_once ROOT_DIR . '/sys/ReadingHistoryEntry.php';
+		require_once ROOT_DIR . '/sys/LibraryLocation/Library.php';
+		require_once ROOT_DIR . '/sys/User/Checkout.php';
+		global $logger;
+
+		// Fetch ILL source names
+		$library = new Library();
+		$library->selectAdd();
+		$library->selectAdd('interLibraryLoanName');
+		$library->whereAdd('interLibraryLoanName IS NOT NULL');
+		$library->find();
+		$illSourceNames = [];
+		while ($library->fetch()) {
+			$illSourceNames[] = $library->interLibraryLoanName;
+		}
+		if (empty($illSourceNames)) {
+			return;
+		}
+
+		// Fetch active reading history entries
+		$readingHistoryDB = new ReadingHistoryEntry();
+		$readingHistoryDB->selectAdd();
+		$readingHistoryDB->selectAdd('id, source, sourceId, title');
+		$readingHistoryDB->userId = $patron->id;
+		$readingHistoryDB->whereAdd('checkInDate IS NULL');
+		$readingHistoryDB->find();
+
+		while ($readingHistoryDB->fetch()) {
+			if (in_array($readingHistoryDB->source, $illSourceNames)) {
+				$checkoutObj = new Checkout();
+				$checkoutObj->selectAdd();
+				$checkoutObj->selectAdd('id');
+				$checkoutObj->userId = $patron->id;
+				$checkoutObj->source = $readingHistoryDB->source;
+				if (empty($readingHistoryDB->sourceId)) {
+					$checkoutObj->title = $readingHistoryDB->title;
+				} else {
+					$checkoutObj->sourceId = $readingHistoryDB->sourceId;
+				}
+				if (!$checkoutObj->find(true)) {
+					$readingHistoryDB->checkInDate = time();
+					$readingHistoryDB->update();
+					if (IPAddress::showDebuggingInformation()) {
+						$logger->log("Marked ILL entry with ID {$readingHistoryDB->id} as checked in.", Logger::LOG_ERROR);
+					}
+				}
+			}
+		}
 	}
 }
