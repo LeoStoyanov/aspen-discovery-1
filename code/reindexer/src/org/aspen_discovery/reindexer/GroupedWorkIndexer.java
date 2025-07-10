@@ -3,6 +3,7 @@ package org.aspen_discovery.reindexer;
 import org.apache.commons.lang.math.NumberUtils;
 import org.aspen_discovery.grouping.*;
 import com.turning_leaf_technologies.indexing.*;
+import com.turning_leaf_technologies.config.ConfigUtil;
 import com.turning_leaf_technologies.logging.BaseIndexingLogEntry;
 import com.turning_leaf_technologies.marc.MarcUtil;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
@@ -21,6 +22,10 @@ import java.sql.*;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.Date;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.CRC32;
 
 import org.apache.logging.log4j.Logger;
@@ -35,10 +40,15 @@ public class GroupedWorkIndexer {
 	private final BaseIndexingLogEntry logEntry;
 	private final Logger logger;
 	private final Long indexStartTime;
+	private final Ini configIni;
 	private int deletionCommitInterval = 1000;
 	private boolean waitAfterDeleteCommit = false;
 	private int totalRecordsHandled = 0;
-	private ConcurrentUpdateHttp2SolrClient updateServer;
+
+	// Threading configuration - static for now, will be made configurable later
+	private static final int INDEXING_THREAD_COUNT = 8;
+
+	private final ConcurrentUpdateHttp2SolrClient updateServer;
 	private RecordGroupingProcessor recordGroupingProcessor;
 	private final HashMap<String, MarcRecordProcessor> ilsRecordProcessors = new HashMap<>();
 	private final HashMap<String, SideLoadedEContentProcessor> sideLoadProcessors = new HashMap<>();
@@ -198,6 +208,7 @@ public class GroupedWorkIndexer {
 		this.fullReindex = fullReindex;
 		this.clearIndex = clearIndex;
 		this.regroupAllRecords = regroupAllRecords;
+		this.configIni = configIni;
 
 		String solrPort = configIni.get("Index", "solrPort");
 		if (solrPort == null || solrPort.isEmpty()) {
@@ -226,6 +237,7 @@ public class GroupedWorkIndexer {
 			loadLastGroupingTime.close();
 		} catch (Exception e){
 			logEntry.incErrors("Could not load last index time from variables table ", e);
+			throw new RuntimeException("Indexer failed to initialize", e);
 		}
 
 		//Check to see if we should store record details in Solr
@@ -248,6 +260,7 @@ public class GroupedWorkIndexer {
 			systemVariablesStmt.close();
 		} catch (Exception e){
 			logEntry.incErrors("Could not load last index time from variables table ", e);
+			throw new RuntimeException("Indexer failed to initialize", e);
 		}
 
 		//Load a few statements we will need later
@@ -352,7 +365,7 @@ public class GroupedWorkIndexer {
 		} catch (Exception e){
 			logEntry.incErrors("Could not load statements to get identifiers ", e);
 			this.okToIndex = false;
-			return;
+			throw new RuntimeException("Indexer failed to initialize", e);
 		}
 
 		// Check if series module is enabled
@@ -366,6 +379,7 @@ public class GroupedWorkIndexer {
 			seriesModuleEnabledStmt.close();
 		} catch (Exception e) {
 			logEntry.incErrors("Could not check if series module enabled ", e);
+			throw new RuntimeException("Indexer failed to initialize", e);
 		}
 
 		//Initialize the updateServer and solr server
@@ -380,12 +394,12 @@ public class GroupedWorkIndexer {
 		Http2SolrClient http2Client = new Http2SolrClient.Builder().build();
 		try {
 			updateServer = new ConcurrentUpdateHttp2SolrClient.Builder(solrUrl, http2Client)
-				.withThreadCount(1)
-				.withQueueSize(25)
-				.build();
-		}catch (OutOfMemoryError e) {
+					.withThreadCount(4)
+					.withQueueSize(1000)
+					.build();
+		} catch (OutOfMemoryError e) {
 			logger.error("Unable to create solr client, out of memory", e);
-			System.exit(-7);
+			throw new RuntimeException("Indexer failed to initialize", e);
 		}
 
 		try {
@@ -419,7 +433,7 @@ public class GroupedWorkIndexer {
 		}catch (Exception e) {
 			logEntry.incErrors("Error loading scopes", e);
 			this.okToIndex = false;
-			return;
+			throw new RuntimeException("Indexer failed to initialize", e);
 		}
 
 		//Initialize processors based on our indexing profiles and the primary identifiers for the records.
@@ -561,7 +575,6 @@ public class GroupedWorkIndexer {
 	}
 
 	public void close(){
-		updateServer = null;
 		ilsRecordProcessors.clear();
 		sideLoadProcessors.clear();
 		overDriveProcessor = null;
@@ -1291,6 +1304,182 @@ public class GroupedWorkIndexer {
 			updateDebuggingInfoStmt.setLong(3, groupedWork.getDebugId());
 			updateDebuggingInfoStmt.executeUpdate();
 		}
+	}
+
+	/**
+	 * Data structure to hold grouped work information for threading.
+	 */
+	private static class GroupedWorkInfo {
+		final long id;
+		final String permanentId;
+		final String groupingCategory;
+		final Long lastUpdated;
+
+		GroupedWorkInfo(long id, String permanentId, String groupingCategory, Long lastUpdated) {
+			this.id = id;
+			this.permanentId = permanentId;
+			this.groupingCategory = groupingCategory;
+			this.lastUpdated = lastUpdated;
+		}
+	}
+
+	/**
+	 * Threaded version of processGroupedWorks that uses multiple threads for parallel processing.
+	 */
+	void processGroupedWorksThreaded() {
+		long numWorksProcessed = 0L;
+		try {
+			PreparedStatement getAllGroupedWorks;
+			PreparedStatement getNumWorksToIndex;
+			if (fullReindex) {
+				getAllGroupedWorks = dbConn.prepareStatement("SELECT grouped_work.id, permanent_id, grouping_category, date_updated FROM grouped_work INNER JOIN grouped_work_records on grouped_work.id = groupedWorkId GROUP BY permanent_id;", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+				getNumWorksToIndex = dbConn.prepareStatement("SELECT COUNT(DISTINCT permanent_id) as numWorksWithRecords FROM grouped_work INNER JOIN grouped_work_records on grouped_work.id = groupedWorkId;", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			} else {
+				//Load all grouped works that have changed since the last time the index ran
+				getAllGroupedWorks = dbConn.prepareStatement("SELECT * FROM grouped_work WHERE date_updated IS NULL OR date_updated >= ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+				getAllGroupedWorks.setLong(1, lastReindexTime);
+				getNumWorksToIndex = dbConn.prepareStatement("SELECT count(id) FROM grouped_work WHERE date_updated IS NULL OR date_updated >= ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+				getNumWorksToIndex.setLong(1, lastReindexTime);
+			}
+
+			//Get the number of works we will be processing
+			ResultSet numWorksToIndexRS = getNumWorksToIndex.executeQuery();
+			numWorksToIndexRS.next();
+			long numWorksToIndex = numWorksToIndexRS.getLong(1);
+			numWorksToIndexRS.close();
+			logEntry.addNote("Starting to process " + numWorksToIndex + " grouped works using " + INDEXING_THREAD_COUNT + " threads");
+
+			// Load all work info into memory for thread distribution
+			List<GroupedWorkInfo> allWorks = new ArrayList<>();
+			ResultSet groupedWorks = getAllGroupedWorks.executeQuery();
+			while (groupedWorks.next()) {
+				long id = groupedWorks.getLong("id");
+				String permanentId = groupedWorks.getString("permanent_id");
+				String groupingCategory = groupedWorks.getString("grouping_category");
+				Long lastUpdated = groupedWorks.getLong("date_updated");
+				if (groupedWorks.wasNull()) {
+					lastUpdated = null;
+				}
+				allWorks.add(new GroupedWorkInfo(id, permanentId, groupingCategory, lastUpdated));
+			}
+			groupedWorks.close();
+
+			// Shared counters for progress tracking
+			final AtomicLong worksProcessedCounter = new AtomicLong(0);
+
+			// Create thread pool
+			ExecutorService executor = Executors.newFixedThreadPool(INDEXING_THREAD_COUNT);
+
+			// Get database connection info for thread-local connections
+			String databaseConnectionInfo = ConfigUtil.cleanIniValue(configIni.get("Database", "database_aspen_jdbc"));
+
+			// Submit work to threads
+			for (int i = 0; i < INDEXING_THREAD_COUNT; i++) {
+				final int threadIndex = i;
+
+				executor.submit(() -> {
+					Connection localDBConnection = null;
+					GroupedWorkIndexer localIndexer = null;
+
+					try {
+						// Create thread-local database connection
+						localDBConnection = DriverManager.getConnection(databaseConnectionInfo);
+
+						// Create thread-local indexer instance
+						localIndexer = new GroupedWorkIndexer(serverName, localDBConnection, configIni, fullReindex, clearIndex, regroupAllRecords, logEntry, logger);
+						if (!localIndexer.isOkToIndex()) {
+							logger.error("Thread {} failed to initialize indexer", threadIndex);
+							return;
+						}
+
+						// Process works assigned to this thread
+						for (int workIndex = threadIndex; workIndex < allWorks.size(); workIndex += INDEXING_THREAD_COUNT) {
+							GroupedWorkInfo workInfo = allWorks.get(workIndex);
+
+							try {
+								localIndexer.processGroupedWork(workInfo.id, workInfo.permanentId, workInfo.groupingCategory);
+
+								long processed = worksProcessedCounter.incrementAndGet();
+								if (logEntry instanceof NightlyIndexLogEntry) {
+									((NightlyIndexLogEntry) logEntry).incNumWorksProcessed();
+								}
+
+								// Handle commits and logging
+								if (!clearIndex && (processed % 5000 == 0)) {
+										try {
+											logger.info("Thread {}: Doing a regular commit during full indexing", threadIndex);
+											// Use the main indexer's updateServer for commits to avoid conflicts
+											synchronized (updateServer) {
+												updateServer.commit(false, false, true);
+											}
+										} catch (Exception e) {
+											logger.warn("Thread {}: Error committing changes", threadIndex, e);
+										}
+									logger.info("Processed {} grouped works.", processed);
+								}
+
+								// Update last updated time for works that didn't have it set
+								if (workInfo.lastUpdated == null && localDBConnection != null) {
+									try (PreparedStatement setLastUpdatedTime = localDBConnection.prepareStatement("UPDATE grouped_work set date_updated = ? where id = ?")) {
+										setLastUpdatedTime.setLong(1, indexStartTime - 1);
+										setLastUpdatedTime.setLong(2, workInfo.id);
+										setLastUpdatedTime.executeUpdate();
+									}
+								}
+
+							} catch (Exception e) {
+								logger.error("Thread {}: Error processing grouped work {}", threadIndex, workInfo.permanentId, e);
+							}
+						}
+
+					} catch (SQLException e) {
+						logger.error("Thread {}: Database connection error", threadIndex, e);
+					} finally {
+						// Clean up thread resources
+						if (localIndexer != null) {
+							try {
+								localIndexer.close();
+							} catch (Exception e) {
+								logger.error("Thread {}: Error closing indexer", threadIndex, e);
+							}
+						}
+						if (localDBConnection != null) {
+							try {
+								localDBConnection.close();
+							} catch (SQLException e) {
+								logger.error("Thread {}: Error closing database connection", threadIndex, e);
+							}
+						}
+					}
+				});
+			}
+
+			// Shutdown executor and wait for completion
+			executor.shutdown();
+			try {
+				while (!executor.awaitTermination(1, TimeUnit.MINUTES)) {
+					long currentProcessed = worksProcessedCounter.get();
+					logger.info("Threading progress: {} of {} works processed", currentProcessed, numWorksToIndex);
+				}
+			} catch (InterruptedException e) {
+				logger.error("Interrupted while waiting for threads to complete", e);
+				executor.shutdownNow();
+			}
+
+			numWorksProcessed = worksProcessedCounter.get();
+
+			if (logEntry instanceof NightlyIndexLogEntry) {
+				logEntry.addNote("Used Author authorities a total of " + getRecordGroupingProcessor().getNumAuthoritiesUsed() + " times");
+			}
+
+			if (processEmptyGroupedWorks) {
+				processEmptyGroupedWorks();
+			}
+
+		} catch (SQLException e) {
+			logEntry.incErrors("Unexpected SQL error in threaded processing", e);
+		}
+		logger.info("Finished threaded processing of grouped works. Processed a total of {} grouped works using " + INDEXING_THREAD_COUNT + " threads", numWorksProcessed);
 	}
 
 	private void loadLexileDataForWork(AbstractGroupedWorkSolr groupedWork) {

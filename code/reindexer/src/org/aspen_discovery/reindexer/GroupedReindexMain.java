@@ -135,8 +135,8 @@ public class GroupedReindexMain {
 					logger.info("Processing Empty Works");
 					groupedWorkIndexer.processEmptyGroupedWorks();
 				} else {
-					logger.info("Running Reindex");
-					groupedWorkIndexer.processGroupedWorks();
+					logger.info("Running Threaded Reindex");
+					groupedWorkIndexer.processGroupedWorksThreaded();
 				}
 				groupedWorkIndexer.finishIndexing();
 
