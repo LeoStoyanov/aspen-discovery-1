@@ -9,7 +9,7 @@
 				{/if}
 				{foreach from=$property.structure item=subProperty}
 					{if (in_array($subProperty.type, array('text', 'regularExpression', 'multilineRegularExpression', 'enum', 'date', 'time', 'checkbox', 'integer', 'textarea', 'html', 'dynamic_label', 'multiSelect')) || ($subProperty.type == 'multiSelect' && $subProperty.listStyle == 'checkboxList')) && empty($subProperty.hideInLists) }
-						<th{if in_array($subProperty.type, array('text', 'regularExpression', 'multilineRegularExpression', 'enum', 'html', 'multiSelect'))} style="min-width:150px"{/if} class="oneToManyCell" {if !empty($subProperty.relatedIls)}data-related-ils="~{implode subject=$subProperty.relatedIls glue='~'}~"{/if}>{translate text=$subProperty.label isAdminFacing=true}</th>
+						<th{if in_array($subProperty.type, array('text', 'regularExpression', 'multilineRegularExpression', 'enum', 'html', 'multiSelect'))} style="min-width:150px"{/if}>{translate text=$subProperty.label isAdminFacing=true}</th>
 					{/if}
 				{/foreach}
 				{if !empty($property.canDelete) || !empty($property.editLink) || !empty($property.canEdit)}
@@ -29,12 +29,12 @@
 						</td>
 					{/if}
 					{foreach from=$property.structure item=subProperty}
-						{if ((in_array($subProperty.type, array('text', 'regularExpression', 'enum', 'date', 'time', 'checkbox', 'integer', 'textarea', 'html', 'dynamic_label')) || ($subProperty.type == 'multiSelect' && $subProperty.listStyle != 'checkboxList')) && empty($subProperty.hideInLists))}
-							<td class="oneToManyCell" {if !empty($subProperty.relatedIls)}data-related-ils="~{implode subject=$subProperty.relatedIls glue='~'}~"{/if}>
+						{if in_array($subProperty.type, array('text', 'regularExpression', 'enum', 'date', 'time', 'checkbox', 'integer', 'textarea', 'html', 'dynamic_label', 'multiSelect'))  && empty($subProperty.hideInLists)}
+							<td>
 								{assign var=subPropName value=$subProperty.property}
 								{assign var=subPropValue value=$subObject->$subPropName}
 								{if $subProperty.type=='text' || $subProperty.type=='regularExpression' || $subProperty.type=='integer' || $subProperty.type=='html'}
-									<input type="text" name="{$propName}_{$subPropName}[{$subObject->id}]" value="{$subPropValue|escape}" class="form-control{if $subProperty.type=="integer"} integer{/if}{if !empty($subProperty.required)} required{/if}" {if !empty($subProperty.onchange)}onchange="{$subProperty.onchange}"{/if} {if !empty($subProperty.readOnly) || !empty($property.readOnly)} readonly{/if}{if !empty($subProperty.maxLength)} maxlength="{$subProperty.maxLength}"{/if} data-id="{$subObject->id}">
+									<input type="text" name="{$propName}_{$subPropName}[{$subObject->id}]" value="{$subPropValue|escape}" class="form-control{if $subProperty.type=="integer"} integer{/if}{if !empty($subProperty.required)} required{/if}" {if !empty($subProperty.onchange)}onchange="{$subProperty.onchange}"{/if} {if !empty($subProperty.readOnly) || !empty($property.readOnly)} readonly{/if} data-id="{$subObject->id}">
 								{elseif $subProperty.type=='date'}
 									<input type="date" name="{$propName}_{$subPropName}[{$subObject->id}]" value="{$subPropValue|escape}" class="form-control{if !empty($subProperty.required)} required{/if}"{if !empty($subProperty.readOnly) || !empty($property.readOnly)} readonly disabled{/if} data-id="{$subObject->id}">
 								{elseif $subProperty.type=='time'}
@@ -42,7 +42,7 @@
 								{elseif $subProperty.type=='dynamic_label'}
 									<span id="{$propName}_{$subPropName}_{$subObject->id}" data-id="{$subObject->id}">{$subPropValue|escape}<span>
 								{elseif $subProperty.type=='textarea' || $subProperty.type=='multilineRegularExpression'}
-									<textarea name="{$propName}_{$subPropName}[{$subObject->id}]" class="form-control{if !empty($subProperty.autoResizeTextArea)} auto-grow-textarea{/if}"{if !empty($subProperty.readOnly) || !empty($property.readOnly)} readonly{/if}{if !empty($subProperty.maxLength)} maxlength="{$subProperty.maxLength}"{/if} data-id="{$subObject->id}">{$subPropValue|escape}</textarea>
+									<textarea name="{$propName}_{$subPropName}[{$subObject->id}]" class="form-control{if !empty($subProperty.autoResizeTextArea)} auto-grow-textarea{/if}"{if !empty($subProperty.readOnly) || !empty($property.readOnly)} readonly{/if} data-id="{$subObject->id}">{$subPropValue|escape}</textarea>
 								{elseif $subProperty.type=='checkbox'}
 									{if !empty($subProperty.readOnly) || !empty($property.readOnly)}
 										{if $subPropValue == 1}{translate text='Yes' isAdminFacing=true}{else}{translate text='No' isAdminFacing=true}{/if}
@@ -204,28 +204,14 @@
 			{foreach from=$property.structure item=subProperty}
 				{if empty($subProperty.hideInLists)}
 					{if in_array($subProperty.type, array('text', 'regularExpression','multilineRegularExpression', 'enum', 'date', 'time', 'checkbox', 'integer', 'textarea', 'html', 'dynamic_label')) }
-						newRow += "<td class='oneToManyCell' {if !empty($subProperty.relatedIls)}data-related-ils='~{implode subject=$subProperty.relatedIls glue='~'}~'{/if}>";
+						newRow += "<td>";
 						{assign var=subPropName value=$subProperty.property}
 						{if $subProperty.type=='text' || $subProperty.type=='regularExpression' || $subProperty.type=='multilineRegularExpression' || $subProperty.type=='integer' || $subProperty.type=='textarea'|| $subProperty.type=='html'}
 							{if ($subProperty.type=='textarea' || $subProperty.type=='multilineRegularExpression')}
-								newRow +=
-								"<textarea " +
-									"name='{$propName}_{$subPropName}[" + numAdditional{$propName} + "]' " +
-									"class='form-control" +
-									'{if !empty($subProperty.autoResizeTextArea)} auto-grow-textarea{/if}' +
-									'{if !empty($subProperty.maxLength)} maxlength="{$subProperty.maxLength}"{/if}' +
-									" data-id='" + numAdditional{$propName} + "'>" +
-									'{if !empty($subProperty.default)}{$subProperty.default}{/if}' +
-								"</textarea>";
+								const autoGrowClass = '{if !empty($subProperty.autoResizeTextArea)} auto-grow-textarea{/if}';
+								newRow += "<textarea name='{$propName}_{$subPropName}[" + numAdditional{$propName} + "]' class='form-control" + autoGrowClass + "' data-id='" + numAdditional{$propName} + "'>{if !empty($subProperty.default)}{$subProperty.default}{/if}</textarea>";
 							{else}
-								newRow +=
-								"<input type='text' " +
-									"name='{$propName}_{$subPropName}[" + numAdditional{$propName} + "]' " +
-									"value='{if !empty($subProperty.default)}{$subProperty.default}{/if}' " +
-									"class='form-control{if $subProperty.type=="integer"} integer{/if}{if !empty($subProperty.required)} required{/if}'" +
-									'{if !empty($subProperty.maxLength)} maxlength="{$subProperty.maxLength}"{/if}' +
-									" data-id='" + numAdditional{$propName}
-								+ "'>";
+								newRow += "<input type='text' name='{$propName}_{$subPropName}[" + numAdditional{$propName} + "]' value='{if !empty($subProperty.default)}{$subProperty.default}{/if}' class='form-control{if $subProperty.type=="integer"} integer{/if}{if !empty($subProperty.required)} required{/if}' data-id='" + numAdditional{$propName} + "'>";
 							{/if}
 						{elseif $subProperty.type=='date'}
 							newRow += "<input type='date' name='{$propName}_{$subPropName}[" + numAdditional{$propName} + "]' value='{if !empty($subProperty.default)}{$subProperty.default}{/if}' class='form-control{if !empty($subProperty.required)} required{/if}' data-id='" + numAdditional{$propName} + "'>";
@@ -245,7 +231,7 @@
 						newRow += "</td>";
 					{elseif $subProperty.type == 'multiSelect'}
 						{if $subProperty.listStyle == 'checkboxList'}
-							newRow += "<td class='oneToManyCell' {if !empty($subProperty.relatedIls)}data-related-ils='~{implode subject=$subProperty.relatedIls glue='~'}~'{/if}>";
+							newRow += '<td>';
 							newRow += '<div class="checkbox">';
 							{*this assumes a simple array, eg list *}
 							{assign var=subPropName value=$subProperty.property}
@@ -272,8 +258,6 @@
 					});
 				});
 			}
-
-			AspenDiscovery.Admin.toggleIlsSpecificFields();
 		}
 		{/literal}
 	</script>

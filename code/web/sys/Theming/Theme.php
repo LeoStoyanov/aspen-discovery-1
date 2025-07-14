@@ -45,8 +45,6 @@ class Theme extends DataObject {
 	/** @noinspection PhpUnused */
 	public $listsImage;
 	/** @noinspection PhpUnused */
-	public $seriesImage;
-	/** @noinspection PhpUnused */
 	public $libraryWebsiteImage;
 	/** @noinspection PhpUnused */
 	public $historyArchivesImage;
@@ -550,7 +548,7 @@ class Theme extends DataObject {
 
 	/** @noinspection PhpUnused */
 	public static int $defaultPlacardImageMaxHeight = 0;
-	public $placardImageMaxHeight;
+	public int $placardImageMaxHeight;
 
 
 	private $_libraries;
@@ -1456,16 +1454,6 @@ class Theme extends DataObject {
 						'maxHeight' => 400,
 						'hideInLists' => true,
 					],
-					'seriesImage' => [
-						'property' => 'seriesImage',
-						'type' => 'image',
-						'label' => 'Series (400x400px max)',
-						'description' => 'An image for series results in Explore More',
-						'required' => false,
-						'maxWidth' => 400,
-						'maxHeight' => 400,
-						'hideInLists' => true,
-					],
 					'libraryWebsiteImage' => [
 						'property' => 'libraryWebsiteImage',
 						'type' => 'image',
@@ -1872,7 +1860,7 @@ class Theme extends DataObject {
 								'description' => 'Hover Border Color',
 								'required' => false,
 								'hideInLists' => true,
-								'default' => Theme::$defaultPrimaryButtonHoverBorderColor,
+								'primary' => Theme::$defaultPrimaryButtonHoverBorderColor,
 							],
 						],
 					],
@@ -3230,63 +3218,10 @@ class Theme extends DataObject {
 		}
 	}
 
-	public function saveLibraries(): void {
+	public function saveLibraries() {
 		if (isset ($this->_libraries) && is_array($this->_libraries)) {
-			// First, check if any libraries would be left without themes if removed.
-			require_once ROOT_DIR . '/sys/LibraryLocation/Library.php';
-			$librariesToDelete = [];
-			$librariesWithOnlyThisTheme = [];
-			$preventDeletion = false;
-
 			foreach($this->_libraries as $obj) {
-				/** @var LibraryTheme $obj */
-				if($obj->_deleteOnSave) {
-					$librariesToDelete[] = $obj;
-					// Check if this is the library's only theme.
-					$library = new Library();
-					$library->libraryId = $obj->libraryId;
-					if ($library->find(true)) {
-						if (!$library->hasMultipleThemes()) {
-							$preventDeletion = true;
-							$librariesWithOnlyThisTheme[] = $library->displayName;
-						}
-					}
-				}
-			}
-
-			// If any libraries would be left without themes, show error message and abort.
-			if ($preventDeletion) {
-				if (count($librariesWithOnlyThisTheme) == 1) {
-					$preventionMessage = translate([
-						'text' => 'Library %1% cannot be removed from this theme because it is the only theme for the library. Before proceeding, please assign another theme to this library.',
-						'isAdminFacing' => true,
-						1 => $librariesWithOnlyThisTheme[0]
-					]);
-				} else {
-					$libraryList = implode('", "', $librariesWithOnlyThisTheme);
-					$preventionMessage = translate([
-						'text' => 'The following libraries cannot be removed from this theme because it is their only theme: %1%. Before proceeding, please assign another theme to these libraries.',
-						'isAdminFacing' => true,
-						1 => $libraryList
-					]);
-				}
-
-				$user = UserAccount::getActiveUserObj();
-				if ($user) {
-					$user->updateMessage = $preventionMessage;
-					$user->updateMessageIsError = true;
-					$user->update();
-				}
-
-				// Remove the libraries marked for deletion from the _deleteOnSave list.
-				foreach($librariesToDelete as $obj) {
-					$obj->_deleteOnSave = false;
-				}
-			}
-
-			// Continue with normal save procedure for non-deleted libraries.
-			foreach($this->_libraries as $obj) {
-				/** @var LibraryTheme $obj */
+				/** @var DataObject $obj */
 				if($obj->_deleteOnSave) {
 					$obj->delete();
 				} else {
@@ -3300,7 +3235,7 @@ class Theme extends DataObject {
 							}
 						}
 					} else {
-						// Set the appropriate weight for the new theme.
+						// set appropriate weight for new theme
 						$weight = 0;
 						$existingThemesForLibrary = new LibraryTheme();
 						$existingThemesForLibrary->libraryId = $obj->libraryId;
@@ -3359,8 +3294,8 @@ class Theme extends DataObject {
 		}
 	}
 
-	/**
-	 * @return array|null
+	/** @return Library[]
+	 * @noinspection PhpUnused
 	 */
 	public function getLibraries() : ?array {
 		if (!isset($this->_libraries) && $this->id) {
@@ -3375,8 +3310,8 @@ class Theme extends DataObject {
 		return $this->_libraries;
 	}
 
-	/**
-	 * @return array|null
+	/** @return Location[]
+	 * @noinspection PhpUnused
 	 */
 	public function getLocations() : ?array {
 		if (!isset($this->_locations) && $this->id) {
@@ -3469,131 +3404,15 @@ class Theme extends DataObject {
 	}
 
 	/**
-	 * Check to see if this object should not be deleted because it will cause inconsistencies in other objects.
-	 * Prevent deletion of the default theme (ID: 1) and handle relationships with dependent objects.
-	 *
-	 * @param array $structure The object structure of this object.
-	 * @return array
-	 */
-	public function getDeletionBlockInformation(array $structure) : array {
-		return $this->checkDeletionDependencies();
-	}
-
-	/**
-	 * Checks if the theme can be deleted based on dependencies.
-	 * - Prevents deletion of the default theme (ID: 1).
-	 * - Prevents deletion if the theme is extended by child themes.
-	 * - Prevents deletion if the theme is the only theme for any library.
-	 *
-	 * @return array ['preventDeletion' => bool, 'message' => string]
-	 */
-	private function checkDeletionDependencies() : array {
-		// Check if this is the default theme (ID: 1) and prevent its deletion.
-		if ($this->id == 1) {
-			return [
-				'preventDeletion' => true,
-				'message' => translate(['text' => 'The default theme ' . $this->themeName . ' (ID: 1) cannot be deleted.', 'isAdminFacing'=>true])
-			];
-		}
-
-		$objectDependencyInfo = [
-			'preventDeletion' => false,
-			'message' => ''
-		];
-		$errorMessages = [];
-
-		// Check for child themes to prevent orphaned themes.
-		$childThemesWithThisParent = [];
-		$childTheme = new Theme();
-		$childTheme->extendsTheme = $this->themeName;
-		$childTheme->find();
-		while ($childTheme->fetch()) {
-			if ($childTheme->id != $this->id) {
-				$childThemesWithThisParent[] = $childTheme->displayName;
-			}
-		}
-		if (count($childThemesWithThisParent) > 0) {
-			$objectDependencyInfo['preventDeletion'] = true;
-			if (count($childThemesWithThisParent) == 1) {
-				$errorMessages[] = translate([
-					'text' => 'It is extended by the child theme: %1%. Before proceeding, please update the child theme to extend a different theme or "None".',
-					'isAdminFacing' => true,
-					1 => $childThemesWithThisParent[0]
-				]);
-			} else {
-				$childThemesList = implode(', ', $childThemesWithThisParent);
-				$errorMessages[] = translate([
-					'text' => 'It is extended by the child themes: %1%. Before proceeding, please update the child themes to extend a different theme or "None".',
-					'isAdminFacing' => true,
-					1 => $childThemesList
-				]);
-			}
-		}
-
-		// Custom handling for library themes to only prevent deletion
-		// if removing this theme would leave a library without any themes.
-		// There is no need to prevent the deletion of locations that would be left
-		// without any themes because their fallback is their respective library's theme.
-		require_once ROOT_DIR . '/sys/LibraryLocation/LibraryTheme.php';
-		$librariesWithOnlyThisTheme = [];
-		$libraryTheme = new LibraryTheme();
-		$libraryTheme->themeId = $this->id;
-		$libraryTheme->find();
-		while ($libraryTheme->fetch()) {
-			// For each library using this theme, check if it has other themes.
-			$otherThemeCheck = new LibraryTheme();
-			$otherThemeCheck->libraryId = $libraryTheme->libraryId;
-			$otherThemeCheck->whereAdd("themeId != {$this->id}");
-			if ($otherThemeCheck->count() == 0) {
-				require_once ROOT_DIR . '/sys/LibraryLocation/Library.php';
-				$library = new Library();
-				$library->libraryId = $libraryTheme->libraryId;
-				if ($library->find(true)) {
-					$librariesWithOnlyThisTheme[] = $library->displayName;
-				}
-			}
-		}
-		if (count($librariesWithOnlyThisTheme) > 0) {
-			$objectDependencyInfo['preventDeletion'] = true;
-			if (count($librariesWithOnlyThisTheme) == 1) {
-				$errorMessages[] = translate([
-					'text' => 'It is the only theme for the library: %1%. Before proceeding, please assign another theme to this library.',
-					'isAdminFacing' => true,
-					1 => $librariesWithOnlyThisTheme[0]
-				]);
-			} else {
-				$librariesList = implode(', ', $librariesWithOnlyThisTheme);
-				$errorMessages[] = translate([
-					'text' => 'It is the only theme for the libraries: %1%. Before proceeding, please assign another theme to these libraries.',
-					'isAdminFacing' => true,
-					1 => $librariesList
-				]);
-			}
-		}
-
-		if ($objectDependencyInfo['preventDeletion']) {
-			$objectDependencyInfo['message'] = translate([
-				'text' => 'The theme %1% cannot be deleted because:',
-				'isAdminFacing' => true,
-				1 => $this->themeName
-			]) . '<ul>';
-			foreach ($errorMessages as $msg) {
-				$objectDependencyInfo['message'] .= '<li>' . $msg . '</li>';
-			}
-			$objectDependencyInfo['message'] .= '</ul>';
-		}
-
-		return $objectDependencyInfo;
-	}
-
-	/**
 	 * Validates the `extendsTheme` property to ensure it references a valid, non-self theme.
+	 *
 	 * - If `extendsTheme` is set but does not point to an existing theme, it resets the value and logs an error.
 	 * - If `extendsTheme` references the current theme itself, it removes the self-reference and logs the correction.
 	 *
 	 * @return bool Returns true if the `extendsTheme` value was invalid and had to be reset (non-existent or self-referential), false otherwise.
 	 */
-	private function validateExtendsTheme(): bool {
+	private function validateExtendsTheme(): bool
+	{
 		if (!empty($this->extendsTheme)) {
 			$parentTheme = new Theme();
 			$parentTheme->themeName = $this->extendsTheme;

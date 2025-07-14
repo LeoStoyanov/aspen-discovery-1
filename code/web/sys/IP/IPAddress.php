@@ -38,9 +38,6 @@ class IPAddress extends DataObject {
 	static function getObjectStructure($context = ''): array {
 		//Look lookup information for display in the user interface
 		$location = new Location();
-		$location->selectAdd();
-		$location->selectAdd('displayName');
-		$location->selectAdd('locationId');
 		$location->orderBy('displayName');
 		$location->find();
 		$locationLookupList = [];
@@ -532,6 +529,11 @@ class IPAddress extends DataObject {
 			// X-Forwarded-For may contain multiple IPs; take the first one (client).
 			$ipList = explode(',', $ip);
 			$ip = trim($ipList[0]);
+		}
+
+		if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+			// If not a valid IP, return a default.
+			$ip = '0.0.0.0';
 		}
 
 		// Convert IPv6 localhost to IPv4 localhost for backward compatibility.

@@ -7557,31 +7557,6 @@ a.bg-overdue:focus {
 .goog-te-gadget {
   display: inline-block;
 }
-.field-wrapper {
-  position: relative;
-  display: block;
-}
-.field-wrapper.outside {
-  padding-bottom: 1.6em;
-}
-.char-counter {
-  position: absolute;
-  right: 0.5em;
-  font-size: 0.85em;
-  color: #666;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease, bottom 0.2s ease;
-}
-.char-counter.visible {
-  opacity: 1;
-}
-.char-counter.inside {
-  bottom: 0.3em;
-}
-.char-counter.outside {
-  bottom: 0;
-}
 .ui-rater > span {
   vertical-align: top;
 }
@@ -8769,63 +8744,6 @@ a.placard-link {
 .stripPopup .cookieContainer abbr {
   color: white;
 }
-#account-menu-label {
-  justify-content: left;
-  text-align: left;
-}
-#sidebar-collapse {
-  display: block;
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  z-index: 100;
-}
-#side-bar.collapsed {
-  position: absolute !important;
-  width: 48px !important;
-  overflow: visible !important;
-  z-index: 3000 !important;
-  margin-left: 20px;
-}
-/* Hide everything except the toggle button. */
-#side-bar.collapsed #account-menu-label > :not(.sidebar-toggle-wrapper),
-#side-bar.collapsed #home-account-links,
-#side-bar.collapsed .sidebar-title {
-  display: none !important;
-}
-/* Style the toggle button's background. */
-#side-bar.collapsed #sidebar-collapse {
-  margin: auto;
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  top: 0 !important;
-  right: 0 !important;
-  width: 38px !important;
-  height: 36px !important;
-  border-radius: 10% !important;
-}
-#sidebar-collapse button i {
-  transition: transform 0.2s ease-in-out;
-}
-#side-bar.collapsed #sidebar-collapse button i {
-  transform: rotate(180deg);
-}
-/* Remove sidebar-label background when collapsed. */
-#side-bar.collapsed .sidebar-label {
-  background: none !important;
-  padding: 0 !important;
-}
-#side-bar.collapsed ~ #main-content-with-sidebar {
-  margin-left: 0 !important;
-  width: 100% !important;
-}
-/* Breadcrumb indent for collapsed sidebar. */
-@media (min-width: 768px) {
-  #side-bar.collapsed + #main-content-with-sidebar .breadcrumbs {
-    margin-left: 60px !important;
-  }
-}
 .swiper {
   width: 100%;
 }
@@ -8958,6 +8876,13 @@ a.placard-link {
 #horizontal-search-box #searchForm .row {
   margin-left: 0;
   margin-right: 0;
+}
+.talpa_search_loading {
+  padding-right: 30px; /* Ensure space for the image */
+  background-image: url('/images/loading.gif'); /* Replace with your image */
+  background-repeat: no-repeat;
+  background-position: right 8px center; /* Align to the right */
+  background-size: 20px 20px; /* Adjust the size */
 }
 #horizontal-search-box #searchForm .row > div {
   margin-top: 4px;
@@ -9224,36 +9149,6 @@ a.placard-link {
   #home-page-browse-results .grid-col--6 {
     display: block;
   }
-}
-.input-group-addon.clear-search {
-  position: absolute;
-  top: 50%;
-  right: 15px;
-  transform: translateY(-50%);
-  display: none;
-  cursor: pointer;
-  color: #aaa;
-  background: none;
-  border: none;
-  padding: 0;
-  z-index: 2;
-}
-@media (max-width: 768px) {
-  .input-group-addon.clear-search {
-    right: 20px;
-  }
-}
-.input-group-addon.clear-search svg {
-  width: 20px;
-  height: 20px;
-  fill: #555;
-}
-.input-group-addon.clear-search:hover svg {
-  fill: #222;
-}
-#horizontal-search-box .input-group input#lookfor,
-#home-search-box .input-group input#lookfor {
-  padding-right: 30px !important;
 }
 #home-page-browse-header {
   background-color: #d7dce3;
@@ -9567,6 +9462,7 @@ a.placard-link {
   }
 }
 .browse-thumbnail {
+  display: block;
   padding: 4px;
   margin-bottom: 20px;
   line-height: 1.42857143;
@@ -10636,7 +10532,7 @@ a.browse-thumbnail.active {
   border-color: #00a4e3;
 }
 #results-sort {
-  width: 180px;
+  width: 160px;
   margin: 0 8px 0 18px;
   height: 30px;
   padding: 2px 5px;
@@ -10790,6 +10686,69 @@ a.browse-thumbnail.active {
   font-style: italic;
   margin-left: 6px;
 }
+#tryThisSearchOnTalpa {
+	margin-top: 20px;
+}
+
+#talpaExplainerText {
+	margin-top: 10px;
+	margin-bottom: 10px;
+}
+
+#talpaExplainerText img {
+	float: left;
+	margin-right: 5px;
+}
+.talpaTextLoadingLine {
+	height: 25px;
+	width: 100%;
+	margin-bottom: 5px;
+	border-radius: 2px;
+	max-width: 80ch;
+}
+.talpaTextLoadingLine:last-child {
+	margin:0;
+}
+
+.talpa_list_summary .talpaTextLoadingLine {
+	max-width: unset;
+}
+@-webkit-keyframes placeHolderShimmer {
+	 0% {
+		 background-position: 0 0;
+	 }
+	 100% {
+		 background-position: 100vw 0;
+	 }
+ }
+
+@keyframes placeHolderShimmer {
+	0% {
+		background-position: 0 0;
+	}
+	100% {
+		background-position: 100vw 0;
+	}
+}
+.talpaTextLoading {
+	-webkit-animation-duration: 1.5s;
+	animation-duration: 1.5s;
+	-webkit-animation-fill-mode: forwards;
+	animation-fill-mode: forwards;
+	-webkit-animation-iteration-count: infinite;
+	animation-iteration-count: infinite;
+	-webkit-animation-name: placeHolderShimmer;
+	animation-name: placeHolderShimmer;
+	-webkit-animation-timing-function: linear;
+	animation-timing-function: linear;
+	background: #0001;
+	background: linear-gradient(to right, #0001, rgba(133, 104, 104, 0.07) 18%, rgba(205, 183, 183, 0.07) 33%);
+	background-size: 100vw 100vh;
+	height: 25px;
+	position: relative;
+}
+
+
 .tocEntry {
   margin-bottom: 2px;
 }
@@ -11410,228 +11369,6 @@ input[type="radio"][name="colorScheme"]:checked + label::after {
   .stripPopup .btnWrap a.button {
     width: auto;
     font-size: 12px;
-  }
-}
-.talpa_search_loading {
-  padding-right: 30px;
-  /* Ensure space for the image */
-  background-image: url('/images/loading.gif');
-  /* Replace with your image */
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  /* Align to the right */
-  background-size: 20px 20px;
-  /* Adjust the size */
-}
-#tryThisSearchOnTalpa {
-  margin-top: 20px;
-}
-#talpaExplainerText {
-  margin-top: 10px;
-  margin-bottom: 10px;
-}
-#talpaExplainerText img {
-  float: left;
-  margin-right: 5px;
-}
-.talpaTextLoadingLine {
-  height: 25px;
-  width: 100%;
-  margin-bottom: 5px;
-  border-radius: 2px;
-  max-width: 80ch;
-}
-.talpaTextLoadingLine:last-child {
-  margin: 0;
-}
-.talpa_list_summary .talpaTextLoadingLine {
-  max-width: unset;
-}
-@-webkit-keyframes placeHolderShimmer {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: 100vw 0;
-  }
-}
-@keyframes placeHolderShimmer {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: 100vw 0;
-  }
-}
-.talpaTextLoading {
-  -webkit-animation-duration: 1.5s;
-  animation-duration: 1.5s;
-  -webkit-animation-fill-mode: forwards;
-  animation-fill-mode: forwards;
-  -webkit-animation-iteration-count: infinite;
-  animation-iteration-count: infinite;
-  -webkit-animation-name: placeHolderShimmer;
-  animation-name: placeHolderShimmer;
-  -webkit-animation-timing-function: linear;
-  animation-timing-function: linear;
-  background: #0001;
-  background: linear-gradient(to right, #0001, rgba(133, 104, 104, 0.07) 18%, rgba(205, 183, 183, 0.07) 33%);
-  background-size: 100vw 100vh;
-  height: 25px;
-  position: relative;
-}
-.curbside-pickup-table {
-  vertical-align: middle;
-  word-wrap: break-word;
-}
-.curbside-pickup-table th,
-.curbside-pickup-table td {
-  vertical-align: middle;
-}
-.curbside-date-cell,
-.curbside-location-cell,
-.curbside-note-cell,
-.curbside-actions-cell {
-  min-width: 80px;
-}
-.curbside-note-cell {
-  white-space: normal;
-  overflow-wrap: break-word;
-  hyphens: auto;
-  word-break: break-word;
-}
-.curbside-status-badge {
-  display: inline-block;
-  margin-top: 0.25rem;
-}
-@media (max-width: 767px) {
-  .curbside-pickup-table {
-    table-layout: fixed;
-  }
-  .curbside-pickup-table td,
-  .curbside-pickup-table th {
-    padding: 0.5rem;
-  }
-  .curbside-checkin-btn,
-  .curbside-cancel-btn {
-    padding: 0.25rem 0.4rem;
-    font-size: 0.875rem;
-  }
-}
-@media (max-width: 480px) {
-  .curbside-pickup-table td,
-  .curbside-pickup-table th {
-    padding: 0.25rem;
-    font-size: 0.9rem;
-  }
-}
-.curbside-checkin-btn[disabled] {
-  opacity: 1 !important;
-}
-.time-slots-container {
-  margin-top: 15px;
-}
-.time-slot-section {
-  margin-bottom: 15px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-.time-slot-heading {
-  padding: 10px 15px;
-  background-color: #f5f5f5;
-  cursor: pointer;
-  margin: 0;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #ddd;
-}
-.time-slot-heading .toggle-icon i {
-  transition: transform 0.3s ease;
-}
-.time-slot-heading .toggle-icon i.rotated {
-  transform: rotate(90deg);
-}
-.time-slot-options {
-  padding: 15px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.time-slot-options label.btn {
-  margin: 0;
-  border-radius: 4px;
-  flex: 0 0 auto;
-  font-weight: normal;
-}
-.time-slot-options input[type="radio"] {
-  position: absolute;
-  clip: rect(0, 0, 0, 0);
-}
-@media (max-width: 768px) {
-  .time-slot-options label.btn {
-    padding: 6px 10px;
-    font-size: 14px;
-  }
-}
-#newCurbsidePickupForm input.form-control[readonly] {
-  cursor: pointer !important;
-}
-/* Only apply to /MyAccount/list.tpl. */
-@media print {
-  /* Make sure descriptions and multiple manifestations are visible . */
-  body#MyAccount-MyList .list-entry-hidden-desc.hidden-xs,
-  body#MyAccount-MyList .list-entry-hidden-format.hidden-xs {
-    display: block !important;
-  }
-  /* Make sure list title is prominently displayed. */
-  body#MyAccount-MyList #listTitle {
-    font-size: 24px;
-    margin-top: 20px;
-    margin-bottom: 10px;
-    display: block !important;
-  }
-  /* Hide buttons and controls that aren't needed. */
-  body#MyAccount-MyList .btn-toolbar,
-  body#MyAccount-MyList .btn-group,
-  body#MyAccount-MyList .resultActions {
-    display: none !important;
-  }
-  /* Hide mobile-only toggle rows "Description" and "Click to view". */
-  body#MyAccount-MyList .list-entry-desc-toggle {
-    display: none !important;
-  }
-  /* Hide the back-to-top arrow. */
-  body#MyAccount-MyList .top-link {
-    display: none !important;
-  }
-  /* Prevent page breaks inside list items and their descriptions. */
-  body#MyAccount-MyList .result,
-  body#MyAccount-MyList .resultsList.listEntry,
-  body#MyAccount-MyList .list-entry-hidden-desc,
-  body#MyAccount-MyList .result-value,
-  body#MyAccount-MyList .user-list-entry-note {
-    page-break-inside: avoid !important;
-    /* For old browsers */
-    break-inside: avoid !important;
-  }
-  /* Allow page breaks in list items when descriptions are omitted. */
-  body#MyAccount-MyList.no-print-descriptions .result,
-  body#MyAccount-MyList.no-print-descriptions .resultsList.listEntry {
-    page-break-inside: auto !important;
-    /* For old browsers */
-    break-inside: auto !important;
-  }
-  /* Optionally hide descriptions when selected. */
-  body#MyAccount-MyList.no-print-descriptions .list-entry-hidden-desc {
-    display: none !important;
-  }
-  /* Strip out any screen‐only height/overflow rules to allow landscape printing. */
-  body#MyAccount-MyList {
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
   }
 }
 /*# sourceMappingURL=main.css.map */
