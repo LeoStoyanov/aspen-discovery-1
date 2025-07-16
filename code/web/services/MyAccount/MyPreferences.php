@@ -201,12 +201,12 @@ class MyAccount_MyPreferences extends MyAccount {
 					}
 					$user->updateMessageIsError = !$result['success'];
 
-					if ($canUpdateContactInfo && $allowHomeLibraryUpdates) {
+					if ($canUpdateContactInfo && $allowHomeLibraryUpdates && isset($_REQUEST['homeLocation'])) {
 						$result2 = $user->updateHomeLibrary($_REQUEST['homeLocation']);
 						if (!empty($user->updateMessage)) {
 							$user->updateMessage .= '<br/>';
 						}
-						if (!empty($result2)) { // $result2 may be null, guard clause required
+						if (!empty($result2) && isset($result2['messages'])) {
 							if (is_array($result2['messages'])) {
 								$user->updateMessage .= implode('<br/>', $result2['messages']);
 							} else {
