@@ -116,20 +116,6 @@ class Author_Home extends ResultsAction {
 
 		$interface->assign('showNotInterested', false);
 
-		// Initialise from the current search globals
-		/** @var SearchObject_AbstractGroupedWorkSearcher $searchObject */
-		$searchObject = SearchObjectFactory::initSearchObject();
-		$searchObject->init();
-		$searchObject->setPrimarySearch(true);
-
-		// Build RSS Feed for Results (if requested)
-		if ($searchObject->getView() == 'rss') {
-			// Throw the XML to screen
-			echo $searchObject->buildRSS();
-			// And we're done
-			exit();
-		}
-
 		$interface->caching = false;
 
 		// Retrieve User Search History -- note that we only want to offer a
@@ -148,31 +134,37 @@ class Author_Home extends ResultsAction {
 		$interface->assign('basicSearchIndex', 'Author');
 		$interface->assign('searchIndex', 'Author');
 
-		// Clean up author string
-		$author = $_GET['author'];
-		if (is_array($author)) {
-			$author = array_pop($author);
+		$rawAuthor = $_GET['author'];
+		$author = is_array($rawAuthor) ? array_pop($rawAuthor) : $rawAuthor;
+		$author = trim(preg_replace([
+			'/"/',					// Remove quotes
+			'/\s*\([^)]*\)\s*/',	// Remove parenthetical expressions
+			'/\s{2,}/'				// Collapse multiple spaces
+		], ['', ' ', ' '], $author));
+
+		$_GET['author'] = $author;
+		$_REQUEST['author'] = $author;
+		$interface->assign('lookfor', $author);
+
+		// Must create search object after requests are set to
+		// cleaned author because init() sets search terms to them.
+		/** @var SearchObject_AbstractGroupedWorkSearcher $searchObject */
+		$searchObject = SearchObjectFactory::initSearchObject();
+		$searchObject->init();
+		$searchObject->setPrimarySearch(true);
+
+		if ($searchObject->getView() == 'rss') {
+			echo $searchObject->buildRSS();
+			exit();
 		}
 
-		$author = trim(str_replace('"', '', $author));
-		if (substr($author, strlen($author) - 1, 1) == ",") {
-			$author = substr($author, 0, strlen($author) - 1);
-		}
 		$wikipediaAuthorName = $author;
 		$author = explode(',', $author);
 		$interface->assign('author', $author);
-
-		// Create First Name
+		
 		$firstName = '';
 		if (isset($author[1])) {
 			$firstName = $author[1];
-
-			if (isset($author[2])) {
-				// Remove punctuation
-				if ((strlen($author[2]) > 2) && (substr($author[2], -1) == '.')) {
-					$author[2] = substr($author[2], 0, -1);
-				}
-			}
 		}
 
 		// Remove dates
@@ -184,7 +176,7 @@ class Author_Home extends ResultsAction {
 			$authorName = $firstName . ' ';
 		} else {
 			// No initial so strip any punctuation from the end
-			if ((substr(trim($firstName), -1) == ',') || (substr(trim($firstName), -1) == '.')) {
+			if ((str_ends_with(trim($firstName), ',')) || (str_ends_with(trim($firstName), '.'))) {
 				$authorName = substr(trim($firstName), 0, -1) . ' ';
 			} else {
 				$authorName = $firstName . ' ';
@@ -193,20 +185,10 @@ class Author_Home extends ResultsAction {
 		$authorName .= $author[0];
 		$interface->assign('authorName', trim($authorName));
 
-		// Pull External Author Content
 		$interface->assign('showWikipedia', false);
-		if ($searchObject->getPage() == 1) {
-			// Only load Wikipedia info if turned on in config file:
-			if ($library->showWikipediaContent == 1) {
-				$interface->assign('showWikipedia', true);
-
-				//Strip anything in parenthesis
-				if (strpos($wikipediaAuthorName, '(') > 0) {
-					$wikipediaAuthorName = substr($wikipediaAuthorName, 0, strpos($wikipediaAuthorName, '('));
-				}
-				$wikipediaAuthorName = trim($wikipediaAuthorName);
-				$interface->assign('wikipediaAuthorName', $wikipediaAuthorName);
-			}
+		if ($searchObject->getPage() === 1 && $library->showWikipediaContent == 1) {
+			$interface->assign('showWikipedia', true);
+			$interface->assign('wikipediaAuthorName', $wikipediaAuthorName);
 		}
 
 		// Set Interface Variables
@@ -264,7 +246,6 @@ class Author_Home extends ResultsAction {
 		$interface->assign('resultsTemplate', $template);
 
 		//Load similar author information.
-		$groupedWorkId = null;
 		foreach ($searchObject->getResultRecordSet() as $title) {
 			$groupedWorkId = $title['id'];
 			$interface->assign('firstWorkId', $groupedWorkId);

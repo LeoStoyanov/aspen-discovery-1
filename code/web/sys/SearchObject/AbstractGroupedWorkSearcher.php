@@ -57,7 +57,7 @@ abstract class SearchObject_AbstractGroupedWorkSearcher extends SearchObject_Sol
 		$this->initFilters();
 
 		if ($searchTerm == null) {
-			$searchTerm = isset($_REQUEST['lookfor']) ? $_REQUEST['lookfor'] : null;
+			$searchTerm = $_REQUEST['lookfor'] ?? null;
 		}
 
 		global $module;

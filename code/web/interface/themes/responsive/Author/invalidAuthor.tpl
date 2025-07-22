@@ -1,4 +1,4 @@
-<h1>{translate text='Invalid Author' isPublicFacing=true}</h1>
+<h1>{translate text=$pageTitleShort isPublicFacing=true}</h1>
 
 {if !empty($solrSearchDebug)}
 	<div id="solrSearchOptionsToggle" onclick="$('#solrSearchOptions').toggle()">{translate text="Show Search Options" isAdminFacing=true}</div>
