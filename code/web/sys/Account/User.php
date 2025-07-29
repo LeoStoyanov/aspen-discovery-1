@@ -2137,6 +2137,7 @@ class User extends DataObject {
 			uasort($holdsToReturn['available'], $holdSort);
 		}
 		if (!empty($holdsToReturn['unavailable'])) {
+			$useCustomSort = false;
 			switch ($unavailableSort) {
 				case 'author' :
 				case 'position' :
@@ -2154,11 +2155,46 @@ class User extends DataObject {
 				case 'location' :
 					$indexToSortBy = 'pickupLocationName';
 					break;
+				case 'reactivate' :
+					$reactivateDateSort = function (Hold $a, Hold $b) {
+						$titleA = $a->getSortTitle();
+						$titleB = $b->getSortTitle();
+						
+						// Get reactivation dates, treating null/0 as "no date set" (indefinitely frozen or not frozen).
+						$dateA = (!empty($a->reactivateDate) && $a->reactivateDate > 0) ? $a->reactivateDate : null;
+						$dateB = (!empty($b->reactivateDate) && $b->reactivateDate > 0) ? $b->reactivateDate : null;
+						
+						// Both have reactivation dates, so sort by date (earliest first).
+						if ($dateA !== null && $dateB !== null) {
+							if ($dateA == $dateB) {
+								return strnatcasecmp($titleA, $titleB);
+							}
+							return $dateA <=> $dateB;
+						}
+						
+						// Only A has a reactivation date, so it comes first.
+						if ($dateA !== null && $dateB === null) {
+							return -1;
+						}
+						
+						// Only B has a reactivation date, so it comes first.
+						if ($dateA === null && $dateB !== null) {
+							return 1;
+						}
+						
+						// Neither has a reactivation date, so sort by title.
+						return strnatcasecmp($titleA, $titleB);
+					};
+					uasort($holdsToReturn['unavailable'], $reactivateDateSort);
+					$useCustomSort = true;
+					break;
 				case 'title' :
 				default :
 					$indexToSortBy = 'sortTitle';
 			}
-			uasort($holdsToReturn['unavailable'], $holdSort);
+			if (!$useCustomSort) {
+				uasort($holdsToReturn['unavailable'], $holdSort);
+			}
 		}
 
 		if ($source == 'interlibrary_loan') {

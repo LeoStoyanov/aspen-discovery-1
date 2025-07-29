@@ -4052,6 +4052,7 @@ class MyAccount_AJAX extends JSON_Action {
 				if ($showPlacedColumn) {
 					$unavailableHoldSortOptions['placed'] = 'Date Placed';
 				}
+				$unavailableHoldSortOptions['reactivate'] = 'Reactivation Date';
 
 				$availableHoldSortOptions = [
 					'title' => 'Title',
