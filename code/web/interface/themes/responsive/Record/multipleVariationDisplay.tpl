@@ -23,7 +23,23 @@
 							{if $record->isHoldable() || $record->isEContent()}
 							{* actions *}
 							{foreach from=$record->getActions($record->variationId) item=curAction}
-								<a href="{$curAction.url}" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if} class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap">{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}</a>
+								{if !empty($curAction['class']) && $curAction['class'] == 'lazy-load-circulation-action'}
+									<a href="#" class="btn btn-sm {if empty($curAction['btnType'])}btn-action{else}{$curAction['btnType']}{/if} btn-wrap {$curAction['class']}" style="display: none;"
+									   {if !empty($curAction['id'])}id="{$curAction['id']}"{/if}
+									   data-user-id="{$curAction['data-user-id']|default:0}"
+									   data-source="{$curAction['data-source']|default:''}"
+									   data-record-id="{$curAction['data-record-id']|default:''}"
+									   data-loading-linked-user="{$curAction['data-loading-linked-user']|default:0}"
+									   onclick="{$curAction['onclick']}"
+											{if !empty($curAction['alt'])}title="{translate text=$curAction['alt'] inAttribute=true}"{/if}>
+										{$curAction['title']}
+									</a>
+									<script>
+										AspenDiscovery.GroupedWork.loadCirculationAction(document.getElementById('{$curAction['id']}'));
+									</script>
+								{else}
+									<a href="{$curAction.url}" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if} class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap">{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}</a>
+								{/if}
 							{/foreach}
 							{/if}
 						</div>

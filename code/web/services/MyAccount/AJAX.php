@@ -10126,4 +10126,81 @@ class MyAccount_AJAX extends JSON_Action {
 			'selectHtml' => $html
 		];
 	}
+
+	/** @noinspection PhpUnused */
+	function loadCirculationActions(): array {
+		$result = [
+			'success' => false,
+			'actions' => []
+		];
+
+		if (!UserAccount::isLoggedIn()) {
+			$result['message'] = 'You must be logged in to load circulation actions.';
+			return $result;
+		}
+
+		$user = UserAccount::getActiveUserObj();
+		if ($user->areCirculationActionsDisabled()) {
+			$result['message'] = 'Circulation actions are disabled for this user.';
+			return $result;
+		}
+
+		$source = $_REQUEST['source'] ?? '';
+		$recordId = $_REQUEST['recordId'] ?? '';
+		$userId = $_REQUEST['userId'] ?? '';
+		$loadingLinkedUser = ($_REQUEST['loadingLinkedUser'] ?? '0') === '1';
+
+		if (empty($source) || empty($recordId) || empty($userId)) {
+			$result['message'] = 'Missing required parameters.';
+			return $result;
+		}
+
+		// Verify the user ID matches current user or a linked user.
+		if ($userId != $user->id) {
+			$linkedUsers = $user->getLinkedUsers();
+			$foundLinkedUser = false;
+			foreach ($linkedUsers as $linkedUser) {
+				if ($linkedUser->id == $userId) {
+					$user = $linkedUser;
+					$foundLinkedUser = true;
+					break;
+				}
+			}
+			if (!$foundLinkedUser) {
+				$result['message'] = 'Invalid user ID.';
+				return $result;
+			}
+		}
+
+		try {
+			// Load real circulation actions (not lazy loaded).
+			$actions = $user->getCirculatedRecordActions($source, $recordId, $loadingLinkedUser);
+			$formattedActions = [];
+			foreach ($actions as $action) {
+				$formattedActions[] = [
+					'title' => $action['title'] ?? '',
+					'url' => $action['url'] ?? '',
+					'onclick' => $action['onclick'] ?? '',
+					'btnType' => $action['btnType'] ?? 'btn-action',
+					'target' => $action['target'] ?? '',
+					'alt' => $action['alt'] ?? '',
+					'id' => $action['id'] ?? '',
+					'requireLogin' => $action['requireLogin'] ?? false
+				];
+			}
+
+			$result = [
+				'success' => true,
+				'actions' => $formattedActions,
+				'userId' => $userId,
+				'source' => $source,
+				'recordId' => $recordId
+			];
+
+		} catch (Exception $e) {
+			$result['message'] = 'Error loading circulation actions: ' . $e->getMessage();
+		}
+
+		return $result;
+	}
 }

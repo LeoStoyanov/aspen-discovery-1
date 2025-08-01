@@ -733,5 +733,136 @@ AspenDiscovery.GroupedWork = (function(){
 			);
 			return false;
 		},
+
+		loadCirculationAction(placeholder) {
+			const $placeholder = $(placeholder);
+			const userId = $placeholder.data('user-id');
+			const source = $placeholder.data('source');
+			const recordId = $placeholder.data('record-id');
+			const loadingLinkedUser = $placeholder.data('loading-linked-user');
+			
+			console.log("Called load circulation action for " + source + ":" + recordId);
+			
+			// Validate required parameters
+			if (!userId || !source || !recordId) {
+				console.error('Missing required parameters for circulation action:', {userId, source, recordId});
+				$placeholder.hide();
+				return;
+			}
+			const url = `${Globals.path}/MyAccount/AJAX`;
+			const params = {
+				method: 'loadCirculationActions',
+				userId,
+				source,
+				recordId,
+				loadingLinkedUser
+			};
+
+			$.getJSON(url, params)
+				.done((data) => {
+					const { success = false, actions = [] } = data;
+
+					if (success && actions.length > 0) {
+						const $container = $placeholder.parent();
+						
+						// For MARC records, show the placeholder if there are circulation actions
+						// For e-content records, replace only circulation-related buttons
+						if (source !== 'ils' && source !== 'koha' && source !== 'sierra' && source !== 'millennium' && source !== 'evergreen' && source !== 'polaris' && source !== 'carlx' && source !== 'folio' && source !== 'horizon') {
+							$container.find('.btn:not(.lazy-load-circulation-action)').each(function() {
+								const $btn = $(this);
+								
+								// Primary method: Check for circulation-action CSS class
+								const hasCirculationClass = $btn.hasClass('circulation-action');
+								
+								// Fallback method: Check onclick for circulation functions (for backwards compatibility)
+								let isCirculationByOnclick = false;
+								if (!hasCirculationClass) {
+									const onclickAttr = $btn.attr('onclick') || '';
+									const circulationFunctions = [
+										'AspenDiscovery.OverDrive.checkOutTitle', 'AspenDiscovery.OverDrive.placeHold',
+										'AspenDiscovery.CloudLibrary.checkOutTitle', 'AspenDiscovery.CloudLibrary.placeHold',
+										'AspenDiscovery.Axis360.checkOutTitle', 'AspenDiscovery.Axis360.placeHold',
+										'AspenDiscovery.Hoopla.checkOutTitle', 'AspenDiscovery.Hoopla.placeHold', 'AspenDiscovery.Hoopla.getCheckOutPrompts',
+										'AspenDiscovery.PalaceProject.checkOutTitle', 'AspenDiscovery.PalaceProject.placeHold',
+										'AspenDiscovery.Account.placeHold', 'AspenDiscovery.Catalog.placeHold', 'AspenDiscovery.ILS.placeHold'
+									];
+									isCirculationByOnclick = circulationFunctions.some(func => onclickAttr.includes(func));
+								}
+								
+								if (hasCirculationClass || isCirculationByOnclick) {
+									const method = hasCirculationClass ? 'CSS class' : 'onclick function';
+									console.log(`Removing circulation button identified by ${method}: ${$btn.text().substring(0, 30)}...`);
+									$btn.remove();
+								}
+							});
+						} else {
+							$placeholder.show();
+						}
+						
+						$placeholder.remove();
+
+						// Debug logging
+						console.log(`Loading ${actions.length} circulation actions for ${source}:${recordId}`);
+
+						actions.forEach((action) => {
+							const {
+								title = '',
+								url = '',
+								onclick = '',
+								btnType = 'btn-action',
+								target = '',
+								alt = '',
+								id = '',
+								requireLogin = false
+							} = action;
+
+							const $button = $('<a>');
+							$button.addClass('btn btn-sm btn-wrap');
+							$button.addClass(btnType);
+
+							if (url) {
+								$button.attr('href', url);
+								if (target) {
+									$button.attr('target', target);
+								}
+								if (requireLogin) {
+									$button.attr('onclick', `return AspenDiscovery.Account.followLinkIfLoggedIn(this, '${url}');`);
+								}
+							} else {
+								$button.attr('href', '#');
+								if (onclick) {
+									$button.attr('onclick', onclick);
+								}
+							}
+
+							if (id) {
+								$button.attr('id', id);
+							}
+							if (alt) {
+								$button.attr('title', alt);
+							}
+
+							let buttonText = title;
+							if (target === '_blank') {
+								buttonText = `<i class="fas fa-external-link-alt" role="presentation"></i> ${buttonText}`;
+							}
+							$button.html(buttonText);
+
+							$container.append($button);
+							console.log(`Added circulation button: ${title}`);
+						});
+						
+						// Force container refresh to ensure DOM updates are visible
+						$container.trigger('DOMSubtreeModified');
+					} else {
+						console.log(`No circulation actions found or failed for ${source}:${recordId}`);
+						$placeholder.hide();
+					}
+				})
+				.fail((jqXHR, textStatus, errorThrown) => {
+					console.error(`Failed to load circulation actions for ${source}:${recordId}`, textStatus, errorThrown);
+					$placeholder.hide();
+				});
+		},
 	};
 }(AspenDiscovery.GroupedWork || {}));

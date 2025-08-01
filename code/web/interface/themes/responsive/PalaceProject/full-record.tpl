@@ -44,10 +44,25 @@
 						<div class="btn-toolbar">
 							<div class="btn-group btn-group-vertical btn-block">
 								{foreach from=$actions item=curAction}
-									{if !empty($curAction.url) && strlen($curAction.url) > 0}
-										<a href="{$curAction.url}" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" onclick="{if !empty($curAction.requireLogin)}return AspenDiscovery.Account.followLinkIfLoggedIn(this, '{$curAction.url}');{/if}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>{translate text=$curAction.title isPublicFacing=true}</a>
+									{if !empty($curAction['class']) && $curAction['class'] == 'lazy-load-circulation-action'}
+										{* This is a placeholder for lazy loading circulation actions *}
+										<a href="#" class="btn btn-sm {$curAction['btnType']} btn-wrap {$curAction['class']}" style="display: none;"
+										   id="{$curAction['id']}"
+										   data-user-id="{$curAction['data-user-id']}"
+										   data-source="{$curAction['data-source']}"
+										   data-record-id="{$curAction['data-record-id']}"
+										   data-loading-linked-user="{$curAction['data-loading-linked-user']}"
+										   data-show-user-name="{$curAction['data-show-user-name']}"
+										   onclick="{$curAction['onclick']}">
+											<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> {$curAction['title']}
+										</a>
+										<script>
+											AspenDiscovery.GroupedWork.loadCirculationAction(document.getElementById('{$curAction['id']}'));
+										</script>
+									{elseif !empty($curAction.url) && strlen($curAction.url) > 0}
+										<a href="{$curAction.url}" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap{if !empty($curAction['class'])} {$curAction['class']}{/if}" onclick="{if !empty($curAction.requireLogin)}return AspenDiscovery.Account.followLinkIfLoggedIn(this, '{$curAction.url}');{/if}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>{translate text=$curAction.title isPublicFacing=true}</a>
 									{else}
-										<a href="#" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" onclick="{$curAction.onclick}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>{translate text=$curAction.title isPublicFacing=true}</a>
+										<a href="#" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap{if !empty($curAction['class'])} {$curAction['class']}{/if}" onclick="{$curAction.onclick}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>{translate text=$curAction.title isPublicFacing=true}</a>
 									{/if}
 								{/foreach}
 							</div>

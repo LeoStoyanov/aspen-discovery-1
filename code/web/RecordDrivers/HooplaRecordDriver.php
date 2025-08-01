@@ -238,8 +238,13 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 			$loadDefaultActions = true;
 			if (UserAccount::isLoggedIn()) {
 				$user = UserAccount::getActiveUserObj();
-				$this->_actions = array_merge($this->_actions, $user->getCirculatedRecordActions('hoopla', $this->id));
-				$loadDefaultActions = count($this->_actions) == 0;
+				$useLazyLoading = !$user->isCirculationCacheFresh();
+				$circulationActions = $user->getCirculatedRecordActions('hoopla', $this->id, false, $useLazyLoading);
+				$this->_actions = array_merge($this->_actions, $circulationActions);
+
+				if (!$useLazyLoading && !empty($circulationActions)) {
+					$loadDefaultActions = false;
+				}
 			}
 
 			//Check if catalog is offline and login for eResources should be allowed for offline
@@ -260,6 +265,7 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 							'onclick' => "return AspenDiscovery.Hoopla.placeHold('$id')",
 							'title' => $title,
 							'type' => 'hoopla_hold',
+							'class' => 'circulation-action',
 						];
 					} else {
 						$title = translate([
@@ -270,6 +276,7 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 							'onclick' => "return AspenDiscovery.Hoopla.getCheckOutPrompts('$id', '$hooplaType')",
 							'title' => $title,
 							'type' => 'hoopla_checkout',
+							'class' => 'circulation-action',
 						];
 					}
 				}

@@ -214,8 +214,13 @@ class PalaceProjectRecordDriver extends GroupedWorkSubDriver {
 			$loadDefaultActions = true;
 			if (UserAccount::isLoggedIn()) {
 				$user = UserAccount::getActiveUserObj();
-				$this->_actions = array_merge($this->_actions, $user->getCirculatedRecordActions('palace_project', $this->id));
-				$loadDefaultActions = count($this->_actions) == 0;
+				$useLazyLoading = !$user->isCirculationCacheFresh();
+				$circulationActions = $user->getCirculatedRecordActions('palace_project', $this->id, false, $useLazyLoading);
+				$this->_actions = array_merge($this->_actions, $circulationActions);
+
+				if (!$useLazyLoading && !empty($circulationActions)) {
+					$loadDefaultActions = false;
+				}
 			}
 			//Check if catalog is offline and login for eResources should be allowed for offline
 			global $offlineMode;
@@ -232,6 +237,7 @@ class PalaceProjectRecordDriver extends GroupedWorkSubDriver {
 							'onclick' => "return AspenDiscovery.PalaceProject.checkOutTitle('{$this->id}');",
 							'requireLogin' => false,
 							'type' => 'palace_project_checkout',
+							'class' => 'circulation-action',
 						];
 					}else{
 						$this->_actions[] = [
@@ -242,6 +248,7 @@ class PalaceProjectRecordDriver extends GroupedWorkSubDriver {
 							'onclick' => "return AspenDiscovery.PalaceProject.placeHold('{$this->id}');",
 							'requireLogin' => false,
 							'type' => 'palace_project_hold',
+							'class' => 'circulation-action',
 						];
 					}
 				}

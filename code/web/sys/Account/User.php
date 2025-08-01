@@ -1757,7 +1757,7 @@ class User extends DataObject {
 		//Check to see if we should return cached information, we will reload it if we last fetched data more than
 		//15 minutes ago or if the refresh option is selected
 		$reloadCheckoutInformation = false;
-		if (($this->checkoutInfoLastLoaded < (time() - 5 * 60)) || isset($_REQUEST['refreshCheckouts'])) {
+		if (($this->checkoutInfoLastLoaded < (time() - 1 * 60)) || isset($_REQUEST['refreshCheckouts'])) {
 			$reloadCheckoutInformation = true;
 		}
 
@@ -1915,7 +1915,7 @@ class User extends DataObject {
 		//Check to see if we should return cached information, we will reload it if we last fetched it more than
 		//5 minutes ago or if the refresh option is selected
 		$reloadHoldInformation = false;
-		if (($this->holdInfoLastLoaded < time() - 5 * 60) || isset($_REQUEST['refreshHolds'])) {
+		if (($this->holdInfoLastLoaded < time() - 1 * 60) || isset($_REQUEST['refreshHolds'])) {
 			$reloadHoldInformation = true;
 		}
 
@@ -2273,18 +2273,29 @@ class User extends DataObject {
 		}
 	}
 
-	public function getCirculatedRecordActions($source, $recordId, $loadingLinkedUser = false) {
+	/**
+	 * Check if circulation data cache is fresh (within 60 seconds)
+	 * @return bool True if cache is fresh and doesn't need lazy loading
+	 */
+	public function isCirculationCacheFresh(): bool {
+		$cacheThreshold = time() - 60; // 60 seconds cache time
+		$checkoutCacheFresh = $this->checkoutInfoLastLoaded >= $cacheThreshold;
+		$holdCacheFresh = $this->holdInfoLastLoaded >= $cacheThreshold;
+		
+		// Cache is considered fresh if both checkouts and holds were loaded recently
+		return $checkoutCacheFresh && $holdCacheFresh;
+	}
+
+	public function getCirculatedRecordActions($source, $recordId, $loadingLinkedUser = false, $lazyLoad = false): array {
 		$actions = [];
-		if ($this->areCirculationActionsDisabled() == true) {
+		if ($this->areCirculationActionsDisabled()) {
 			return $actions;
 		}
+		// If lazy loading is requested (for search results), return placeholder actions
+		if ($lazyLoad) {
+			return $this->getPlaceholderCirculationActions($source, $recordId, $loadingLinkedUser);
+		}
 		$showUserName = $loadingLinkedUser;
-//		if (!$loadingLinkedUser){
-//			$linkedUsers = $this->getLinkedUsers();
-//			if (count($linkedUsers) > 0){
-//				$showUserName = true;
-//			}
-//		}
 		if ($this->isRecordCheckedOut($source, $recordId)) {
 			$actions[] = [
 				'title' => translate([
@@ -2321,6 +2332,41 @@ class User extends DataObject {
 				$actions = array_merge($actions, $linkedUser->getCirculatedRecordActions($source, $recordId, true));
 			}
 		}
+		return $actions;
+	}
+
+	/**
+	 * Return placeholder circulation actions for lazy loading
+	 * @param string $source
+	 * @param string $recordId
+	 * @param bool $loadingLinkedUser
+	 * @return array
+	 */
+	private function getPlaceholderCirculationActions(string $source, string $recordId, bool $loadingLinkedUser = false): array
+	{
+		$actions = [];
+		$showUserName = $loadingLinkedUser;
+		$actions[] = [
+			'title' => 'Loading...',
+			'btnType' => 'btn-default',
+			'class' => 'lazy-load-circulation-action',
+			'data-user-id' => $this->id,
+			'data-source' => $source,
+			'data-record-id' => $recordId,
+			'data-loading-linked-user' => $loadingLinkedUser ? '1' : '0',
+			'data-show-user-name' => $showUserName ? '1' : '0',
+			'onclick' => 'AspenDiscovery.GroupedWork.loadCirculationAction(this); return false;',
+			'id' => 'circulation-action-' . $this->id . '-' . $source . '-' . $recordId
+		];
+
+		if (!$loadingLinkedUser) {
+			$linkedUsers = $this->getLinkedUsers();
+			foreach ($linkedUsers as $linkedUser) {
+				$linkedActions = $linkedUser->getPlaceholderCirculationActions($source, $recordId, true);
+				$actions = array_merge($actions, $linkedActions);
+			}
+		}
+
 		return $actions;
 	}
 

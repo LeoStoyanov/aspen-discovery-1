@@ -1015,9 +1015,14 @@ class OverDriveRecordDriver extends GroupedWorkSubDriver {
 				if (UserAccount::isLoggedIn()) {
 					$activeUser = UserAccount::getActiveUserObj();
 					if ($activeUser->isValidForEContentSource('overdrive')) {
-						$this->_actions = array_merge($this->_actions, $activeUser->getCirculatedRecordActions('overdrive', $this->id));
+						$useLazyLoading = !$activeUser->isCirculationCacheFresh();
+						$circulationActions = $activeUser->getCirculatedRecordActions('overdrive', $this->id, false, $useLazyLoading);
+						$this->_actions = array_merge($this->_actions, $circulationActions);
+
+						if (!$useLazyLoading && !empty($circulationActions)) {
+							$loadDefaultActions = false;
+						}
 					}
-					$loadDefaultActions = count($this->_actions) == 0;
 				}else{
 					$activeUser = null;
 				}
@@ -1075,6 +1080,7 @@ class OverDriveRecordDriver extends GroupedWorkSubDriver {
 										'onclick' => "return AspenDiscovery.OverDrive.checkOutTitle('$this->id', '$readerName');",
 										'requireLogin' => false,
 										'type' => 'overdrive_checkout',
+										'class' => 'circulation-action',
 									];
 								} else {
 									$actionsByReader[$readerName]['placeHold'] = [
@@ -1086,6 +1092,7 @@ class OverDriveRecordDriver extends GroupedWorkSubDriver {
 										'onclick' => "return AspenDiscovery.OverDrive.placeHold('$this->id', '$readerName');",
 										'requireLogin' => false,
 										'type' => 'overdrive_hold',
+										'class' => 'circulation-action',
 									];
 								}
 							}

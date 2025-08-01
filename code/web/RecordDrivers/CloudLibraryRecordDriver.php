@@ -178,8 +178,13 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 			$loadDefaultActions = true;
 			if (UserAccount::isLoggedIn()) {
 				$user = UserAccount::getActiveUserObj();
-				$this->_actions = array_merge($this->_actions, $user->getCirculatedRecordActions('cloud_library', $this->id));
-				$loadDefaultActions = count($this->_actions) == 0;
+				$useLazyLoading = !$user->isCirculationCacheFresh();
+				$circulationActions = $user->getCirculatedRecordActions('cloud_library', $this->id, false, $useLazyLoading);
+				$this->_actions = array_merge($this->_actions, $circulationActions);
+
+				if (!$useLazyLoading && !empty($circulationActions)) {
+					$loadDefaultActions = false;
+				}
 			}
 
 			//Check if catalog is offline and login for eResources should be allowed for offline
@@ -199,6 +204,7 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 						'onclick' => "return AspenDiscovery.CloudLibrary.checkOutTitle({$userId}, '{$this->id}');",
 						'requireLogin' => false,
 						'type' => 'cloud_library_checkout',
+						'class' => 'circulation-action',
 					];
 				} else {
 					$this->_actions[] = [
@@ -209,6 +215,7 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 						'onclick' => "return AspenDiscovery.CloudLibrary.placeHold('{$this->id}');",
 						'requireLogin' => false,
 						'type' => 'cloud_library_hold',
+						'class' => 'circulation-action',
 					];
 				}
 			}

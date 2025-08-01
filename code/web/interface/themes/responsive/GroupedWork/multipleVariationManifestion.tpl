@@ -33,7 +33,23 @@
 							{if !empty($curAction.url) && strlen($curAction.url) > 0}
 								<a href="{$curAction.url}" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} id="actionButton" onclick="{if !empty($curAction.requireLogin)}return AspenDiscovery.Account.followLinkIfLoggedIn(this, '{$curAction.url}');{/if}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}</a>
 							{else}
-								<a href="#" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.id)}id="{$curAction.id}"{/if} onclick="{$curAction.onclick}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true}"{/if}>{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}</a>
+								{if !empty($curAction['class']) && $curAction['class'] == 'lazy-load-circulation-action'}
+									<a href="#" class="btn btn-sm {if empty($curAction['btnType'])}btn-action{else}{$curAction['btnType']}{/if} btn-wrap {$curAction['class']}" style="display: none;"
+									   {if !empty($curAction['id'])}id="{$curAction['id']}"{/if}
+									   data-user-id="{$curAction['data-user-id']|default:0}"
+									   data-source="{$curAction['data-source']|default:''}"
+									   data-record-id="{$curAction['data-record-id']|default:''}"
+									   data-loading-linked-user="{$curAction['data-loading-linked-user']|default:0}"
+									   onclick="{$curAction['onclick']}"
+											{if !empty($curAction['alt'])}title="{translate text=$curAction['alt'] inAttribute=true}"{/if}>
+										{$curAction['title']}
+									</a>
+									<script>
+										AspenDiscovery.GroupedWork.loadCirculationAction(document.getElementById('{$curAction['id']}'));
+									</script>
+								{else}
+									<a href="#" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.id)}id="{$curAction.id}"{/if} onclick="{$curAction.onclick}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true}"{/if}>{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}</a>
+								{/if}
 							{/if}
 						{/foreach}
 					</div>

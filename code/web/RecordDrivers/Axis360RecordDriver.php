@@ -197,8 +197,13 @@ class Axis360RecordDriver extends GroupedWorkSubDriver {
 			$loadDefaultActions = true;
 			if (UserAccount::isLoggedIn()) {
 				$user = UserAccount::getActiveUserObj();
-				$this->_actions = array_merge($this->_actions, $user->getCirculatedRecordActions('axis360', $this->id));
-				$loadDefaultActions = count($this->_actions) == 0;
+				$useLazyLoading = !$user->isCirculationCacheFresh();
+				$circulationActions = $user->getCirculatedRecordActions('axis360', $this->id, false, $useLazyLoading);
+				$this->_actions = array_merge($this->_actions, $circulationActions);
+
+				if (!$useLazyLoading && !empty($circulationActions)) {
+					$loadDefaultActions = false;
+				}
 			}
 
 			//Check if catalog is offline and login for eResources should be allowed for offline
@@ -214,6 +219,7 @@ class Axis360RecordDriver extends GroupedWorkSubDriver {
 						'onclick' => "return AspenDiscovery.Axis360.checkOutTitle('{$this->id}');",
 						'requireLogin' => false,
 						'type' => 'axis360_checkout',
+						'class' => 'circulation-action',
 					];
 				} else {
 					$this->_actions[] = [
@@ -224,6 +230,7 @@ class Axis360RecordDriver extends GroupedWorkSubDriver {
 						'onclick' => "return AspenDiscovery.Axis360.placeHold('{$this->id}');",
 						'requireLogin' => false,
 						'type' => 'axis360_hold',
+						'class' => 'circulation-action',
 					];
 				}
 			}
