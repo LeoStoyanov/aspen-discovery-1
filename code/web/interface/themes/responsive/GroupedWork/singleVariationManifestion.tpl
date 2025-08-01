@@ -40,10 +40,32 @@
 								<script>
 									AspenDiscovery.GroupedWork.loadCirculationAction(document.getElementById('{$curAction['id']}'));
 								</script>
+							{elseif !empty($curAction['staleCache'])}
+								{* This action is from stale cache - display it but refresh after page load *}
+								<a href="{$curAction.url}" 
+								   {if !empty($curAction.target)}target="{$curAction.target}"{/if} 
+								   {if !empty($curAction.id)}id="{$curAction.id}"{/if} 
+								   {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if} 
+								   class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap{if !empty($curAction['class'])} {$curAction['class']}{/if} stale-cache-action"
+								   data-user-id="{$curAction['data-user-id']|default:''}"
+								   data-source="{$curAction['data-source']|default:''}"
+								   data-record-id="{$curAction['data-record-id']|default:''}"
+								   data-loading-linked-user="{$curAction['data-loading-linked-user']|default:'0'}"
+								   data-show-user-name="{$curAction['data-show-user-name']|default:'0'}"
+								   {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>
+									{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}
+								</a>
+								<script>
+									document.addEventListener('DOMContentLoaded', function() {
+										setTimeout(function() {
+											AspenDiscovery.GroupedWork.refreshStaleCirculationAction(document.getElementById('{$curAction.id}'));
+										}, 100);
+									});
+								</script>
 							{elseif !empty($curAction.url)}
 								<a href="{$curAction.url}" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} id="actionButton" onclick="{if !empty($curAction.requireLogin)}return AspenDiscovery.Account.followLinkIfLoggedIn(this, '{$curAction.url}');{/if}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}</a>
 							{else}
-								<a href="#" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.id)}id="{$curAction.id}"{/if}{if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.id)}id="{$curAction.id}"{/if} onclick="{$curAction.onclick}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}</a>
+								<a href="#" class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.id)}id="{$curAction.id}"{/if} {if !empty($curAction.target)}target="{$curAction.target}"{/if} onclick="{$curAction.onclick}" {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}</a>
 							{/if}
 						{/if}
 					{/foreach}

@@ -749,120 +749,344 @@ AspenDiscovery.GroupedWork = (function(){
 				$placeholder.hide();
 				return;
 			}
+
+			const $container = $placeholder.parent();
 			const url = `${Globals.path}/MyAccount/AJAX`;
+			
+			// First, check cache freshness
+			const cacheCheckParams = {
+				method: 'checkCirculationCacheFreshness',
+				source: source,
+				recordId: recordId
+			};
+
+			$.getJSON(url, cacheCheckParams)
+				.done((cacheData) => {
+					const { hasCache = false, cacheFresh = false, cachedActions = [] } = cacheData;
+
+					if (hasCache && cachedActions.length > 0) {
+						// Display cached actions immediately
+						this.displayCirculationActions($container, $placeholder, cachedActions, source);
+						console.log(`Displayed ${cachedActions.length} cached actions for ${source}:${recordId}`);
+
+						if (cacheFresh) {
+							// Cache is fresh, no need to fetch new data
+							console.log(`Cache is fresh for ${source}:${recordId}, skipping fresh data fetch`);
+							return;
+						} else {
+							// Cache is stale, fetch fresh data to update
+							console.log(`Cache is stale for ${source}:${recordId}, fetching fresh data`);
+						}
+					}
+
+					// Fetch fresh data (either no cache or stale cache)
+					const params = {
+						method: 'loadCirculationActions',
+						userId: userId,
+						source: source,
+						recordId: recordId,
+						loadingLinkedUser: loadingLinkedUser,
+						forceFresh: true
+					};
+
+					$.getJSON(url, params)
+						.done((data) => {
+							const { success = false, actions = [] } = data;
+							console.log(`Fresh circulation data ${success ? 'loaded' : 'failed'} for ${source}:${recordId} - received ${actions.length} actions`);
+
+							if (success && actions.length > 0) {
+								// Remove any existing buttons and show fresh ones
+								this.displayCirculationActions($container, $placeholder, actions, source);
+							} else if (!hasCache) {
+								// No cache and failed to load fresh data
+								if (source === 'ils' || source === 'koha' || source === 'sierra' || source === 'millennium' || source === 'evergreen' || source === 'polaris' || source === 'carlx' || source === 'folio' || source === 'horizon') {
+									$placeholder.show();
+								} else {
+									$placeholder.hide();
+								}
+							}
+						})
+						.fail((jqXHR, textStatus, errorThrown) => {
+							console.error(`Failed to load fresh circulation actions for ${source}:${recordId}`, textStatus, errorThrown);
+							if (!hasCache) {
+								$placeholder.hide();
+							}
+						});
+				})
+				.fail((jqXHR, textStatus, errorThrown) => {
+					console.error(`Failed to check cache freshness for ${source}:${recordId}`, textStatus, errorThrown);
+					$placeholder.hide();
+				});
+		},
+
+		refreshStaleCirculationAction(staleButton) {
+			const $staleButton = $(staleButton);
+			const userId = $staleButton.data('user-id');
+			const source = $staleButton.data('source');
+			const recordId = $staleButton.data('record-id');
+			const loadingLinkedUser = $staleButton.data('loading-linked-user');
+			
+			console.log("Called refresh stale circulation action for " + source + ":" + recordId);
+			
+			// Validate required parameters
+			if (!userId || !source || !recordId) {
+				console.error('Missing required parameters for stale circulation action refresh:', {userId, source, recordId});
+				return;
+			}
+
+			const $container = $staleButton.parent();
+			const url = `${Globals.path}/MyAccount/AJAX`;
+			
+			// Fetch fresh data to replace stale cached data
 			const params = {
 				method: 'loadCirculationActions',
-				userId,
-				source,
-				recordId,
-				loadingLinkedUser
+				userId: userId,
+				source: source,
+				recordId: recordId,
+				loadingLinkedUser: loadingLinkedUser,
+				forceFresh: true
 			};
 
 			$.getJSON(url, params)
 				.done((data) => {
 					const { success = false, actions = [] } = data;
+					console.log(`Fresh circulation data ${success ? 'loaded' : 'failed'} for stale refresh ${source}:${recordId} - received ${actions.length} actions`);
 
 					if (success && actions.length > 0) {
-						const $container = $placeholder.parent();
-						
-						// For MARC records, show the placeholder if there are circulation actions
-						// For e-content records, replace only circulation-related buttons
-						if (source !== 'ils' && source !== 'koha' && source !== 'sierra' && source !== 'millennium' && source !== 'evergreen' && source !== 'polaris' && source !== 'carlx' && source !== 'folio' && source !== 'horizon') {
-							$container.find('.btn:not(.lazy-load-circulation-action)').each(function() {
-								const $btn = $(this);
-								
-								// Primary method: Check for circulation-action CSS class
-								const hasCirculationClass = $btn.hasClass('circulation-action');
-								
-								// Fallback method: Check onclick for circulation functions (for backwards compatibility)
-								let isCirculationByOnclick = false;
-								if (!hasCirculationClass) {
-									const onclickAttr = $btn.attr('onclick') || '';
-									const circulationFunctions = [
-										'AspenDiscovery.OverDrive.checkOutTitle', 'AspenDiscovery.OverDrive.placeHold',
-										'AspenDiscovery.CloudLibrary.checkOutTitle', 'AspenDiscovery.CloudLibrary.placeHold',
-										'AspenDiscovery.Axis360.checkOutTitle', 'AspenDiscovery.Axis360.placeHold',
-										'AspenDiscovery.Hoopla.checkOutTitle', 'AspenDiscovery.Hoopla.placeHold', 'AspenDiscovery.Hoopla.getCheckOutPrompts',
-										'AspenDiscovery.PalaceProject.checkOutTitle', 'AspenDiscovery.PalaceProject.placeHold',
-										'AspenDiscovery.Account.placeHold', 'AspenDiscovery.Catalog.placeHold', 'AspenDiscovery.ILS.placeHold'
-									];
-									isCirculationByOnclick = circulationFunctions.some(func => onclickAttr.includes(func));
-								}
-								
-								if (hasCirculationClass || isCirculationByOnclick) {
-									const method = hasCirculationClass ? 'CSS class' : 'onclick function';
-									console.log(`Removing circulation button identified by ${method}: ${$btn.text().substring(0, 30)}...`);
-									$btn.remove();
-								}
-							});
-						} else {
-							$placeholder.show();
-						}
-						
-						$placeholder.remove();
-
-						// Debug logging
-						console.log(`Loading ${actions.length} circulation actions for ${source}:${recordId}`);
-
-						actions.forEach((action) => {
-							const {
-								title = '',
-								url = '',
-								onclick = '',
-								btnType = 'btn-action',
-								target = '',
-								alt = '',
-								id = '',
-								requireLogin = false
-							} = action;
-
-							const $button = $('<a>');
-							$button.addClass('btn btn-sm btn-wrap');
-							$button.addClass(btnType);
-
-							if (url) {
-								$button.attr('href', url);
-								if (target) {
-									$button.attr('target', target);
-								}
-								if (requireLogin) {
-									$button.attr('onclick', `return AspenDiscovery.Account.followLinkIfLoggedIn(this, '${url}');`);
-								}
-							} else {
-								$button.attr('href', '#');
-								if (onclick) {
-									$button.attr('onclick', onclick);
-								}
-							}
-
-							if (id) {
-								$button.attr('id', id);
-							}
-							if (alt) {
-								$button.attr('title', alt);
-							}
-
-							let buttonText = title;
-							if (target === '_blank') {
-								buttonText = `<i class="fas fa-external-link-alt" role="presentation"></i> ${buttonText}`;
-							}
-							$button.html(buttonText);
-
-							$container.append($button);
-							console.log(`Added circulation button: ${title}`);
-						});
-						
-						// Force container refresh to ensure DOM updates are visible
-						$container.trigger('DOMSubtreeModified');
+						// Remove stale cache buttons and replace with fresh ones
+						$container.find('.stale-cache-action').remove();
+						this.displayFreshCirculationActions($container, actions, source);
 					} else {
-						console.log(`No circulation actions found or failed for ${source}:${recordId}`);
-						$placeholder.hide();
+						console.log(`No fresh circulation actions for ${source}:${recordId}, removing stale button and loading default actions`);
+						// Remove the stale circulation button
+						$container.find('.stale-cache-action').remove();
+						
+						// Load default record actions (Check Out, Place Hold, etc.) when circulation actions are 0
+						this.loadDefaultRecordActions($container, source, recordId, userId);
 					}
 				})
 				.fail((jqXHR, textStatus, errorThrown) => {
-					console.error(`Failed to load circulation actions for ${source}:${recordId}`, textStatus, errorThrown);
-					$placeholder.hide();
+					console.error(`Failed to refresh stale circulation actions for ${source}:${recordId}`, textStatus, errorThrown);
+					// Remove the stale-cache-action class to prevent further refresh attempts
+					$container.find('.stale-cache-action').removeClass('stale-cache-action');
 				});
+		},
+
+		loadDefaultRecordActions($container, source, recordId, userId) {
+			console.log(`Loading default record actions for ${source}:${recordId}`);
+			
+			const url = `${Globals.path}/MyAccount/AJAX`;
+			
+			// Get default record actions (not user-specific circulation actions)
+			const params = {
+				method: 'loadCirculationActions',
+				userId: userId,
+				source: source,
+				recordId: recordId,
+				loadingLinkedUser: '0',
+				forceFresh: true,
+				defaultActionsOnly: true  // Request only default actions, not user-specific circulation
+			};
+
+			$.getJSON(url, params)
+				.done((data) => {
+					const { success = false, actions = [] } = data;
+					console.log(`Default actions ${success ? 'loaded' : 'failed'} for ${source}:${recordId} - received ${actions.length} actions`);
+
+					if (success && actions.length > 0) {
+						// Add default record actions (Check Out, Place Hold, etc.)
+						this.displayFreshCirculationActions($container, actions, source);
+					} else {
+						console.log(`No default actions available for ${source}:${recordId}`);
+					}
+				})
+				.fail((jqXHR, textStatus, errorThrown) => {
+					console.error(`Failed to load default actions for ${source}:${recordId}`, textStatus, errorThrown);
+				});
+		},
+
+		displayFreshCirculationActions($container, actions, source) {
+			// This function is specifically for refreshing stale cache - no placeholder needed
+			console.log(`Displaying ${actions.length} fresh circulation actions for ${source}`);
+			
+			// Remove existing circulation buttons first (both ILS and e-content)
+			$container.find('.btn:not(.lazy-load-circulation-action)').each(function() {
+				const $btn = $(this);
+				
+				// Primary method: Check for circulation-action CSS class
+				const hasCirculationClass = $btn.hasClass('circulation-action');
+				
+				// Fallback method: Check onclick for circulation functions (for backwards compatibility)
+				let isCirculationByOnclick = false;
+				if (!hasCirculationClass) {
+					const onclickAttr = $btn.attr('onclick') || '';
+					const circulationFunctions = [
+						'AspenDiscovery.OverDrive.checkOutTitle', 'AspenDiscovery.OverDrive.placeHold',
+						'AspenDiscovery.CloudLibrary.checkOutTitle', 'AspenDiscovery.CloudLibrary.placeHold',
+						'AspenDiscovery.Axis360.checkOutTitle', 'AspenDiscovery.Axis360.placeHold',
+						'AspenDiscovery.Hoopla.checkOutTitle', 'AspenDiscovery.Hoopla.placeHold', 'AspenDiscovery.Hoopla.getCheckOutPrompts',
+						'AspenDiscovery.PalaceProject.checkOutTitle', 'AspenDiscovery.PalaceProject.placeHold',
+						'AspenDiscovery.Account.placeHold', 'AspenDiscovery.Catalog.placeHold', 'AspenDiscovery.ILS.placeHold',
+						'AspenDiscovery.Record.showPlaceHold'
+					];
+					isCirculationByOnclick = circulationFunctions.some(func => onclickAttr.includes(func));
+				}
+				
+				// Also check for common circulation button text patterns (for buttons without proper classes/onclick)
+				let isCirculationByText = false;
+				if (!hasCirculationClass && !isCirculationByOnclick) {
+					const buttonText = $btn.text().trim().toLowerCase();
+					const circulationTexts = [
+						'check out', 'checkout', 'checked out to', 'place hold', 'on hold for', 
+						'reserve', 'borrow', 'request', 'cancel hold', 'renew'
+					];
+					isCirculationByText = circulationTexts.some(text => buttonText.includes(text));
+				}
+				
+				if (hasCirculationClass || isCirculationByOnclick || isCirculationByText) {
+					const method = hasCirculationClass ? 'CSS class' : isCirculationByOnclick ? 'onclick function' : 'button text';
+					console.log(`Removing circulation button identified by ${method}: ${$btn.text().substring(0, 30)}...`);
+					$btn.remove();
+				}
+			});
+			
+			// Add new circulation actions
+			actions.forEach((action) => {
+				const {
+					title = '',
+					url = '',
+					onclick = '',
+					btnType = 'btn-action',
+					target = '',
+					alt = '',
+					id = '',
+					requireLogin = false
+				} = action;
+
+				const $button = $('<a>');
+				$button.addClass('btn btn-sm btn-wrap circulation-action');
+				$button.addClass(btnType);
+
+				if (url) {
+					$button.attr('href', url);
+					if (target) {
+						$button.attr('target', target);
+					}
+					if (requireLogin) {
+						$button.attr('onclick', `return AspenDiscovery.Account.followLinkIfLoggedIn(this, '${url}');`);
+					}
+				} else {
+					$button.attr('href', '#');
+					if (onclick) {
+						$button.attr('onclick', onclick);
+					}
+				}
+
+				if (id) {
+					$button.attr('id', id);
+				}
+				if (alt) {
+					$button.attr('title', alt);
+				}
+
+				let buttonText = title;
+				if (target === '_blank') {
+					buttonText = `<i class="fas fa-external-link-alt" role="presentation"></i> ${buttonText}`;
+				}
+				$button.html(buttonText);
+
+				$container.append($button);
+				console.log(`Added fresh circulation button: ${title}`);
+			});
+		},
+
+		displayCirculationActions($container, $placeholder, actions, source) {
+			// For e-content sources, replace only circulation-related buttons, keep others like Preview
+			if (source !== 'ils' && source !== 'koha' && source !== 'sierra' && source !== 'millennium' && source !== 'evergreen' && source !== 'polaris' && source !== 'carlx' && source !== 'folio' && source !== 'horizon') {
+				$container.find('.btn:not(.lazy-load-circulation-action)').each(function() {
+					const $btn = $(this);
+					
+					// Primary method: Check for circulation-action CSS class
+					const hasCirculationClass = $btn.hasClass('circulation-action');
+					
+					// Fallback method: Check onclick for circulation functions (for backwards compatibility)
+					let isCirculationByOnclick = false;
+					if (!hasCirculationClass) {
+						const onclickAttr = $btn.attr('onclick') || '';
+						const circulationFunctions = [
+							'AspenDiscovery.OverDrive.checkOutTitle', 'AspenDiscovery.OverDrive.placeHold',
+							'AspenDiscovery.CloudLibrary.checkOutTitle', 'AspenDiscovery.CloudLibrary.placeHold',
+							'AspenDiscovery.Axis360.checkOutTitle', 'AspenDiscovery.Axis360.placeHold',
+							'AspenDiscovery.Hoopla.checkOutTitle', 'AspenDiscovery.Hoopla.placeHold', 'AspenDiscovery.Hoopla.getCheckOutPrompts',
+							'AspenDiscovery.PalaceProject.checkOutTitle', 'AspenDiscovery.PalaceProject.placeHold',
+							'AspenDiscovery.Account.placeHold', 'AspenDiscovery.Catalog.placeHold', 'AspenDiscovery.ILS.placeHold'
+						];
+						isCirculationByOnclick = circulationFunctions.some(func => onclickAttr.includes(func));
+					}
+					
+					if (hasCirculationClass || isCirculationByOnclick) {
+						const method = hasCirculationClass ? 'CSS class' : 'onclick function';
+						console.log(`Removing circulation button identified by ${method}: ${$btn.text().substring(0, 30)}...`);
+						$btn.remove();
+					}
+				});
+			} else {
+				$placeholder.show();
+			}
+			
+			// Add new circulation actions
+			actions.forEach((action) => {
+				const {
+					title = '',
+					url = '',
+					onclick = '',
+					btnType = 'btn-action',
+					target = '',
+					alt = '',
+					id = '',
+					requireLogin = false
+				} = action;
+
+				const $button = $('<a>');
+				$button.addClass('btn btn-sm btn-wrap circulation-action');
+				$button.addClass(btnType);
+
+				if (url) {
+					$button.attr('href', url);
+					if (target) {
+						$button.attr('target', target);
+					}
+					if (requireLogin) {
+						$button.attr('onclick', `return AspenDiscovery.Account.followLinkIfLoggedIn(this, '${url}');`);
+					}
+				} else {
+					$button.attr('href', '#');
+					if (onclick) {
+						$button.attr('onclick', onclick);
+					}
+				}
+
+				if (id) {
+					$button.attr('id', id);
+				}
+				if (alt) {
+					$button.attr('title', alt);
+				}
+
+				let buttonText = title;
+				if (target === '_blank') {
+					buttonText = `<i class="fas fa-external-link-alt" role="presentation"></i> ${buttonText}`;
+				}
+				$button.html(buttonText);
+
+				$container.append($button);
+				console.log(`Added circulation button: ${title}`);
+			});
+			
+			$placeholder.remove();
+			
+			// Force container refresh to ensure DOM updates are visible
+			$container.trigger('DOMSubtreeModified');
 		},
 	};
 }(AspenDiscovery.GroupedWork || {}));

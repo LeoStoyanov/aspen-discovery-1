@@ -238,11 +238,10 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 			$loadDefaultActions = true;
 			if (UserAccount::isLoggedIn()) {
 				$user = UserAccount::getActiveUserObj();
-				$useLazyLoading = !$user->isCirculationCacheFresh();
-				$circulationActions = $user->getCirculatedRecordActions('hoopla', $this->id, false, $useLazyLoading);
+				$circulationActions = $user->getCirculatedRecordActions('hoopla', $this->id, false);
 				$this->_actions = array_merge($this->_actions, $circulationActions);
 
-				if (!$useLazyLoading && !empty($circulationActions)) {
+				if (!empty($circulationActions)) {
 					$loadDefaultActions = false;
 				}
 			}

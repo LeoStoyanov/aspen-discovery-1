@@ -66,6 +66,29 @@
 							<script>
 								AspenDiscovery.GroupedWork.loadCirculationAction(document.getElementById('relatedRecord{$curAction['id']}'));
 							</script>
+						{elseif !empty($curAction['staleCache'])}
+							{* This action is from stale cache - display it but refresh after page load *}
+							<a href="{$curAction.url}" 
+							   {if !empty($curAction.target)}target="{$curAction.target}"{/if}
+							   {if !empty($curAction.id)}id="relatedRecord{$curAction.id}"{/if}
+							   {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if}
+							   class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap stale-cache-action"
+							   data-user-id="{$curAction['data-user-id']|default:''}"
+							   data-source="{$curAction['data-source']|default:''}"
+							   data-record-id="{$curAction['data-record-id']|default:''}"
+							   data-loading-linked-user="{$curAction['data-loading-linked-user']|default:'0'}"
+							   data-show-user-name="{$curAction['data-show-user-name']|default:'0'}"
+							   data-stale-cache="1"
+							   {if !empty($curAction.alt)}title="{translate text=$curAction.alt inAttribute=true isPublicFacing=true}"{/if}>
+								{if !empty($curAction.target) && $curAction.target == "_blank"}<i class="fas fa-external-link-alt" role="presentation"></i> {/if}{$curAction.title}
+							</a>
+							<script>
+								document.addEventListener('DOMContentLoaded', function() {
+									setTimeout(function() {
+										AspenDiscovery.GroupedWork.refreshStaleCirculationAction(document.getElementById('relatedRecord{$curAction.id}'));
+									}, 100);
+								});
+							</script>
 						{else}
 							<a href="{if !empty($curAction.url)}{$curAction.url}{else}#{/if}" {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if} class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.id)}id="relatedRecord{$curAction.id}"{/if} {if !empty($curAction.alt)}title="{$curAction.alt}"{/if}>{$curAction.title}</a>
 						{/if}

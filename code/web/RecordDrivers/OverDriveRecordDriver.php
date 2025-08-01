@@ -1015,11 +1015,10 @@ class OverDriveRecordDriver extends GroupedWorkSubDriver {
 				if (UserAccount::isLoggedIn()) {
 					$activeUser = UserAccount::getActiveUserObj();
 					if ($activeUser->isValidForEContentSource('overdrive')) {
-						$useLazyLoading = !$activeUser->isCirculationCacheFresh();
-						$circulationActions = $activeUser->getCirculatedRecordActions('overdrive', $this->id, false, $useLazyLoading);
+						$circulationActions = $activeUser->getCirculatedRecordActions('overdrive', $this->id, false);
 						$this->_actions = array_merge($this->_actions, $circulationActions);
 
-						if (!$useLazyLoading && !empty($circulationActions)) {
+						if (!empty($circulationActions)) {
 							$loadDefaultActions = false;
 						}
 					}

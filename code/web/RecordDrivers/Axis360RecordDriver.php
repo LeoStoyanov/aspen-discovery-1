@@ -197,11 +197,10 @@ class Axis360RecordDriver extends GroupedWorkSubDriver {
 			$loadDefaultActions = true;
 			if (UserAccount::isLoggedIn()) {
 				$user = UserAccount::getActiveUserObj();
-				$useLazyLoading = !$user->isCirculationCacheFresh();
-				$circulationActions = $user->getCirculatedRecordActions('axis360', $this->id, false, $useLazyLoading);
+				$circulationActions = $user->getCirculatedRecordActions('axis360', $this->id, false);
 				$this->_actions = array_merge($this->_actions, $circulationActions);
 
-				if (!$useLazyLoading && !empty($circulationActions)) {
+				if (!empty($circulationActions)) {
 					$loadDefaultActions = false;
 				}
 			}

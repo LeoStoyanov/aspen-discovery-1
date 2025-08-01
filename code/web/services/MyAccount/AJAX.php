@@ -10149,6 +10149,8 @@ class MyAccount_AJAX extends JSON_Action {
 		$recordId = $_REQUEST['recordId'] ?? '';
 		$userId = $_REQUEST['userId'] ?? '';
 		$loadingLinkedUser = ($_REQUEST['loadingLinkedUser'] ?? '0') === '1';
+		$forceFresh = ($_REQUEST['forceFresh'] ?? 'false') === 'true';
+		$defaultActionsOnly = ($_REQUEST['defaultActionsOnly'] ?? 'false') === 'true';
 
 		if (empty($source) || empty($recordId) || empty($userId)) {
 			$result['message'] = 'Missing required parameters.';
@@ -10173,8 +10175,20 @@ class MyAccount_AJAX extends JSON_Action {
 		}
 
 		try {
-			// Load real circulation actions (not lazy loaded).
-			$actions = $user->getCirculatedRecordActions($source, $recordId, $loadingLinkedUser);
+			// If force fresh is requested, refresh the cache first
+			if ($forceFresh) {
+				$user->getCheckouts(true, 'all');
+				$user->getHolds(true, 'sortTitle', 'expire', 'all');
+			}
+
+			if ($defaultActionsOnly) {
+				// Load default record actions (Check Out, Place Hold) instead of user-specific circulation actions
+				$actions = $this->getDefaultRecordActions($source, $recordId);
+			} else {
+				// Load real circulation actions (not lazy loaded).
+				$actions = $user->getCirculatedRecordActions($source, $recordId, $loadingLinkedUser);
+			}
+			
 			$formattedActions = [];
 			foreach ($actions as $action) {
 				$formattedActions[] = [
@@ -10199,6 +10213,106 @@ class MyAccount_AJAX extends JSON_Action {
 
 		} catch (Exception $e) {
 			$result['message'] = 'Error loading circulation actions: ' . $e->getMessage();
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Get default record actions (Check Out, Place Hold) for a record
+	 * @param string $source
+	 * @param string $recordId
+	 * @return array
+	 */
+	private function getDefaultRecordActions(string $source, string $recordId): array {
+		require_once ROOT_DIR . '/RecordDrivers/RecordDriverFactory.php';
+		
+		try {
+			// Load the record driver
+			$recordDriver = RecordDriverFactory::initRecordDriverById($source . ':' . $recordId);
+			if (!$recordDriver || !$recordDriver->isValid()) {
+				return [];
+			}
+
+			// Get all record actions
+			$actions = [];
+			if (method_exists($recordDriver, 'getRecordActions')) {
+				// For records that have variations (like grouped works)
+				$actions = $recordDriver->getRecordActions(null, 'any', true, true);
+			} elseif (method_exists($recordDriver, 'getActions')) {
+				// For e-content records
+				$actions = $recordDriver->getActions();
+			}
+
+			// Filter out user-specific circulation actions, keep only default actions
+			$defaultActions = [];
+			foreach ($actions as $action) {
+				$title = $action['title'] ?? '';
+				// Skip user-specific circulation actions
+				if (!preg_match('/checked out to|on hold for/i', $title)) {
+					$defaultActions[] = $action;
+				}
+			}
+
+			return $defaultActions;
+		} catch (Exception $e) {
+			global $logger;
+			$logger->log("Error loading default record actions for $source:$recordId: " . $e->getMessage(), Logger::LOG_ERROR);
+			return [];
+		}
+	}
+
+	/** @noinspection PhpUnused */
+	function checkCirculationCacheFreshness(): array {
+		$result = [
+			'hasCache' => false,
+			'cacheFresh' => false,
+			'cachedActions' => []
+		];
+
+		if (!UserAccount::isLoggedIn()) {
+			return $result;
+		}
+
+		$user = UserAccount::getActiveUserObj();
+		if ($user->areCirculationActionsDisabled()) {
+			return $result;
+		}
+
+		$source = trim($_REQUEST['source'] ?? '');
+		$recordId = trim($_REQUEST['recordId'] ?? '');
+
+		if (empty($source) || empty($recordId)) {
+			return $result;
+		}
+
+		try {
+			// Check if we have any cached circulation data
+			if ($user->hasCirculationCacheData()) {
+				$result['hasCache'] = true;
+
+				// Get cached circulation actions (no fresh fetch)
+				$cachedActions = $user->getCirculatedRecordActions($source, $recordId, false, false);
+				$formattedActions = [];
+				foreach ($cachedActions as $action) {
+					$formattedActions[] = [
+						'title' => $action['title'] ?? '',
+						'url' => $action['url'] ?? '',
+						'onclick' => $action['onclick'] ?? '',
+						'btnType' => $action['btnType'] ?? 'btn-action',
+						'target' => $action['target'] ?? '',
+						'alt' => $action['alt'] ?? '',
+						'id' => $action['id'] ?? '',
+						'requireLogin' => $action['requireLogin'] ?? false
+					];
+				}
+				$result['cachedActions'] = $formattedActions;
+
+				$result['cacheFresh'] = $user->isCirculationCacheFresh();
+			}
+
+		} catch (Exception $e) {
+			// Return default result on error
 		}
 
 		return $result;

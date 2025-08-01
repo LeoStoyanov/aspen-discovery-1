@@ -178,11 +178,10 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 			$loadDefaultActions = true;
 			if (UserAccount::isLoggedIn()) {
 				$user = UserAccount::getActiveUserObj();
-				$useLazyLoading = !$user->isCirculationCacheFresh();
-				$circulationActions = $user->getCirculatedRecordActions('cloud_library', $this->id, false, $useLazyLoading);
+				$circulationActions = $user->getCirculatedRecordActions('cloud_library', $this->id, false);
 				$this->_actions = array_merge($this->_actions, $circulationActions);
 
-				if (!$useLazyLoading && !empty($circulationActions)) {
+				if (!empty($circulationActions)) {
 					$loadDefaultActions = false;
 				}
 			}

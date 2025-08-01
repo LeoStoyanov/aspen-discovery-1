@@ -1756,13 +1756,18 @@ class User extends DataObject {
 		require_once ROOT_DIR . '/sys/User/Checkout.php';
 		//Check to see if we should return cached information, we will reload it if we last fetched data more than
 		//15 minutes ago or if the refresh option is selected
+		global $logger;
 		$reloadCheckoutInformation = false;
 		if (($this->checkoutInfoLastLoaded < (time() - 1 * 60)) || isset($_REQUEST['refreshCheckouts'])) {
+			$logger->log("Source $source triggered a cache reload for checkouts!", Logger::LOG_ERROR);
 			$reloadCheckoutInformation = true;
+			$this->__set('checkoutInfoLastLoaded', time());
+			$this->update();
 		}
 
 		$checkoutsToReturn = [];
 		if ($reloadCheckoutInformation) {
+			$logger->log("Source $source is causing all checkout data to be freshly fetched!", Logger::LOG_ERROR);
 			global $timer;
 			$allCheckedOut = [];
 			//Get checked out titles from the ILS
@@ -1854,11 +1859,9 @@ class User extends DataObject {
 					}
 				}
 			}
-
-			$this->__set('checkoutInfoLastLoaded', time());
-			$this->update();
 		} else {
 			//fetch cached checkouts
+			$logger->log("Source $source is just causing cached checkouts to be fetched!", Logger::LOG_ERROR);
 			$checkout = new Checkout();
 			$checkout->userId = $this->id;
 			if ($source != 'all') {
@@ -1914,8 +1917,12 @@ class User extends DataObject {
 		require_once ROOT_DIR . '/sys/User/Hold.php';
 		//Check to see if we should return cached information, we will reload it if we last fetched it more than
 		//5 minutes ago or if the refresh option is selected
+		global $logger;
 		$reloadHoldInformation = false;
 		if (($this->holdInfoLastLoaded < time() - 1 * 60) || isset($_REQUEST['refreshHolds'])) {
+			$this->__set('holdInfoLastLoaded', time());
+			$this->update();
+			$logger->log("Source $source triggered a cache reload for holds!", Logger::LOG_ERROR);
 			$reloadHoldInformation = true;
 		}
 
@@ -1925,7 +1932,7 @@ class User extends DataObject {
 		];
 		if ($reloadHoldInformation) {
 			//When we reload holds, we will fetch from all sources so they can be cached.
-
+			$logger->log("Source $source is causing all holds data to be freshly fetched!", Logger::LOG_ERROR);
 			$allHolds = [
 				'available' => [],
 				'unavailable' => [],
@@ -2034,10 +2041,9 @@ class User extends DataObject {
 					$logger->log('Could not save unavailable hold ' . $holdToSave->getLastError(), Logger::LOG_ERROR);
 				}
 			}
-			$this->__set('holdInfoLastLoaded', time());
-			$this->update();
 		} else {
 			//fetch cached holds
+			$logger->log("Source $source is just causing cached holds to be fetched!", Logger::LOG_ERROR);
 			$hold = new Hold();
 			$hold->userId = $this->id;
 			if ($source != 'all') {
@@ -2274,6 +2280,14 @@ class User extends DataObject {
 	}
 
 	/**
+	 * Check if we have any cached circulation data (regardless of age)
+	 * @return bool True if we have any cached data to display immediately
+	 */
+	public function hasCirculationCacheData(): bool {
+		return $this->checkoutInfoLastLoaded > 0 || $this->holdInfoLastLoaded > 0;
+	}
+
+	/**
 	 * Check if circulation data cache is fresh (within 60 seconds)
 	 * @return bool True if cache is fresh and doesn't need lazy loading
 	 */
@@ -2281,9 +2295,17 @@ class User extends DataObject {
 		$cacheThreshold = time() - 60; // 60 seconds cache time
 		$checkoutCacheFresh = $this->checkoutInfoLastLoaded >= $cacheThreshold;
 		$holdCacheFresh = $this->holdInfoLastLoaded >= $cacheThreshold;
-		
-		// Cache is considered fresh if both checkouts and holds were loaded recently
-		return $checkoutCacheFresh && $holdCacheFresh;
+
+		// Cache is considered fresh if we have any recent data
+		// If one source has no data (timestamp 0), only check the other
+		if ($this->checkoutInfoLastLoaded == 0 && $this->holdInfoLastLoaded > 0) {
+			return $holdCacheFresh;
+		} elseif ($this->holdInfoLastLoaded == 0 && $this->checkoutInfoLastLoaded > 0) {
+			return $checkoutCacheFresh;
+		} else {
+			// Both have data, require both to be fresh
+			return $checkoutCacheFresh && $holdCacheFresh;
+		}
 	}
 
 	public function getCirculatedRecordActions($source, $recordId, $loadingLinkedUser = false, $lazyLoad = false): array {
@@ -2291,12 +2313,45 @@ class User extends DataObject {
 		if ($this->areCirculationActionsDisabled()) {
 			return $actions;
 		}
-		// If lazy loading is requested (for search results), return placeholder actions
-		if ($lazyLoad) {
+
+		// Handle cache states and lazy loading logic
+		$hasCache = $this->hasCirculationCacheData();
+		$isFresh = $this->isCirculationCacheFresh();
+		
+		if (!$hasCache) {
+			// No cached data → lazy load buttons
 			return $this->getPlaceholderCirculationActions($source, $recordId, $loadingLinkedUser);
+		} elseif (!$isFresh) {
+			// Cached data but stale -> display cached data + mark for AJAX reload
+			$actions = $this->getCachedCirculationActions($source, $recordId, $loadingLinkedUser);
+			// Add a flag to indicate this should be refreshed via AJAX
+			foreach ($actions as &$action) {
+				$action['staleCache'] = true;
+				$action['data-stale-cache'] = '1';
+			}
+			unset($action);
+			return $actions;
+		} else {
+			// Cached data and fresh → load all relevant buttons normally
+			return $this->getCachedCirculationActions($source, $recordId, $loadingLinkedUser);
 		}
+	}
+
+	/**
+	 * Get circulation actions from cached data without triggering fresh fetches
+	 * @param string $source
+	 * @param string $recordId
+	 * @param bool $loadingLinkedUser
+	 * @return array
+	 */
+	private function getCachedCirculationActions(string $source, string $recordId, bool $loadingLinkedUser = false): array {
+		$actions = [];
 		$showUserName = $loadingLinkedUser;
-		if ($this->isRecordCheckedOut($source, $recordId)) {
+		
+		$checkedOut = $this->isRecordCheckedOutCached($source, $recordId);
+		$onHold = $this->isRecordOnHoldCached($source, $recordId);
+		
+		if ($checkedOut) {
 			$actions[] = [
 				'title' => translate([
 					'text' => 'Checked Out to %1%',
@@ -2309,8 +2364,15 @@ class User extends DataObject {
 				'url' => "/MyAccount/CheckedOut",
 				'requireLogin' => false,
 				'btnType' => 'btn-info',
+				'class' => 'circulation-action',
+				'id' => 'checkedOutAction' . $recordId,
+				'data-user-id' => $this->id,
+				'data-source' => $source,
+				'data-record-id' => $recordId,
+				'data-loading-linked-user' => $loadingLinkedUser ? '1' : '0',
+				'data-show-user-name' => $showUserName ? '1' : '0'
 			];
-		} elseif ($this->isRecordOnHold($source, $recordId)) {
+		} elseif ($onHold) {
 			$actions[] = [
 				'title' => translate([
 					'text' => 'On Hold for %1%',
@@ -2323,16 +2385,54 @@ class User extends DataObject {
 				'url' => "/MyAccount/Holds",
 				'requireLogin' => false,
 				'btnType' => 'btn-info',
-				'id' => 'onHoldAction' . $recordId
+				'class' => 'circulation-action',
+				'id' => 'onHoldAction' . $recordId,
+				'data-user-id' => $this->id,
+				'data-source' => $source,
+				'data-record-id' => $recordId,
+				'data-loading-linked-user' => $loadingLinkedUser ? '1' : '0',
+				'data-show-user-name' => $showUserName ? '1' : '0'
 			];
 		}
+		
 		if (!$loadingLinkedUser) {
 			$linkedUsers = $this->getLinkedUsers();
 			foreach ($linkedUsers as $linkedUser) {
-				$actions = array_merge($actions, $linkedUser->getCirculatedRecordActions($source, $recordId, true));
+				$actions = array_merge($actions, $linkedUser->getCachedCirculationActions($source, $recordId, true));
 			}
 		}
+		
 		return $actions;
+	}
+
+	/**
+	 * Check if a record is checked out using only cached data (no API calls)
+	 * @param string $source
+	 * @param string $recordId
+	 * @return bool
+	 */
+	private function isRecordCheckedOutCached(string $source, string $recordId): bool {
+		require_once ROOT_DIR . "/sys/User/Checkout.php";
+		$checkout = new Checkout();
+		$checkout->userId = $this->id;
+		$checkout->source = $source;
+		$checkout->recordId = $recordId;
+		return $checkout->find(true);
+	}
+
+	/**
+	 * Check if a record is on hold using only cached data (no API calls)
+	 * @param string $source
+	 * @param string $recordId
+	 * @return bool
+	 */
+	private function isRecordOnHoldCached(string $source, string $recordId): bool {
+		require_once ROOT_DIR . "/sys/User/Hold.php";
+		$hold = new Hold();
+		$hold->userId = $this->id;
+		$hold->source = $source;
+		$hold->recordId = $recordId;
+		return $hold->find(true);
 	}
 
 	/**
@@ -5024,23 +5124,23 @@ class User extends DataObject {
 	}
 
 	public function forceReloadOfCheckouts() {
-		require_once ROOT_DIR . '/sys/User/Checkout.php';
-		$checkout = new Checkout();
-		$checkout->userId = $this->id;
-		$checkout->delete(true);
-
-		$this->__set('checkoutInfoLastLoaded', 0);
-		$this->update();
+//		require_once ROOT_DIR . '/sys/User/Checkout.php';
+//		$checkout = new Checkout();
+//		$checkout->userId = $this->id;
+//		$checkout->delete(true);
+//
+//		$this->__set('checkoutInfoLastLoaded', 0);
+//		$this->update();
 	}
 
 	public function forceReloadOfHolds() {
-		require_once ROOT_DIR . '/sys/User/Hold.php';
-		$hold = new Hold();
-		$hold->userId = $this->id;
-		$hold->delete(true);
-
-		$this->__set('holdInfoLastLoaded', 0);
-		$this->update();
+//		require_once ROOT_DIR . '/sys/User/Hold.php';
+//		$hold = new Hold();
+//		$hold->userId = $this->id;
+//		$hold->delete(true);
+//
+//		$this->__set('holdInfoLastLoaded', 0);
+//		$this->update();
 	}
 
 	public function clearActiveSessions() {
