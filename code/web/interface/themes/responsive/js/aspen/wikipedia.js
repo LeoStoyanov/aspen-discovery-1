@@ -13,7 +13,8 @@ AspenDiscovery.Wikipedia = (() => {
 						'<div ' + 'class="smallText text-muted" style="font-style:italic">' +
 						debugMessage +
 						'</div>'
-					).fadeIn();
+					);
+					$placeholder.fadeIn();
 				}
 			})
 			.fail((jqXHR, textStatus) => {
