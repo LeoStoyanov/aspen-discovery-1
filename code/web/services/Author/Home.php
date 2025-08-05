@@ -243,6 +243,7 @@ class Author_Home extends ResultsAction {
 		$interface->assign('recordCount', $summary['resultTotal']);
 		$interface->assign('recordStart', $summary['startRecord']);
 		$interface->assign('recordEnd', $summary['endRecord']);
+		$interface->assign('topRecommendations', $searchObject->getRecommendationsTemplates('top'));
 		$interface->assign('sideRecommendations', $searchObject->getRecommendationsTemplates('side'));
 		$searchObject->close();
 		$interface->assign('searchId', $searchObject->getSearchId());

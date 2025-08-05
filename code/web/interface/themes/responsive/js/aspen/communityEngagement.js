@@ -740,24 +740,75 @@ AspenDiscovery.CommunityEngagement = function() {
 				new Promise(resolve => AspenDiscovery.CommunityEngagement.loadCheckoutsForUser(userId, resolve)),
 				new Promise(resolve => AspenDiscovery.CommunityEngagement.loadHoldsForUser(userId, resolve))
 			]).then(() => {
-			const refreshUrl = Globals.path + "/CommunityEngagement/AJAX";
-			const refreshParams = {
-				method: 'filterCampaigns',
-				filterType: 'user',
-				userId: userId
+				const refreshUrl = Globals.path + "/CommunityEngagement/AJAX";
+				const refreshParams = {
+					method: 'filterCampaigns',
+					filterType: 'user',
+					userId: userId
+				};
+
+				$.getJSON(refreshUrl, refreshParams, function(refreshData) {
+					if (refreshData.success && refreshData.html) {
+						$("#filteredCampaign").html(refreshData.html);
+					} else {
+						AspenDiscovery.showMessage('Error', 'Failed to refresh campaign data.');
+					}
+				});
+			}).catch(() => {
+				AspenDiscovery.showMessage('Error', 'Failed to load user data.');
+			});
+		},
+		displayExtraCreditBentoBox: function () {
+			let addExtraCreditActivities = document.getElementById('addExtraCreditActivities');
+			let extraCreditBentoBox = document.getElementById('propertyRowavailableExtraCreditActivities');
+
+
+
+			if (addExtraCreditActivities && addExtraCreditActivities.checked) {
+				extraCreditBentoBox.style.display = '';
+
+			} else {
+				extraCreditBentoBox.style.display = 'none';
+			}
+		},
+		addProgressToExtraCreditActivity: function (extraCreditActivityId, userId, campaignId) {
+			var url = Globals.path + "/CommunityEngagement/AJAX?method=addProgressToExtraCreditActivities";
+			var params = {
+				extraCreditActivityId : extraCreditActivityId,
+				userId: userId,
+				campaignId: campaignId,
 			};
 
-			$.getJSON(refreshUrl, refreshParams, function(refreshData) {
-			if (refreshData.success && refreshData.html) {
-				$("#filteredCampaign").html(refreshData.html);
-			} else {
-				AspenDiscovery.showMessage('Error', 'Failed to refresh campaign data.');
-			}
+			$.getJSON(url, params, function(data) {
+				if (data.success) {
+					AspenDiscovery.showMessage(data.title, data.message, false, true, false, false);
+				} else {
+					AspenDiscovery.showMessage(data.title, data.message);
+				}
+			})
+			.fail(function(jqXHR, textStatus, errorThrown) {
+				console.error("AJAX Error: ", textStatus, errorThrown);
 			});
-		}).catch(() => {
-			AspenDiscovery.showMessage('Error', 'Failed to load user data.');
-		});
-		}
+		},
+		extraCreditRewardGiven: function(userId, campaignId, extraCreditActivityId) {
+			var url = Globals.path + "/CommunityEngagement/AJAX?method=extraCreditRewardGivenUpdate";
+			var params = {
+				userId: userId,
+				campaignId: campaignId,
+				extraCreditActivityId: extraCreditActivityId,
+			};
+			$.getJSON(url, params,
+				function(data) {
+					if (data.success) {
+						AspenDiscovery.showMessage(data.title, data.message, false, true, false, false);
+					} else {
+						AspenDiscovery.showMessage(data.title, data.message);
+					}
+				})
+				.fail(function(jqXHR, textStatus, errorThrown) {
+					alert('An error occurred while updating the reward status for this milestone.' + textStatus + ', ' + errorThrown);
+				});
+		},
 	}
 	
 }(AspenDiscovery.CommunityEngagement || {});

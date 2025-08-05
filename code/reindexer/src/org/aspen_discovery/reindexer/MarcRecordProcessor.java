@@ -372,8 +372,7 @@ abstract class MarcRecordProcessor {
 			groupedWork.addCorporateNameSubject(name);
 		}
 
-		boolean foundSeriesIn800or830 = false;
-		List<DataField> seriesFields = MarcUtil.getDataFields(record, 830);
+		List<DataField> seriesFields = MarcUtil.getDataFields(record, new int[]{830, 899});
 		for (DataField seriesField : seriesFields){
 			String series = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, "anp"," ")).toString();
 			//Remove anything in parentheses since it's normally just the format
@@ -390,11 +389,17 @@ abstract class MarcRecordProcessor {
 				volume = seriesField.getSubfield('v').getData();
 			}
 			groupedWork.addSeriesWithVolume(series, volume, 3);
-			foundSeriesIn800or830 = true;
+			groupedWork.addSeries(series);
 		}
-		seriesFields = MarcUtil.getDataFields(record, 800);
+		seriesFields = MarcUtil.getDataFields(record, new int[]{800, 810, 811, 896, 897, 898});
 		for (DataField seriesField : seriesFields){
-			String series = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, "pqt","")).toString();
+			String subfields;
+			if (seriesField.getNumericTag() == 800 || seriesField.getNumericTag() == 896) {
+				subfields = "pqt";
+			}else{
+				subfields = "abcdfpqt";
+			}
+			String series = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, subfields,"")).toString();
 			String seriesLanguage = AspenStringUtils.trimTrailingPunctuation(MarcUtil.getSpecifiedSubfieldsAsString(seriesField, "l","")).toString();
 			if (!seriesLanguage.isEmpty()) {
 				series = series + " (" + seriesLanguage + ")";
@@ -411,7 +416,7 @@ abstract class MarcRecordProcessor {
 				volume = seriesField.getSubfield('v').getData();
 			}
 			groupedWork.addSeriesWithVolume(series, volume, 5);
-			foundSeriesIn800or830 = true;
+			groupedWork.addSeries(series);
 		}
 
 		seriesFields = MarcUtil.getDataFields(record, 490);
@@ -432,10 +437,6 @@ abstract class MarcRecordProcessor {
 				groupedWork.addSeriesWithVolume(series, volume, 1);
 				groupedWork.addSeries(series);
 			}
-		}
-
-		if (foundSeriesIn800or830) {
-			groupedWork.addSeries(MarcUtil.getFieldList(record, "830ap:800pqt"));
 		}
 
 		groupedWork.addDateSpan(MarcUtil.getFieldList(record, "362a"));

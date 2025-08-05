@@ -4391,6 +4391,9 @@ class User extends DataObject {
 			$sections['communityEngagement']->addAction(new AdminAction('Milestone Criteria', 'Create and view milestones.', '/CommunityEngagement/Milestones'), [
 				'Administer Community Engagement Module',
 			]);
+			$sections['communityEngagement']->addAction(new AdminAction('Extra Credit', 'Create and view extra credit opportunities.', '/CommunityEngagement/ExtraCredits'), [
+				'Administer Community Engagement Module',
+			]);
 			$sections['communityEngagement']->addAction(new AdminAction('Rewards', 'Create and view rewards.', '/CommunityEngagement/Rewards'), [
 				'Administer Community Engagement Module',
 			]);
@@ -4876,6 +4879,13 @@ class User extends DataObject {
 				$sections['aspen_lida']->addAction(new AdminAction('ILS Notification Settings', 'Define settings for ILS notifications in Aspen LiDA.', '/AspenLiDA/ILSNotificationSettings'), 'Administer Aspen LiDA Settings');
 			}
 			$sections['aspen_lida']->addAction(new AdminAction('LiDA Notifications', 'LiDA Notifications allow you to send custom alerts to your patrons via the app.', '/Admin/LiDANotifications'), [
+				'Send Notifications to All Libraries',
+				'Send Notifications to All Locations',
+				'Send Notifications to Home Library',
+				'Send Notifications to Home Location',
+				'Send Notifications to Home Library Locations',
+			]);
+			$sections['aspen_lida']->addAction(new AdminAction('LiDA Notification Testing Tool', 'Test LiDA Notifications for specific users and their devices.', '/AspenLiDA/NotificationTestingTool'), [
 				'Send Notifications to All Libraries',
 				'Send Notifications to All Locations',
 				'Send Notifications to Home Library',
@@ -5662,6 +5672,18 @@ class User extends DataObject {
 		while ($obj->fetch()) {
 			$token = $obj->pushToken;
 			$tokens[] = $token;
+		}
+		return $tokens;
+	}
+
+	public function getNotificationPushTokenByDevice(): array {
+		require_once ROOT_DIR . '/sys/Account/UserNotificationToken.php';
+		$tokens = [];
+		$obj = new UserNotificationToken();
+		$obj->userId = $this->id;
+		$obj->find();
+		while ($obj->fetch()) {
+			$tokens[$obj->deviceModel] = $obj->pushToken;
 		}
 		return $tokens;
 	}

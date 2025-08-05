@@ -1,17 +1,17 @@
 <?php
 
 require_once ROOT_DIR . '/Action.php';
-require_once ROOT_DIR . '/sys/CommunityEngagement/Campaign.php';
+require_once ROOT_DIR . '/sys/CommunityEngagement/ExtraCredit.php';
 require_once ROOT_DIR . '/services/Admin/ObjectEditor.php';
 
-class CommunityEngagement_Campaigns extends ObjectEditor {
+class CommunityEngagement_ExtraCredits extends ObjectEditor {
 
 	function getObjectType(): string {
-		return 'Campaign';
+		return 'ExtraCredit';
 	}
 
 	function getToolName(): string {
-		return 'Campaigns';
+		return 'ExtraCredits';
 	}
 
 	function getModule(): string {
@@ -19,11 +19,11 @@ class CommunityEngagement_Campaigns extends ObjectEditor {
 	}
 
 	function getPageTitle(): string {
-		return 'Campaigns';
+		return 'Extra Credit Activities';
 	}
 
 	function getAllObjects($page, $recordsPerPage): array {
-		$object = new Campaign();
+		$object = new ExtraCredit();
 		$object->limit(($page - 1) * $recordsPerPage, $recordsPerPage);
 		$this->applyFilters($object);
 		$object->orderBy($this->getSort());
@@ -35,15 +35,15 @@ class CommunityEngagement_Campaigns extends ObjectEditor {
 		return $objectList;
 	}
 
-	
 	function getDefaultSort(): string {
 		return 'name asc';
 	}
 
 	function getObjectStructure($context = ''): array {
-		return Campaign::getObjectStructure($context);
+		return ExtraCredit::getObjectStructure($context);
 	}
 
+	
 	function getPrimaryKeyColumn(): string {
 		return 'id';
 	}
@@ -64,7 +64,7 @@ class CommunityEngagement_Campaigns extends ObjectEditor {
 		$breadcrumbs = [];
 		$breadcrumbs[] = new Breadcrumb('/Admin/Home', 'Administration Home');
 		$breadcrumbs[] = new Breadcrumb('/Admin/Home#communityEngagement', 'Community Engagement');
-		$breadcrumbs[] = new Breadcrumb('/CommunityEngagement/Campaigns', 'Campaigns');
+		$breadcrumbs[] = new Breadcrumb('/CommunityEngagement/Extra Credits', 'Extra Credit');
 		return $breadcrumbs;
 	}
 
@@ -82,9 +82,5 @@ class CommunityEngagement_Campaigns extends ObjectEditor {
 		return UserAccount::userHasPermission([
 			'Administer Community Engagement Module',
 		]);
-	}
-
-	function getInitializationJs(): string {
-		return 'AspenDiscovery.CommunityEngagement.displayExtraCreditBentoBox();';
 	}
 }

@@ -47,6 +47,14 @@ function getUpdates25_08_00(): array {
 		//Yanjun Li - ByWater
 
 		// Leo Stoyanov - BWS
+		'add_allow_material_requests_branch_choice_setting' => [
+			'title' => 'Add Allow Material Requests Branch Choice Setting',
+			'description' => 'Add "Allow Material Requests Branch Choice" setting for the ILS Request System.',
+			'continueOnError' => false,
+			'sql' => [
+				'ALTER TABLE library ADD COLUMN IF NOT EXISTS allowMaterialRequestsBranchChoice tinyint(1) DEFAULT 0;'
+			]
+		],//add_allow_material_requests_branch_choice_setting
 		'update_record_to_include_defaults' => [
 			'title' => 'Update RecordToInclude Column Defaults to Match PHP Defaults',
 			'description' => 'Update database column defaults for includeHoldableOnly, includeItemsOnOrder, and includeEContent to match the PHP class defaults.',
@@ -101,6 +109,67 @@ function getUpdates25_08_00(): array {
 				"ALTER TABLE library ADD COLUMN allowAdminToEnrollUsersInAdminView TINYINT(1) DEFAULT 0",
 			],
 		], //allow_admin_to_enroll_users_via_admin_view
+		'add_admin_control_over_digital_reward_display' => [
+			'title' => 'Add Admin Control Over Digital Reward Display',
+			'description' => 'Add the option for libraries to choose whether the digital reward displays all the time or only once awarded',
+			'sql' => [
+				"ALTER TABLE library ADD COLUMN displayDigitalRewardOnlyWhenAwarded TINYINT(1) DEFAULT 0",
+			]
+		], //add_admin_control_over_digital_reward_display
+		'add_ability_to_upload_placeholder_image' => [
+			'title' => 'Add Ability to Upload Placeholder Image',
+			'description' => 'Add the ability to upload a placeholder image',
+			'sql' => [
+				"ALTER TABLE library ADD COLUMN digitalRewardPlaceholderImage VARCHAR(100) DEFAULT ''",
+			]
+		], //add_ability_to_upload_placeholder_image
+		'add_table_for_extra_credit' => [
+			'title' => 'Add Table For Extra Credit',
+			'description' => 'Add a table to for extra credit activites',
+			'sql' => [
+				"CREATE TABLE ce_extra_credit (
+					id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, 
+					name VARCHAR(100) NOT NULL, 
+					description VARCHAR(225),
+					allowPatronProgressInput TINYINT DEFAULT 0
+				)ENGINE = InnoDB"
+			],
+		], //add_table_for_extra_credit
+		'add_extra_credit_to_campaigns' => [
+			'title' => 'Add Extra Credit to Campaigns',
+			'description' => 'Add the ability to add extra credit activities to campaigns',
+			'sql' => [
+				"ALTER TABLE ce_campaign ADD COLUMN addExtraCreditActivities TINYINT DEFAULT 0 "
+			],
+		], //add_extra_credit_to_campaigns
+		'add_campaign_extra_credit_activities' => [
+			'title' => 'Add Campaign Extra Credit Activities',
+			'description' => 'Add a new table to link campaigns and extra credit activities',
+			'sql' => [
+				"CREATE TABLE ce_campaign_extra_credit (
+					id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+					weight INT(11) NOT NULL DEFAULT 0,
+					campaignId INT NOT NULL,
+					extraCreditId INT NOT NULL,
+					goal INT DEFAULT 0, 
+					reward INT(11) DEFAULT -1
+				)ENGINE = InnoDB",
+			],
+		], //add_campaign_extra_credit_activities
+		'add_extra_credit_progress_table' => [
+			'title' => 'Add Extra Credit Progress Table',
+			'description' => 'Store progress for of extra credit activites for each user',
+			'sql' => [
+				"CREATE Table ce_campaign_extra_credit_activity_users_progress (
+					 id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+					 userId INT NOT NULL,
+					 campaignId INT NOT NULL,
+					 extraCreditId INT NOT NULL,
+					 progress INT NOT NULL,
+					 rewardGiven TINYINT DEFAULT 0
+				)ENGINE = InnoDB",
+			],
+		], //add_extra_credit_progress_table
 
 		//chloe - Open Fifth
 

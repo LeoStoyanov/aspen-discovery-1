@@ -219,6 +219,7 @@ class Library extends DataObject {
 	public $enableMaterialsRequest;
 	public $displayMaterialsRequestToPublic;
 	public $allowDeletingILSRequests;
+	public $allowMaterialRequestsBranchChoice;
 	public $externalMaterialsRequestUrl;
 	public /** @noinspection PhpUnused */
 		$eContentLinkRules;
@@ -467,6 +468,8 @@ class Library extends DataObject {
 	public $communityEngagementAdminUserSelect;
 	public $displayOnlyUsersForLocationInUserAdmin;
 	public $allowAdminToEnrollUsersInAdminView;
+	public $displayDigitalRewardOnlyWhenAwarded;
+	public $digitalRewardPlaceholderImage;
 
 	//SHAREit
 	public $repeatInShareIt;
@@ -3424,6 +3427,14 @@ class Library extends DataObject {
 						'onchange' => 'return AspenDiscovery.Admin.updateMaterialsRequestFields();',
 						'default' => 1,
 					],
+					'allowMaterialRequestsBranchChoice' => [
+						'property' => 'allowMaterialRequestsBranchChoice',
+						'type' => 'checkbox',
+						'label' => 'Allow Material Requests Branch Choice',
+						'description' => 'Whether or not patrons can choose a branch for their Materials Request.',
+						'hideInLists' => true,
+						'default' => 0,
+					],
 					'externalMaterialsRequestUrl' => [
 						'property' => 'externalMaterialsRequestUrl',
 						'type' => 'text',
@@ -3884,6 +3895,25 @@ class Library extends DataObject {
 						'description' => 'Whether to display only the users who have their home location set to the current library when searching bu user in the admin view',
 						'default' => 0,
 						'hideInLists' => true,
+					],
+					'displayDigitalRewardOnlyWhenAwarded' => [
+						'property' => 'displayDigitalRewardOnlyWhenAwarded',
+						'type' => 'checkbox',
+						'label' => 'Display Digital Reward Only When Awarded',
+						'description' => 'Whether to always display the reward or display only on competion of milestone or campaign',
+						'hideInLists' => true,
+						'default' => 0,
+						'onchange' => 'return AspenDiscovery.Admin.displayDigitalRewardPlaceholderUpload();',
+					],
+					'digitalRewardPlaceholderImage' => [
+						'property' => 'digitalRewardPlaceholderImage',
+						'type' => 'image',
+						'label' => 'Digital Reward Placeholder Image',
+						'descripton' => 'The image to show until the reward has been granted',
+						'hideInLists' => true,
+						'required' => false,
+						'maxWidth' => 300,
+						'maxHeight' => 300,
 					],
 					'sendStaffEmailOnCampaignCompletion' => [
 						'property' => 'sendStaffEmailOnCampaignCompletion',

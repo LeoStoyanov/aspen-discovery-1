@@ -47,6 +47,18 @@ class MyCampaigns extends MyAccount {
         $displayCampaignLeaderboard = $library->displayCampaignLeaderboard;
         $interface->assign('displayCampaignLeaderboard', $displayCampaignLeaderboard);
 
+		$user = UserAccount::getLoggedInUser();
+		$homeLibrary = $user->getHomeLibrary();
+		if (!empty($homeLibrary)) {
+			$displayPlaceholderImage = $homeLibrary->displayDigitalRewardOnlyWhenAwarded;
+			$placeHolderImage = $homeLibrary->digitalRewardPlaceholderImage;
+		} else {
+			$displayPlaceholderImage = $library->displayDigitalRewardOnlyWhenAwarded;
+			$placeHolderImage = $library->digitalRewardPlaceholderImage;
+		}
+		$interface->assign('displayPlaceholderImage', $displayPlaceholderImage);
+		$interface->assign('placeholderImage', $placeHolderImage);
+
 		$this->display('../MyAccount/myCampaigns.tpl', 'My Campaigns');
 	}
 

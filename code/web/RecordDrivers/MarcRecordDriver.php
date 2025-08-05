@@ -485,13 +485,27 @@ class MarcRecordDriver extends GroupedWorkSubDriver {
 	public function getSeries() {
 		$seriesInfo = $this->getGroupedWorkDriver()->getSeries();
 		if ($seriesInfo == null || count($seriesInfo) == 0) {
-			// First check the 440, 800 and 830 fields for series information:
+			// First check the 440, 800, 830, and 896 fields for series information:
 			$primaryFields = [
 				'440' => [
 					'a',
 					'p',
 				],
 				'800' => [
+					'p',
+					'q',
+					't',
+				],
+				'810' => [
+					'a',
+					'b',
+					'c',
+					'd',
+					'f',
+					'p',
+					't',
+				],
+				'811' => [
 					'a',
 					'b',
 					'c',
@@ -505,13 +519,41 @@ class MarcRecordDriver extends GroupedWorkSubDriver {
 					'a',
 					'p',
 				],
+				'896' => [
+					'p',
+					'q',
+					't',
+				],
+				'897' => [
+					'a',
+					'b',
+					'c',
+					'd',
+					'f',
+					'p',
+					't',
+				],
+				'898' => [
+					'a',
+					'b',
+					'c',
+					'd',
+					'f',
+					'p',
+					'q',
+					't',
+				],
+				'899' => [
+					'a',
+					'p',
+				],
 			];
 			$matches = $this->getSeriesFromMARC($primaryFields);
 			if (!empty($matches)) {
 				return $matches;
 			}
 
-			// Now check 490 and display it only if 440/800/830 were empty:
+			// Now check 490 and display it only if 440/800/830/896 were empty:
 			$secondaryFields = ['490' => ['a']];
 			$matches = $this->getSeriesFromMARC($secondaryFields);
 			if (!empty($matches)) {

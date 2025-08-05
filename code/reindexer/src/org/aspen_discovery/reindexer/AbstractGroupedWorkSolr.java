@@ -746,6 +746,7 @@ public abstract class AbstractGroupedWorkSolr {
 	void clearSeries(){
 		this.seriesWithVolume.clear();
 		this.series.clear();
+		this.seriesWithVolumePriority.clear();
 	}
 
 	void addSeriesWithVolume(String seriesName, String volume, int priority) {

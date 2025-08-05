@@ -132,16 +132,10 @@ function loadSearchInformation() {
 
 	//Load indexing profiles
 	require_once ROOT_DIR . '/sys/Indexing/IndexingProfile.php';
-	global $indexingProfiles;
-	$indexingProfiles = [];
-	$indexingProfile = new IndexingProfile();
-	$indexingProfile->orderBy('name');
-	$indexingProfile->find();
-	while ($indexingProfile->fetch()) {
-		$indexingProfiles[$indexingProfile->name] = clone($indexingProfile);
-	}
-	require_once ROOT_DIR . '/sys/Indexing/SideLoad.php';
 	/** @var $indexingProfiles IndexingProfile[] */ global $sideLoadSettings;
+	global $indexingProfiles;
+	$indexingProfiles = IndexingProfile::getAllIndexingProfiles();
+	require_once ROOT_DIR . '/sys/Indexing/SideLoad.php';
 	$sideLoadSettings = [];
 	try {
 		$sideLoadSetting = new SideLoad();

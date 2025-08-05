@@ -300,4 +300,17 @@ class UserCampaign extends DataObject {
 		}
 	}
 
+	public function checkExtraCreditActivityCompletionStatus() {
+		$extraCreditActivities = CampaignExtraCredit::getExtraCreditByCampaign($this->campaignId);
+		$extraCreditCompletionStatus = [];
+
+		foreach ($extraCreditActivities as $extraCreditActivity) {
+			$userProgressInActivity = CampaignExtraCreditActivityUsersProgress::getProgressByExtraCreditId($extraCreditActivity->id, $this->campaignId, $this->userId);
+			$goal = CampaignExtraCredit::getExtraCreditGoalCountByCampaign($this->campaignId, $extraCreditActivity->id);
+			$isExtraCreditActivityComplete = ($userProgressInActivity >= $goal);
+			$extraCreditCompletionStatus[$extraCreditActivity->id] = $isExtraCreditActivityComplete;
+		}
+
+		return $extraCreditCompletionStatus;
+	}
 }

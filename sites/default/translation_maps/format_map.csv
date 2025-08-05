@@ -118,6 +118,7 @@ Video, Video, Movies,1
 VideoCartridge, Video, Movies,1
 VideoCassette, VHS, Movies,3
 VideoDisc, DVD, Movies,12
+VideoEnabledBook, Video Enabled Book, Books,3
 VideoGame, Video Game, Other,1
 VideoReel, Video, Movies,1
 VoxBooks, VOX Books, Audio Books,3

@@ -4,8 +4,9 @@ require_once ROOT_DIR . '/sys/CommunityEngagement/Campaign.php';
 require_once ROOT_DIR . '/sys/CommunityEngagement/UserCampaign.php';
 require_once ROOT_DIR . '/sys/CommunityEngagement/Reward.php';
 require_once ROOT_DIR . '/services/Admin/Dashboard.php';
-
 require_once ROOT_DIR . '/sys/CommunityEngagement/CampaignMilestone.php';
+require_once ROOT_DIR . '/sys/CommunityEngagement/CampaignExtraCredit.php';
+require_once ROOT_DIR . '/sys/CommunityEngagement/CampaignExtraCreditActivityUsersProgress.php';
 
 
 class CommunityEngagement_CampaignTable extends Admin_Dashboard {
@@ -31,6 +32,7 @@ class CommunityEngagement_CampaignTable extends Admin_Dashboard {
 				//Retrieve milestones for the campaign
 				$milestones = CampaignMilestone::getMilestoneByCampaign($campaignId);
 
+				$extraCreditActivities = CampaignExtraCredit::getExtraCreditByCampaign($campaignId);
 				//Get users for campaign
 				$users = $campaign->getUsersForCampaign();
 
@@ -71,11 +73,14 @@ class CommunityEngagement_CampaignTable extends Admin_Dashboard {
 								'milestoneAwardAutomatically' => $milestoneAwardAutomatically,
                             ];
                         }
+						$userExtraCredit = $this->getUserExtraCreditData($campaignId, $user, $extraCreditActivities);
+						$userCampaigns[$campaign->id][$user->id]['extraCreditActivities'] = $userExtraCredit;
                     }
                 }
                 $interface->assign('userCampaigns', $userCampaigns);
                 $interface->assign('milestones', $milestones);
                 $interface->assign('users', $users);
+				$interface->assign('extraCreditActivities', $extraCreditActivities);
 
 			} else {
 				$interface->assign('error', 'Campaign not found.');
@@ -104,4 +109,30 @@ class CommunityEngagement_CampaignTable extends Admin_Dashboard {
 		$breadcrumbs[] = new Breadcrumb('/Admin/Home#communityEngagement', 'Community Engagement');
 		return $breadcrumbs;
 	}
+
+	private function getUserExtraCreditData($campaignId, $user, $extraCreditActivities) {
+		$userCampaign = new UserCampaign();
+		$userCampaign->campaignId = $campaignId;
+		$userCampaign->userId = $user->id;
+		$userCampaign->find(true);
+
+		$extraCreditCompletionStatus = $userCampaign->checkExtraCreditActivityCompletionStatus();
+
+		$result = [];
+		foreach ($extraCreditActivities as $activity) {
+			$extraCreditComplete = $extraCreditCompletionStatus[$activity->id] ?? false;
+			$extraCreditUsersprogress = CampaignExtraCreditActivityUsersProgress::getProgressByExtraCreditId($activity->id, $campaignId, $user->id);
+			$totalActivityGoals = CampaignExtraCredit::getExtraCreditGoalCountByCampaign($campaignId, $activity->id);
+			$extraCreditActivityRewardGiven = CampaignExtraCreditActivityUsersProgress::getRewardGivenForExtraCreditActivity($activity->id, $user->id, $campaignId);
+			$percentageProgressExtraCredit = ($totalActivityGoals > 0) ? ($extraCreditUsersprogress / $totalActivityGoals) * 100 : 0;
+
+			$result[$activity->id] = [
+				'percentageProgress' => round($percentageProgressExtraCredit, 2),
+				'extraCreditRewardGiven' => $extraCreditActivityRewardGiven,
+				'extraCreditComplete' => $extraCreditComplete,
+			];
+		}
+		return $result;
+	}
+
 }

@@ -5173,9 +5173,10 @@ class Koha extends AbstractIlsDriver {
 		}
 
 		global $interface;
-		$allowPurchaseSuggestionBranchChoice = $this->getKohaSystemPreference('AllowPurchaseSuggestionBranchChoice');
+		global $library;
+		$allowMaterialRequestsBranchChoice = $library->allowMaterialRequestsBranchChoice;
 		$pickupLocations = [];
-		if ($allowPurchaseSuggestionBranchChoice == 1) {
+		if ($allowMaterialRequestsBranchChoice == 1) {
 			$locations = new Location();
 			$locations->orderBy('displayName');
 			$locations->whereAdd('validHoldPickupBranch != 2');

@@ -268,6 +268,8 @@ public class MarcRecordFormatClassifier {
 								result.add("SoundDisc");
 							}
 						}
+					} else if (subfield.getCode() == 'a' && physicalDescriptionData.contains("video-enabled book")){
+						result.add("VideoEnabledBook");
 					} else if (subfield.getCode() == 'a' && physicalDescriptionData.contains("online resource") && settings instanceof IndexingProfile) {
 						if (groupedWork != null && groupedWork.isDebugEnabled()) {groupedWork.addDebugMessage("Adding bib level format online_resource based on 300$a Physical Description (ILS records only).", 2);}
 						result.add("online_resource");
@@ -1346,6 +1348,11 @@ public class MarcRecordFormatClassifier {
 		if (printFormats.contains("Kit")){
 			printFormats.clear();
 			printFormats.add("Kit");
+			return;
+		}
+		if (printFormats.contains("VideoEnabledBook")){
+			printFormats.clear();
+			printFormats.add("VideoEnabledBook");
 			return;
 		}
 		if (printFormats.contains("DVD")){
