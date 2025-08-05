@@ -202,10 +202,9 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 							'text' => 'Check Out cloudLibrary',
 							'isPublicFacing' => true,
 						]),
-						'onclick' => "return AspenDiscovery.CloudLibrary.checkOutTitle({$userId}, '{$this->id}');",
+						'onclick' => "return AspenDiscovery.CloudLibrary.checkOutTitle({$userId}, '{$this->id}', this);",
 						'requireLogin' => false,
 						'type' => 'cloud_library_checkout',
-						'cssClasses' => 'btn-checkout',
 					];
 					if ($needsLazyLoading) {
 						$checkoutAction['data-needs-refresh'] = 'true';
@@ -219,7 +218,7 @@ class CloudLibraryRecordDriver extends MarcRecordDriver {
 							'text' => 'Place Hold cloudLibrary',
 							'isPublicFacing' => true,
 						]),
-						'onclick' => "return AspenDiscovery.CloudLibrary.placeHold('{$this->id}');",
+						'onclick' => "return AspenDiscovery.CloudLibrary.placeHold('{$this->id}', this);",
 						'requireLogin' => false,
 						'type' => 'cloud_library_hold',
 					];

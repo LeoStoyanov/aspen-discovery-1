@@ -1076,10 +1076,9 @@ class OverDriveRecordDriver extends GroupedWorkSubDriver {
 											1 => $readerName,
 											"isPublicFacing" => true,
 										]),
-										'onclick' => "return AspenDiscovery.OverDrive.checkOutTitle('$this->id', '$readerName');",
+										'onclick' => "return AspenDiscovery.OverDrive.checkOutTitle('$this->id', this);",
 										'requireLogin' => false,
 										'type' => 'overdrive_checkout',
-										'cssClasses' => 'btn-checkout',
 									];
 									if ($needsLazyLoading) {
 										$checkoutAction['data-needs-refresh'] = 'true';
@@ -1094,7 +1093,7 @@ class OverDriveRecordDriver extends GroupedWorkSubDriver {
 											1 => $readerName,
 											'isPublicFacing' => true,
 										]),
-										'onclick' => "return AspenDiscovery.OverDrive.placeHold('$this->id', '$readerName');",
+										'onclick' => "return AspenDiscovery.OverDrive.placeHold('$this->id', this);",
 										'requireLogin' => false,
 										'type' => 'overdrive_hold',
 									];

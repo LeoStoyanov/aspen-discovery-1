@@ -159,10 +159,10 @@ AspenDiscovery.LazyCirculation = {
 		action = action || {};
 		const {
 			title = '', url = '#', btnType = 'btn-action', id = null,
-			onclick = null, target = null, requireLogin = false, cssClasses = ''
+			onclick = null, target = null, requireLogin = false
 		} = action;
 		if (!title) return null;
-		const $button = $('<a>').attr('href', url).addClass(`btn btn-sm ${btnType} btn-wrap ${cssClasses}`.trim()).text(title);
+		const $button = $('<a>').attr('href', url).addClass(`btn btn-sm ${btnType} btn-wrap`.trim()).text(title);
 
 		if (id) {
 			$button.attr('id', id);

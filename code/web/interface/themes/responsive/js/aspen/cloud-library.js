@@ -23,17 +23,12 @@ AspenDiscovery.CloudLibrary = (function () {
 			});
 		},
 
-		checkOutTitle(patronId, id) {
+		checkOutTitle(patronId, id, button) {
 			if (Globals.loggedIn) {
-				const $checkoutButton = $('.btn-checkout[onclick*="' + id + '"]');
-				if ($checkoutButton.length > 0) {
-					AspenDiscovery.toggleButtonSpinner($checkoutButton, true);
-				}
+				AspenDiscovery.toggleButtonSpinner(button, true);
 
 				AspenDiscovery.CloudLibrary.getCheckOutPrompts(id, function(promptInfo) {
-					if ($checkoutButton.length > 0) {
-						AspenDiscovery.toggleButtonSpinner($checkoutButton, false);
-					}
+					AspenDiscovery.toggleButtonSpinner(button, false);
 
 					// noinspection JSUnresolvedVariable
 					if (promptInfo && !promptInfo.promptNeeded) {
@@ -42,7 +37,7 @@ AspenDiscovery.CloudLibrary = (function () {
 				});
 			} else {
 				AspenDiscovery.Account.ajaxLogin(null, function () {
-					AspenDiscovery.CloudLibrary.checkOutTitle(patronId, id);
+					AspenDiscovery.CloudLibrary.checkOutTitle(patronId, id, button);
 				}, false);
 			}
 			return false;
@@ -156,17 +151,22 @@ AspenDiscovery.CloudLibrary = (function () {
 			return result;
 		},
 
-		placeHold: function (id) {
+		placeHold: function (id, button) {
 			if (Globals.loggedIn) {
+				AspenDiscovery.toggleButtonSpinner(button, true);
+				
 				//Get any prompts needed for placing holds (email and format depending on the interface.
 				var promptInfo = AspenDiscovery.CloudLibrary.getHoldPrompts(id, 'hold');
+				
+				AspenDiscovery.toggleButtonSpinner(button, false);
+				
 				// noinspection JSUnresolvedVariable
 				if (!promptInfo.promptNeeded) {
 					AspenDiscovery.CloudLibrary.doHold(promptInfo.patronId, id);
 				}
 			} else {
 				AspenDiscovery.Account.ajaxLogin(null, function () {
-					AspenDiscovery.CloudLibrary.placeHold(id);
+					AspenDiscovery.CloudLibrary.placeHold(id, button);
 				});
 			}
 			return false;

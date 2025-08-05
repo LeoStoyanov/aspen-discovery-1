@@ -237,10 +237,9 @@ class Axis360RecordDriver extends GroupedWorkSubDriver {
 							'text' => 'Check Out Boundless',
 							'isPublicFacing' => true,
 						]),
-						'onclick' => "return AspenDiscovery.Axis360.checkOutTitle('{$this->id}');",
+						'onclick' => "return AspenDiscovery.Axis360.checkOutTitle('{$this->id}', this);",
 						'requireLogin' => false,
 						'type' => 'axis360_checkout',
-						'cssClasses' => 'btn-checkout',
 					];
 					if ($needsLazyLoading) {
 						$checkoutAction['data-needs-refresh'] = 'true';
@@ -254,7 +253,7 @@ class Axis360RecordDriver extends GroupedWorkSubDriver {
 							'text' => 'Place Hold Boundless',
 							'isPublicFacing' => true,
 						]),
-						'onclick' => "return AspenDiscovery.Axis360.placeHold('{$this->id}');",
+						'onclick' => "return AspenDiscovery.Axis360.placeHold('{$this->id}', this);",
 						'requireLogin' => false,
 						'type' => 'axis360_hold',
 					];

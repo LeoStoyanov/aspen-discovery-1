@@ -73,7 +73,7 @@ var AspenDiscovery = (function(){
 		 * @param {boolean} spinning Whether to show or hide spinner.
 		 */
 		toggleButtonSpinner: function(button, spinning) {
-			const $button = typeof button === 'string' ? $(button) : button;
+			const $button = $(button);
 			
 			if (spinning) {
 				$button.prop('disabled', true);

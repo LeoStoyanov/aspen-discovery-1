@@ -2,7 +2,7 @@ AspenDiscovery.Record = (function () {
 	// noinspection JSUnusedGlobalSymbols
 	return {
 		volumeHoldInProgress: false,
-		showPlaceHold: function (module, source, id, volume, variationId) {
+		showPlaceHold: function (module, source, id, volume, variationId, button) {
 			if (Globals.loggedIn) {
 				let url = Globals.path + "/" + module + "/" + id + "/AJAX?method=getPlaceHoldForm&recordSource=" + source;
 				if (volume !== undefined) {
@@ -12,12 +12,11 @@ AspenDiscovery.Record = (function () {
 					url += "&variationId=" + variationId;
 				}
 
-				const targetButton = $('#actionButton' + id);
-				AspenDiscovery.toggleButtonSpinner(targetButton, true);
+				AspenDiscovery.toggleButtonSpinner(button, true);
 
 				$.getJSON(url, function (data) {
 					let existingButton;
-					AspenDiscovery.toggleButtonSpinner(targetButton, false);
+					AspenDiscovery.toggleButtonSpinner(button, false);
 					if (data.holdFormBypassed) {
 						if (data.success) {
 							if (data.needsItemLevelHold) {
@@ -50,12 +49,12 @@ AspenDiscovery.Record = (function () {
 					}
 					AspenDiscovery.Account.reloadHolds();
 				}).fail(function() {
-					AspenDiscovery.toggleButtonSpinner(targetButton, false);
+					AspenDiscovery.toggleButtonSpinner(button, false);
 					AspenDiscovery.ajaxFail.apply(this, arguments);
 				});
 			} else {
 				AspenDiscovery.Account.ajaxLogin(null, function () {
-					AspenDiscovery.Record.showPlaceHold(module, source, id, volume);
+					AspenDiscovery.Record.showPlaceHold(module, source, id, volume, variationId, button);
 				}, false);
 			}
 			return false;
@@ -198,7 +197,7 @@ AspenDiscovery.Record = (function () {
 			return false;
 		},
 
-		showPlaceHoldEditions: function (module, source, id, volume, variationId) {
+		showPlaceHoldEditions: function (module, source, id, volume, variationId, button) {
 			if (Globals.loggedIn) {
 				document.body.style.cursor = "wait";
 				let url = Globals.path + "/" + module + "/" + id + "/AJAX?method=getPlaceHoldEditionsForm&recordSource=" + source;
@@ -209,46 +208,44 @@ AspenDiscovery.Record = (function () {
 					url += "&variationId=" + variationId;
 				}
 
-				const targetButton = $('#actionButton' + id);
-				AspenDiscovery.toggleButtonSpinner(targetButton, true);
+				AspenDiscovery.toggleButtonSpinner(button, true);
 
 				$.getJSON(url, function (data) {
 					document.body.style.cursor = "default";
-					AspenDiscovery.toggleButtonSpinner(targetButton, false);
+					AspenDiscovery.toggleButtonSpinner(button, false);
 					AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
 				}).fail(function() {
 					document.body.style.cursor = "default";
-					AspenDiscovery.toggleButtonSpinner(targetButton, false);
+					AspenDiscovery.toggleButtonSpinner(button, false);
 					AspenDiscovery.ajaxFail.apply(this, arguments);
 				});
 			} else {
 				AspenDiscovery.Account.ajaxLogin(null, function () {
-					AspenDiscovery.Record.showPlaceHoldEditions(module, source, id, volume);
+					AspenDiscovery.Record.showPlaceHoldEditions(module, source, id, volume, variationId, button);
 				}, false);
 			}
 			return false;
 		},
 
-		showPlaceHoldVolumes: function (module, source, id) {
+		showPlaceHoldVolumes: function (module, source, id, button) {
 			if (Globals.loggedIn) {
 				document.body.style.cursor = "wait";
 				const url = Globals.path + "/" + module + "/" + id + "/AJAX?method=getPlaceHoldVolumesForm&recordSource=" + source;
 
-				const targetButton = $('#actionButton' + id);
-				AspenDiscovery.toggleButtonSpinner(targetButton, true);
+				AspenDiscovery.toggleButtonSpinner(button, true);
 
 				$.getJSON(url, function (data) {
 					document.body.style.cursor = "default";
-					AspenDiscovery.toggleButtonSpinner(targetButton, false);
+					AspenDiscovery.toggleButtonSpinner(button, false);
 					AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
 				}).fail(function() {
 					document.body.style.cursor = "default";
-					AspenDiscovery.toggleButtonSpinner(targetButton, false);
+					AspenDiscovery.toggleButtonSpinner(button, false);
 					AspenDiscovery.ajaxFail.apply(this, arguments);
 				});
 			} else {
 				AspenDiscovery.Account.ajaxLogin(null, function () {
-					AspenDiscovery.Record.showPlaceHoldVolumes(module, source, id);
+					AspenDiscovery.Record.showPlaceHoldVolumes(module, source, id, button);
 				}, false);
 			}
 			return false;
@@ -416,15 +413,14 @@ AspenDiscovery.Record = (function () {
 			return params;
 		},
 
-		placeVolumeHold: function () {
+		placeVolumeHold: function (button) {
 			// Prevent multiple volume hold submissions; button state alone is insufficient.
 			if (this.volumeHoldInProgress) {
 				return false;
 			}
 			this.volumeHoldInProgress = true;
 
-			const $placeHoldButton = $('.modal-footer .btn-primary');
-			AspenDiscovery.toggleButtonSpinner($placeHoldButton, true);
+			AspenDiscovery.toggleButtonSpinner(button, true);
 			
 			const $volumeSelect = $("#selectedVolume");
 			const selectedVolume = $volumeSelect.find("option:selected").val();
@@ -450,7 +446,7 @@ AspenDiscovery.Record = (function () {
 				$('#volumeSelection').prepend(errorHtml);
 
 				this.volumeHoldInProgress = false;
-				AspenDiscovery.toggleButtonSpinner($placeHoldButton, false);
+				AspenDiscovery.toggleButtonSpinner(button, false);
 				return false;
 			}
 
@@ -479,7 +475,7 @@ AspenDiscovery.Record = (function () {
 			if (params['pickupBranch'] === 'undefined') {
 				alert("Please select a location to pick up your hold when it is ready.");
 				this.volumeHoldInProgress = false;
-				AspenDiscovery.toggleButtonSpinner($placeHoldButton, false);
+				AspenDiscovery.toggleButtonSpinner(button, false);
 				return false;
 			}
 			const holdType = $('#holdType');

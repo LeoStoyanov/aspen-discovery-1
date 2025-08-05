@@ -255,10 +255,9 @@ class PalaceProjectRecordDriver extends GroupedWorkSubDriver {
 								'text' => 'Check Out Palace Project',
 								'isPublicFacing' => true,
 							]),
-							'onclick' => "return AspenDiscovery.PalaceProject.checkOutTitle('{$this->id}');",
+							'onclick' => "return AspenDiscovery.PalaceProject.checkOutTitle('{$this->id}', this);",
 							'requireLogin' => false,
 							'type' => 'palace_project_checkout',
-							'cssClasses' => 'btn-checkout',
 						];
 						if ($needsLazyLoading) {
 							$checkoutAction['data-needs-refresh'] = 'true';
@@ -272,7 +271,7 @@ class PalaceProjectRecordDriver extends GroupedWorkSubDriver {
 								'text' => 'Place Hold Palace Project',
 								'isPublicFacing' => true,
 							]),
-							'onclick' => "return AspenDiscovery.PalaceProject.placeHold('{$this->id}');",
+							'onclick' => "return AspenDiscovery.PalaceProject.placeHold('{$this->id}', this);",
 							'requireLogin' => false,
 							'type' => 'palace_project_hold',
 						];

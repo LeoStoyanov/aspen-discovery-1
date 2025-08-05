@@ -34,12 +34,9 @@ AspenDiscovery.Hoopla = (function(){
 			return false;
 		},
 
-		getCheckOutPrompts(hooplaId, hooplaType) {
+		getCheckOutPrompts(hooplaId, hooplaType, button) {
 			if (Globals.loggedIn) {
-				const $checkoutButton = $('.btn-checkout[onclick*="' + hooplaId + '"]');
-				if ($checkoutButton.length > 0) {
-					AspenDiscovery.toggleButtonSpinner($checkoutButton, true);
-				}
+				AspenDiscovery.toggleButtonSpinner(button, true);
 
 				const url = Globals.path + "/Hoopla/" + hooplaId + "/AJAX?method=getCheckOutPrompts";
 				const params = {
@@ -47,9 +44,7 @@ AspenDiscovery.Hoopla = (function(){
 					hooplaType: hooplaType
 				};
 				$.getJSON(url, params, function (data) {
-					if ($checkoutButton.length > 0) {
-						AspenDiscovery.toggleButtonSpinner($checkoutButton, false);
-					}
+					AspenDiscovery.toggleButtonSpinner(button, false);
 
 					// noinspection JSUnresolvedReference
 					if (data.flexDirectCheckout) {
@@ -58,14 +53,12 @@ AspenDiscovery.Hoopla = (function(){
 						AspenDiscovery.showMessageWithButtons(data.title, data.body, data.buttons);
 					}
 				}).fail(function() {
-					if ($checkoutButton.length > 0) {
-						AspenDiscovery.toggleButtonSpinner($checkoutButton, false);
-					}
+					AspenDiscovery.toggleButtonSpinner(button, false);
 					AspenDiscovery.ajaxFail();
 				});
 			} else {
 				AspenDiscovery.Account.ajaxLogin(null, function () {
-					AspenDiscovery.Hoopla.getCheckOutPrompts(hooplaId, hooplaType);
+					AspenDiscovery.Hoopla.getCheckOutPrompts(hooplaId, hooplaType, button);
 				}, false);
 			}
 			return false;
@@ -123,15 +116,20 @@ AspenDiscovery.Hoopla = (function(){
 			return result;
 		},
 
-		placeHold: function(id) {
+		placeHold: function(id, button) {
 			if (Globals.loggedIn) {
+				AspenDiscovery.toggleButtonSpinner(button, true);
+				
 				var promptInfo = AspenDiscovery.Hoopla.getHoldPrompts(id);
+				
+				AspenDiscovery.toggleButtonSpinner(button, false);
+				
 				if (!promptInfo.promptNeeded){
 					AspenDiscovery.Hoopla.doHold(promptInfo.patronId, id);
 				}
 			} else {
 				AspenDiscovery.Account.ajaxLogin(null, function() {
-					AspenDiscovery.Hoopla.placeHold(id);
+					AspenDiscovery.Hoopla.placeHold(id, button);
 				});
 			}
 			return false;

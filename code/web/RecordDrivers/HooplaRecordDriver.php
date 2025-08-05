@@ -275,7 +275,7 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 							'isPublicFacing' => true,
 						]);
 						$holdAction = [
-							'onclick' => "return AspenDiscovery.Hoopla.placeHold('$id')",
+							'onclick' => "return AspenDiscovery.Hoopla.placeHold('$id', this)",
 							'title' => $title,
 							'type' => 'hoopla_hold',
 						];
@@ -291,10 +291,9 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 							'isPublicFacing' => true,
 						]);
 						$checkoutAction = [
-							'onclick' => "return AspenDiscovery.Hoopla.getCheckOutPrompts('$id', '$hooplaType')",
+							'onclick' => "return AspenDiscovery.Hoopla.getCheckOutPrompts('$id', '$hooplaType', this)",
 							'title' => $title,
 							'type' => 'hoopla_checkout',
-							'cssClasses' => 'btn-checkout',
 						];
 						if ($needsLazyLoading) {
 							$checkoutAction['data-needs-refresh'] = 'true';
@@ -514,9 +513,8 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 				'isPublicFacing' => true,
 			]);
 			$actions[] = [
-				'onclick' => "return AspenDiscovery.Hoopla.getCheckOutPrompts('{$this->id}')",
+				'onclick' => "return AspenDiscovery.Hoopla.getCheckOutPrompts('{$this->id}', 'Instant', this)",
 				'title' => $title,
-				'cssClasses' => 'btn-checkout',
 			];
 
 		} else {
