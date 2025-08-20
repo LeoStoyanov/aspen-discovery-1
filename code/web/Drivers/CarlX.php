@@ -893,6 +893,28 @@ class CarlX extends AbstractIlsDriver {
 					$result['success'] = true;
 					$result['messages'][] = 'Your account was updated successfully.';
 					$patron->update();
+
+					// Handle third-party SMS notifications if enabled
+					$patronHomeLibrary = $patron->getHomeLibrary(true);
+					global $logger;
+					$logger->log("CarlX: Checking third-party SMS. Library: " . ($patronHomeLibrary ? $patronHomeLibrary->displayName : 'null') . 
+						", enableThirdPartySMS: " . ($patronHomeLibrary && $patronHomeLibrary->enableThirdPartySMSNotifications ? 'true' : 'false') . 
+						", thirdPartySMSOptIn in request: " . (isset($_REQUEST['thirdPartySMSOptIn']) ? $_REQUEST['thirdPartySMSOptIn'] : 'not set'), Logger::LOG_ERROR);
+					
+					if ($patronHomeLibrary && $patronHomeLibrary->enableThirdPartySMSNotifications) {
+						if (isset($_REQUEST['thirdPartySMSOptIn'])) {
+							$enableThirdPartySMS = ($_REQUEST['thirdPartySMSOptIn'] == 'yes' || $_REQUEST['thirdPartySMSOptIn'] == 'on');
+							$logger->log("CarlX: Calling updatePatronUserDefinedFields with enableThirdPartySMS: " . ($enableThirdPartySMS ? 'true' : 'false'), Logger::LOG_ERROR);
+							$smsResult = $this->updatePatronUserDefinedFields($patron, $enableThirdPartySMS);
+							
+							if ($smsResult['success']) {
+								$result['messages'] = array_merge($result['messages'], $smsResult['messages']);
+							} else {
+								// Don't fail the entire update if SMS update fails, just add a warning.
+								$result['messages'][] = 'Contact information updated, but SMS preferences could not be updated: ' . implode(', ', $smsResult['messages']);
+							}
+						}
+					}
 				}
 
 			} else {
@@ -905,10 +927,123 @@ class CarlX extends AbstractIlsDriver {
 			$result['messages'][] = 'You can not update your information.';
 		}
 
-		if ($result['success'] == false && empty($result['messages'])) {
+		if (!$result['success'] && empty($result['messages'])) {
 			$result['messages'][] = 'Unknown error updating your account';
 		}
 		return $result;
+	}
+
+	// TODO: DON'T FORGET DATABASE MAINTENANCE UPDATE!
+	/**
+	 * Update a patron's user defined fields for third-party SMS notifications
+	 *
+	 * @param User $patron
+	 * @param boolean $enableThirdPartySMS
+	 * @return array
+	 */
+	public function updatePatronUserDefinedFields(User $patron, bool $enableThirdPartySMS): array {
+		global $logger;
+		$logger->log("CarlX: updatePatronUserDefinedFields called for patron " . $patron->getBarcode() . " with enableThirdPartySMS: " . ($enableThirdPartySMS ? 'true' : 'false'), Logger::LOG_ERROR);
+		
+		$result = [
+			'success' => false,
+			'messages' => [],
+		];
+
+		$request = new stdClass();
+		$request->SearchType = 'Patron ID';
+		$request->SearchID = $patron->getBarcode();
+		$request->UserDefinedRestrictedField = new stdClass();
+		$request->UserDefinedRestrictedField->FieldID = 4; // Field ID for '3rd Party SMS' as provided by TLC
+		$request->UserDefinedRestrictedField->Type = 'Patron Statistic';
+		// 1 to receive 3rd Party SMS notices, 2 to not receive them
+		$request->UserDefinedRestrictedField->NumberCode = $enableThirdPartySMS ? 1 : 2;
+
+		// Set up modifiers
+		$request->Modifiers = new stdClass();
+		$request->Modifiers->ReportMode = false;
+
+		try {
+			$logger->log("CarlX: About to call UpdatePatronUserDefinedFields with SearchID: " . $request->SearchID . ", FieldID: " . $request->UserDefinedRestrictedField->FieldID . ", NumberCode: " . $request->UserDefinedRestrictedField->NumberCode, Logger::LOG_ERROR);
+			
+			// Try the method name without "Request" suffix, as that's the pattern for other CarlX methods
+			$soapResult = $this->doSoapRequest('UpdatePatronUserDefinedFields', $request, $this->patronWsdl, $this->genericResponseSOAPCallOptions, []);
+
+			if ($soapResult) {
+				$logger->log("CarlX: SOAP call successful, checking response structure", Logger::LOG_ERROR);
+				if (isset($soapResult->ResponseStatuses->ResponseStatus)) {
+					$success = stripos($soapResult->ResponseStatuses->ResponseStatus->ShortMessage, 'Success') !== false;
+					$logger->log("CarlX: Response ShortMessage: " . $soapResult->ResponseStatuses->ResponseStatus->ShortMessage . ", Success: " . ($success ? 'true' : 'false'), Logger::LOG_ERROR);
+					if (!$success) {
+						$errorMessage = $soapResult->ResponseStatuses->ResponseStatus->LongMessage;
+						$result['messages'][] = 'Failed to update SMS preferences' . ($errorMessage ? ' : ' . $errorMessage : '');
+					} else {
+						$result['success'] = true;
+						$result['messages'][] = 'SMS notification preferences updated successfully.';
+					}
+				} else {
+					$result['messages'][] = 'Unexpected response format when updating SMS preferences.';
+					$logger->log("CarlX: Unexpected response structure: " . print_r($soapResult, true), Logger::LOG_ERROR);
+				}
+			} else {
+				$result['messages'][] = 'Unable to update SMS preferences.';
+				$logger->log('Unable to read XML from CarlX response when attempting to update User Defined Fields for SMS.', Logger::LOG_ERROR);
+			}
+		} catch (Exception $e) {
+			global $logger;
+			$logger->log('Exception when updating CarlX User Defined Fields: ' . $e->getMessage(), Logger::LOG_ERROR);
+			$result['messages'][] = 'Error updating SMS preferences: ' . $e->getMessage();
+		}
+
+		if (!$result['success'] && empty($result['messages'])) {
+			$result['messages'][] = 'Unknown error updating SMS preferences';
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Get the current third-party SMS opt-in status for a patron from user defined fields
+	 * 
+	 * @param User $patron
+	 * @return boolean
+	 */
+	public function getThirdPartySMSOptInStatus(User $patron): bool {
+		$patronHomeLibrary = $patron->getHomeLibrary(true);
+		
+		// Only check if third-party SMS is enabled for this patron's library
+		if (!$patronHomeLibrary || !$patronHomeLibrary->enableThirdPartySMSNotifications) {
+			return false;
+		}
+		
+		try {
+			// Create request to get patron information including user defined fields
+			$request = $this->getSearchbyPatronIdRequest($patron);
+			$soapResult = $this->doSoapRequest('getPatronInformation', $request, $this->patronWsdl, $this->genericResponseSOAPCallOptions);
+			
+			if (isset($soapResult->Patron->UserDefinedFields) && $soapResult) {
+				$userDefinedFields = $soapResult->Patron->UserDefinedFields;
+				
+				// Look for the third-party SMS field (FieldID 4)
+				if (is_array($userDefinedFields)) {
+					foreach ($userDefinedFields as $field) {
+						if (isset($field->FieldID) && $field->FieldID == 4) {
+							// NumberCode 1 = opted in, 2 = not opted in
+							return isset($field->NumberCode) && $field->NumberCode == 1;
+						}
+					}
+				} elseif (isset($userDefinedFields->FieldID) && $userDefinedFields->FieldID == 4) {
+					// Single field case
+					return isset($userDefinedFields->NumberCode) && $userDefinedFields->NumberCode == 1;
+				}
+			}
+		} catch (Exception $e) {
+			global $logger;
+			$logger->log('Exception when retrieving third-party SMS status from CarlX: ' . $e->getMessage(), Logger::LOG_ERROR);
+		}
+		
+		// Default to false if we can't determine the status
+		return false;
 	}
 
 	public function getSelfRegistrationFields() {
@@ -2416,6 +2551,7 @@ class CarlX extends AbstractIlsDriver {
 		$user->_availableHoldNotice = $soapResult->Patron->SendHoldAvailableFlag;
 		$user->_comingDueNotice = $soapResult->Patron->SendComingDueFlag;
 		$user->_phoneType = $soapResult->Patron->PhoneType;
+		$user->_thirdPartySMSOptIn = $this->getThirdPartySMSOptInStatus($user);
 
 		$location = new Location();
 		$location->code = strtolower($soapResult->Patron->DefaultBranch);

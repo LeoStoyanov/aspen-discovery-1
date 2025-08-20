@@ -209,47 +209,62 @@
 									</div>
 								</div>
 
-								<div class="form-group">
-									<div class="col-xs-4"><label for="phoneType" class="">{translate text='Phone Carrier for SMS notices' isPublicFacing=true}</label></div>
-									<div class="col-xs-8">
-										{if $edit == true && $canUpdateContactInfo == true}
-											<select name="phoneType" id="phoneType" class="form-control">
-												{if count($phoneTypes) > 0}
-													{foreach from=$phoneTypes item=phoneTypeLabel key=phoneType}
-														<option value="{$phoneType}" {if $phoneType == $profile->_phoneType}selected="selected"{/if}>{translate text=$phoneTypeLabel isPublicFacing=true inAttribute=true}</option>
-													{/foreach}
-												{else}
-													<option></option>
-												{/if}
-											</select>
-										{else}
-											{assign var=i value=$profile->_phoneType}
-											{$phoneTypes[$i]}
-										{/if}
+								{if $enableThirdPartySMS}
+									{* Third-party SMS opt-in field *}
+									<div class="form-group">
+										<div class="col-xs-4"><label for="thirdPartySMSOptIn" class="control-label">{translate text='Opt-in for SMS notifications' isPublicFacing=true}</label></div>
+										<div class="col-xs-8">
+											{if $edit == true}
+												<input type="checkbox" name="thirdPartySMSOptIn" id="thirdPartySMSOptIn" {if $profile->_thirdPartySMSOptIn==1}checked='checked'{/if} data-switch="">
+											{else}
+												{if $profile->_thirdPartySMSOptIn==0}{translate text="No" isPublicFacing=true}{else}{translate text="Yes" isPublicFacing=true}{/if}
+											{/if}
+										</div>
 									</div>
-								</div>
+								{else}
+									{* Legacy SMS fields - only show when third-party SMS is not enabled *}
+									<div class="form-group">
+										<div class="col-xs-4"><label for="phoneType" class="">{translate text='Phone Carrier for SMS notices' isPublicFacing=true}</label></div>
+										<div class="col-xs-8">
+											{if $edit == true && $canUpdateContactInfo == true}
+												<select name="phoneType" id="phoneType" class="form-control">
+													{if count($phoneTypes) > 0}
+														{foreach from=$phoneTypes item=phoneTypeLabel key=phoneType}
+															<option value="{$phoneType}" {if $phoneType == $profile->_phoneType}selected="selected"{/if}>{translate text=$phoneTypeLabel isPublicFacing=true inAttribute=true}</option>
+														{/foreach}
+													{else}
+														<option></option>
+													{/if}
+												</select>
+											{else}
+												{assign var=i value=$profile->_phoneType}
+												{$phoneTypes[$i]}
+											{/if}
+										</div>
+									</div>
 
-								<div class="form-group">
-									<div class="col-xs-4"><label for="availableHoldNotice" class="control-label">{translate text='SMS notices for available holds' isPublicFacing=true}</label></div>
-									<div class="col-xs-8">
-										{if $edit == true}
-											<input type="checkbox" name="availableHoldNotice" id="availableHoldNotice" {if $profile->_availableHoldNotice==1}checked='checked'{/if} data-switch="">
-										{else}
-											{if $profile->_availableHoldNotice==0}{translate text="No" isPublicFacing=true}{else}{translate text="Yes" isPublicFacing=true}{/if}
-										{/if}
+									<div class="form-group">
+										<div class="col-xs-4"><label for="availableHoldNotice" class="control-label">{translate text='SMS notices for available holds' isPublicFacing=true}</label></div>
+										<div class="col-xs-8">
+											{if $edit == true}
+												<input type="checkbox" name="availableHoldNotice" id="availableHoldNotice" {if $profile->_availableHoldNotice==1}checked='checked'{/if} data-switch="">
+											{else}
+												{if $profile->_availableHoldNotice==0}{translate text="No" isPublicFacing=true}{else}{translate text="Yes" isPublicFacing=true}{/if}
+											{/if}
+										</div>
 									</div>
-								</div>
 
-								<div class="form-group">
-									<div class="col-xs-4"><label for="comingDueNotice" class="control-label">{translate text='SMS notices for due date reminders' isPublicFacing=true}</label></div>
-									<div class="col-xs-8">
-										{if $edit == true}
-											<input type="checkbox" name="comingDueNotice" id="comingDueNotice" {if $profile->_comingDueNotice==1}checked='checked'{/if} data-switch="">
-										{else}
-											{if $profile->_comingDueNotice==0}{translate text="No" isPublicFacing=true}{else}{translate text="Yes" isPublicFacing=true}{/if}
-										{/if}
+									<div class="form-group">
+										<div class="col-xs-4"><label for="comingDueNotice" class="control-label">{translate text='SMS notices for due date reminders' isPublicFacing=true}</label></div>
+										<div class="col-xs-8">
+											{if $edit == true}
+												<input type="checkbox" name="comingDueNotice" id="comingDueNotice" {if $profile->_comingDueNotice==1}checked='checked'{/if} data-switch="">
+											{else}
+												{if $profile->_comingDueNotice==0}{translate text="No" isPublicFacing=true}{else}{translate text="Yes" isPublicFacing=true}{/if}
+											{/if}
+										</div>
 									</div>
-								</div>
+								{/if}
 
 							{/if}
 
