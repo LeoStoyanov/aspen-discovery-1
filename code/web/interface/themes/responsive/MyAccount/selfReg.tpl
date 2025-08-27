@@ -113,5 +113,25 @@
 			$borrowPass2.attr('data-rule-equalTo', "#borrower_password");
 			$borrowPass2.attr('data-msg-equalTo', '{translate text="Passwords must match." isPublicFacing=true inAttribute=true}');
 		}
+		
+		// Prevent double-clicking on the Register button
+		$('button[name="submit"]').on('click', function(e) {
+			const $button = $(this);
+
+			if ($button.prop('disabled')) {
+				e.preventDefault();
+				return false;
+			}
+
+			setTimeout(function() {
+				$button.prop('disabled', true);
+				$button.html('<i class="fas fa-spinner fa-spin"></i> {translate text="Processing..." isPublicFacing=true}');
+			}, 100);
+		});
+		
+		// Re-enable button if form validation fails (form doesn't submit)
+		$('form[id^="objectEditor"]').on('invalid-form.validate', function() {
+			$('button[name="submit"]').prop('disabled', false).html('{translate text="Register" isPublicFacing=true}');
+		});
 	});
 </script>
