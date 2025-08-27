@@ -73,17 +73,7 @@ class SideFacets implements RecommendationInterface {
 
 		//Get applied facets
 		$filterList = $this->searchObject->getFilterList();
-		foreach ($filterList as $facetKey => $facet) {
-			//Remove any top facets since the removal links are displayed above results
-			if (strpos($facet[0]['field'], 'availability_toggle') === 0) {
-				unset($filterList[$facetKey]);
-			}
-		}
-		$interface->assign('filterList', $filterList);
-		//Process the side facet set to handle the Added In Last facet which we only want to be
-		//visible if there is not a value selected for the facet (makes it single select
-		$sideFacets = $this->searchObject->getFacetList($this->mainFacets);
-
+		
 		$lockSection = $this->searchObject->getSearchName();
 		if (UserAccount::isLoggedIn()) {
 			$user = UserAccount::getActiveUserObj();
@@ -92,6 +82,22 @@ class SideFacets implements RecommendationInterface {
 			$lockedFacets = isset($_SESSION['lockedFilters']) ? $_SESSION['lockedFilters'] : [];
 		}
 		$lockedFacets = isset($lockedFacets[$lockSection]) ? $lockedFacets[$lockSection] : [];
+		
+		foreach ($filterList as $facetKey => $facet) {
+			//Remove any top facets since the removal links are displayed above results
+			if (strpos($facet[0]['field'], 'availability_toggle') === 0) {
+				unset($filterList[$facetKey]);
+			} else {
+				// Add locked status to each filter
+				foreach ($facet as $filterIndex => $filter) {
+					$filterList[$facetKey][$filterIndex]['isLocked'] = array_key_exists($filter['field'], $lockedFacets);
+				}
+			}
+		}
+		$interface->assign('filterList', $filterList);
+		//Process the side facet set to handle the Added In Last facet which we only want to be
+		//visible if there is not a value selected for the facet (makes it single select
+		$sideFacets = $this->searchObject->getFacetList($this->mainFacets);
 
 		//Figure out which counts to show.
 		$searchSource = $_REQUEST['searchSource'];
