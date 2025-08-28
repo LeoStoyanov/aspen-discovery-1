@@ -2362,6 +2362,39 @@ class MyAccount_AJAX extends JSON_Action {
 		}
 	}
 
+	/** @noinspection PhpUnused */
+	function getDeleteListForm(): array {
+		$modalBody = translate([
+			'text' => 'Are you sure you want to delete this entire list? The list and all titles within it will be soft-deleted and can be restored within 30 days.',
+			'isPublicFacing' => true
+		]) . '<br/><br/>' .
+			'<div>' .
+			'<input type="checkbox" id="optOutSoftDeletion" style="margin-right: 5px;">' .
+			'<label class="form-check-label" for="optOutSoftDeletion">' . translate([
+				'text' => 'Opt Out of Soft Deletion',
+				'isPublicFacing' => true
+			]) . '</label>' .
+			'</div>';
+
+		$modalButtons = '<button id="confirmDeleteList" class="tool btn btn-danger" onclick="AspenDiscovery.Lists.doDeleteList()"><span class="fas fa-spinner fa-spin" style="display:none; margin-right: 4px;"></span>' . translate([
+				'text' => 'Yes',
+				'isPublicFacing' => true
+			]) . '</button>';
+		$modalButtons .= '<button id="cancelDeleteList" class="tool btn btn-default" onclick="AspenDiscovery.closeLightbox()">' . translate([
+				'text' => 'No',
+				'isPublicFacing' => true
+			]) . '</button>';
+
+		return [
+			'title' => translate([
+				'text' => 'Delete List?',
+				'isPublicFacing' => true
+			]),
+			'modalBody' => $modalBody,
+			'modalButtons' => $modalButtons
+		];
+	}
+
 	function renewCheckout() {
 		if (isset($_REQUEST['patronId']) && isset($_REQUEST['recordId']) && isset($_REQUEST['renewIndicator'])) {
 			if (strpos($_REQUEST['renewIndicator'], '|') > 0) {

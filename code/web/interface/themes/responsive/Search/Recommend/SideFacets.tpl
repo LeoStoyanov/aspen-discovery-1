@@ -8,7 +8,7 @@
 			<div class="applied-filters">
 			{foreach from=$filterList item=filters key=field }
 				{foreach from=$filters item=filter}
-					<div class="facetValue">{translate text=$field isPublicFacing=true}: {$filter.display} {if empty($filter.isLocked)}<a href="{$filter.removalUrl|escape}" aria-label="{translate text="Remove Filter" inAttribute=true isPublicFacing=true}"><i class="fas fa-minus-circle fa-lg text-danger" style="display:inline; vertical-align: middle"></i></a>{/if}</div>
+					<div class="facetValue" data-field="{$field|escape}">{translate text=$field isPublicFacing=true}: {$filter.display} <a href="{$filter.removalUrl|escape}" aria-label="{translate text="Remove Filter" inAttribute=true isPublicFacing=true}" {if !empty($filter.isLocked)}style="display:none"{/if}><i class="fas fa-minus-circle fa-lg text-danger" style="display:inline; vertical-align: middle"></i></a></div>
 				{/foreach}
 			{/foreach}
 			</div>

@@ -79,13 +79,13 @@ class SideFacets implements RecommendationInterface {
 			$user = UserAccount::getActiveUserObj();
 			$lockedFacets = !empty($user->lockedFacets) ? json_decode($user->lockedFacets, true) : [];
 		} else {
-			$lockedFacets = isset($_SESSION['lockedFilters']) ? $_SESSION['lockedFilters'] : [];
+			$lockedFacets = $_SESSION['lockedFilters'] ?? [];
 		}
-		$lockedFacets = isset($lockedFacets[$lockSection]) ? $lockedFacets[$lockSection] : [];
+		$lockedFacets = $lockedFacets[$lockSection] ?? [];
 		
 		foreach ($filterList as $facetKey => $facet) {
 			//Remove any top facets since the removal links are displayed above results
-			if (strpos($facet[0]['field'], 'availability_toggle') === 0) {
+			if (str_starts_with($facet[0]['field'], 'availability_toggle')) {
 				unset($filterList[$facetKey]);
 			} else {
 				// Add locked status to each filter

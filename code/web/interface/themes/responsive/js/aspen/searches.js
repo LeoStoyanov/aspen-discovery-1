@@ -290,6 +290,11 @@ AspenDiscovery.Searches = (function(){
 					if (data.success === true){
 						$("#facetLock_lockIcon_" + clusterName).hide();
 						$("#facetLock_unlockIcon_" + clusterName).show();
+						const clusterSelector = '.applied-filters .facetValue[data-field="' + clusterName + '"], ' +
+							'.applied-filters .facetValue[data-field="' + clusterName.charAt(0).toUpperCase() + clusterName.slice(1) + '"]';
+						$(clusterSelector).each(function() {
+							$(this).find('a[aria-label*="Remove Filter"]').hide();
+						});
 					}else{
 						AspenDiscovery.showMessage('Error', data.message, true);
 					}
@@ -308,6 +313,11 @@ AspenDiscovery.Searches = (function(){
 					if (data.success === true){
 						$("#facetLock_lockIcon_" + clusterName).show();
 						$("#facetLock_unlockIcon_" + clusterName).hide();
+						const clusterSelector = '.applied-filters .facetValue[data-field="' + clusterName + '"], ' +
+							'.applied-filters .facetValue[data-field="' + clusterName.charAt(0).toUpperCase() + clusterName.slice(1) + '"]';
+						$(clusterSelector).each(function() {
+							$(this).find('a[aria-label*="Remove Filter"]').show();
+						});
 					}else{
 						AspenDiscovery.showMessage('Error', data.message, true);
 					}
