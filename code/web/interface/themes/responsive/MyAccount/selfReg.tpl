@@ -113,25 +113,16 @@
 			$borrowPass2.attr('data-rule-equalTo', "#borrower_password");
 			$borrowPass2.attr('data-msg-equalTo', '{translate text="Passwords must match." isPublicFacing=true inAttribute=true}');
 		}
-		
-		// Prevent double-clicking on the Register button
-		$('button[name="submit"]').on('click', function(e) {
-			const $button = $(this);
 
-			if ($button.prop('disabled')) {
-				e.preventDefault();
-				return false;
-			}
-
-			setTimeout(function() {
-				$button.prop('disabled', true);
-				$button.html('<i class="fas fa-spinner fa-spin"></i> {translate text="Processing..." isPublicFacing=true}');
-			}, 100);
-		});
-		
-		// Re-enable button if form validation fails (form doesn't submit)
-		$('form[id^="objectEditor"]').on('invalid-form.validate', function() {
-			$('button[name="submit"]').prop('disabled', false).html('{translate text="Register" isPublicFacing=true}');
+		// Prevent double-submission of self-registration form.
+		let isSubmitting = false;
+		$('form[id^="objectEditor"]').on('submit', (e) => {
+			if (isSubmitting) return e.preventDefault();
+			// Timeout to allow for jQuery validation to check first.
+			setTimeout(() => {
+				isSubmitting = true;
+				$(e.target).find('button[type="submit"][name="submit"]').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> {translate text="Processing..." isPublicFacing=true}');
+			}, 10);
 		});
 	});
 </script>
