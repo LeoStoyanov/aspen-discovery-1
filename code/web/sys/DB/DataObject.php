@@ -956,26 +956,70 @@ abstract class DataObject implements JsonSerializable {
 	 * @return void
 	 */
 	protected function saveOneToManyOptions(array $newValues, string $keyOther, ?array $allowableValues = null, ?string $oneToManyDBObjectClassName = null) : void {
+		global $logger;
+		$logger->log("saveOneToManyOptions called with " . count($newValues) . " objects, keyOther: $keyOther", Logger::LOG_ERROR);
+		
 		if ($allowableValues == null) {
 			/** @var DataObject $oneToManyDBObject */
-			foreach ($newValues as $oneToManyDBObject) {
+			foreach ($newValues as $index => $oneToManyDBObject) {
+				$logger->log("Processing object $index: " . get_class($oneToManyDBObject) . ", ID: " . $oneToManyDBObject->getPrimaryKeyValue() . ", deleteOnSave: " . ($oneToManyDBObject->_deleteOnSave ?? 'not set'), Logger::LOG_ERROR);
 				if ($oneToManyDBObject->_deleteOnSave) {
+					$logger->log("Object marked for deletion", Logger::LOG_ERROR);
 					if ($oneToManyDBObject->getPrimaryKeyValue() > 0) {
 						$oneToManyDBObject->delete();
 					}
 				} else {
 					if (isset($oneToManyDBObject->{$oneToManyDBObject->__primaryKey}) && is_numeric($oneToManyDBObject->{$oneToManyDBObject->__primaryKey})) { // (negative ids need processed with insert)
 						if ($oneToManyDBObject->{$oneToManyDBObject->__primaryKey} <= 0) {
+							$logger->log("Inserting new object with negative ID: " . $oneToManyDBObject->{$oneToManyDBObject->__primaryKey}, Logger::LOG_ERROR);
+							$logger->log("Setting $keyOther = " . $this->{$this->__primaryKey}, Logger::LOG_ERROR);
 							$oneToManyDBObject->$keyOther = $this->{$this->__primaryKey};
-							$oneToManyDBObject->insert();
+							
+							// Log object state before insert
+							$logger->log("Object before insert: " . json_encode($oneToManyDBObject->toArray()), Logger::LOG_ERROR);
+							
+							$insertResult = $oneToManyDBObject->insert();
+							$logger->log("Insert result: " . ($insertResult !== false ? 'success (' . $insertResult . ')' : 'failed'), Logger::LOG_ERROR);
+							
+							// Log object state after insert
+							$logger->log("Object after insert: " . json_encode($oneToManyDBObject->toArray()), Logger::LOG_ERROR);
+							if ($insertResult === false) {
+								global $logger;
+								$logger->log("Failed to insert oneToMany object: " . get_class($oneToManyDBObject) . " - " . $oneToManyDBObject->getLastError(), Logger::LOG_ERROR);
+							}
 						} else {
+							$logger->log("Checking existing object for changes", Logger::LOG_ERROR);
+							$logger->log("Object data: " . json_encode($oneToManyDBObject->toArray()), Logger::LOG_ERROR);
+							$logger->log("Object has changes: " . ($oneToManyDBObject->hasChanges() ? 'YES' : 'NO'), Logger::LOG_ERROR);
 							if ($oneToManyDBObject->hasChanges()) {
-								$oneToManyDBObject->update();
+								$logger->log("Object has changes, updating", Logger::LOG_ERROR);
+								$updateResult = $oneToManyDBObject->update();
+								$logger->log("Update result: " . ($updateResult !== false ? 'success' : 'failed'), Logger::LOG_ERROR);
+								if (!$updateResult) {
+									global $logger;
+									$logger->log("Failed to update oneToMany object: " . get_class($oneToManyDBObject) . " - " . $oneToManyDBObject->getLastError(), Logger::LOG_ERROR);
+								}
+							} else {
+								$logger->log("Object has no changes, skipping update", Logger::LOG_ERROR);
 							}
 						}
 					} else {
+						$logger->log("Object has no primary key or non-numeric key, inserting", Logger::LOG_ERROR);
+						$logger->log("Setting $keyOther = " . $this->{$this->__primaryKey}, Logger::LOG_ERROR);
 						$oneToManyDBObject->$keyOther = $this->{$this->__primaryKey};
-						$oneToManyDBObject->insert();
+						
+						// Log object state before insert
+						$logger->log("Object before insert: " . json_encode($oneToManyDBObject->toArray()), Logger::LOG_ERROR);
+						
+						$insertResult = $oneToManyDBObject->insert();
+						$logger->log("Insert result: " . ($insertResult !== false ? 'success (' . $insertResult . ')' : 'failed'), Logger::LOG_ERROR);
+						
+						// Log object state after insert
+						$logger->log("Object after insert: " . json_encode($oneToManyDBObject->toArray()), Logger::LOG_ERROR);
+						if ($insertResult === false) {
+							global $logger;
+							$logger->log("Failed to insert oneToMany object: " . get_class($oneToManyDBObject) . " - " . $oneToManyDBObject->getLastError(), Logger::LOG_ERROR);
+						}
 					}
 				}
 			}
