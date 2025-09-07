@@ -316,3 +316,74 @@
 	{/literal}
 </script>
 {/if}
+
+<script type="text/javascript">
+{literal}
+(() => {
+	// Check if we have a scrollToId parameter in the URL
+	const urlParams = new URLSearchParams(window.location.search);
+	const scrollToId = urlParams.get('scrollToId');
+	
+	if (!scrollToId) return;
+	
+	// Function to attempt scroll positioning
+	const attemptScrollPositioning = () => {
+		const $tableContainer = $('.adminTableRegion');
+		const $table = $('#adminTable');
+		
+		// Check if required elements are available
+		if ($tableContainer.length === 0 || $table.length === 0) {
+			return false;
+		}
+		
+		// Find the target row
+		const $targetRow = $('#adminTable tbody tr').filter((index, row) => {
+			const $row = $(row);
+			const $editLink = $row.find(`a[href*="objectAction=edit"][href*="id=${scrollToId}"]`);
+			return $editLink.length > 0;
+		}).first();
+		
+		if ($targetRow.length === 0) {
+			return false;
+		}
+		
+		// Calculate and apply scroll positions immediately without animation
+		const containerOffset = $tableContainer.offset();
+		const windowHeight = $(window).height();
+		const windowScrollTop = $(window).scrollTop();
+		const containerTop = containerOffset.top;
+		const containerBottom = containerTop + $tableContainer.outerHeight();
+		
+		// Check if the container needs to be scrolled into view
+		const containerNotVisible = containerTop < windowScrollTop || containerBottom > (windowScrollTop + windowHeight);
+		
+		if (containerNotVisible) {
+			// Immediately scroll main page without animation
+			window.scrollTo(0, containerTop - 100);
+		}
+		
+		// Calculate and apply container scroll immediately
+		const rowOffsetTop = $targetRow.position().top;
+		const tableOffsetTop = $table.position().top;
+		const currentScroll = $tableContainer.scrollTop();
+		const containerHeight = $tableContainer.height();
+		const targetScroll = currentScroll + rowOffsetTop + tableOffsetTop - (containerHeight / 2);
+		
+		// Set scroll position immediately
+		$tableContainer.scrollTop(Math.max(0, targetScroll));
+		
+		// Clean up URL
+		if (history.replaceState) {
+			urlParams.delete('scrollToId');
+			const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+			history.replaceState({}, '', newUrl);
+		}
+		
+		return true;
+	};
+
+	attemptScrollPositioning();
+
+})();
+{/literal}
+</script>
