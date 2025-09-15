@@ -22,20 +22,26 @@ import java.util.HashSet;
 class HooplaProcessor {
 	private final GroupedWorkIndexer indexer;
 	private final Logger logger;
+	private final Connection dbConn;
 
 	private PreparedStatement getProductInfoStmt;
 	private PreparedStatement doubleDecodeRawResponseStmt;
 	private PreparedStatement updateRawResponseStmt;
 	private PreparedStatement getFlexAvailabilityStmt;
+	private PreparedStatement checkEntitlementStmt;
+	private PreparedStatement hasAnyEntitlementsStmt;
 	HooplaProcessor(GroupedWorkIndexer indexer, Connection dbConn, Logger logger) {
 		this.indexer = indexer;
 		this.logger = logger;
+		this.dbConn = dbConn;
 
 		try {
-			getProductInfoStmt = dbConn.prepareStatement("SELECT id, hooplaId, active, title, kind, pa, demo, profanity, rating, abridged, children, price, rawChecksum, UNCOMPRESS(rawResponse) as rawResponse, dateFirstDetected, hooplaType from hoopla_export where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
+			getProductInfoStmt = dbConn.prepareStatement("SELECT id, hooplaId, title, kind, pa, demo, profanity, rating, abridged, children, price, rawChecksum, UNCOMPRESS(rawResponse) as rawResponse, dateFirstDetected, hooplaType from hoopla_export where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			doubleDecodeRawResponseStmt = dbConn.prepareStatement("SELECT UNCOMPRESS(UNCOMPRESS(rawResponse)) as rawResponse from hoopla_export where id = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			updateRawResponseStmt = dbConn.prepareStatement("UPDATE hoopla_export SET rawResponse = COMPRESS(?) where id = ?");
-			getFlexAvailabilityStmt = dbConn.prepareStatement("SELECT * from hoopla_flex_availability where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
+			getFlexAvailabilityStmt = dbConn.prepareStatement("SELECT * from hoopla_flex_availability where hooplaId = ? AND libraryId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
+			checkEntitlementStmt = dbConn.prepareStatement("SELECT purchaseModel FROM hoopla_entitlements WHERE hooplaId = ? AND libraryId = ? AND active = 1", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			hasAnyEntitlementsStmt = dbConn.prepareStatement("SELECT 1 FROM hoopla_entitlements WHERE hooplaId = ? AND active = 1 LIMIT 1", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 		} catch (SQLException e) {
 			logger.error("Error setting up hoopla processor", e);
 		}
@@ -46,9 +52,17 @@ class HooplaProcessor {
 			getProductInfoStmt.setString(1, identifier);
 			ResultSet productRS = getProductInfoStmt.executeQuery();
 			if (productRS.next()) {
-				//Make sure the record isn't deleted
-				if (!productRS.getBoolean("active")){
-					logger.debug("Hoopla product " + identifier + " is inactive, skipping");
+				// Check if this title has any active entitlements
+				// If no library has entitlements for this title, don't bother processing it
+				hasAnyEntitlementsStmt.setString(1, identifier);
+				ResultSet hasEntitlementsRS = hasAnyEntitlementsStmt.executeQuery();
+				boolean hasActiveEntitlements = hasEntitlementsRS.next();
+				hasEntitlementsRS.close();
+
+				if (!hasActiveEntitlements) {
+					if (logger.isDebugEnabled()) {
+						logger.debug("Hoopla product " + identifier + " has no active entitlements, skipping");
+					}
 					return;
 				}
 				byte[] rawResponseBytes = productRS.getBytes("rawResponse");
@@ -403,76 +417,112 @@ class HooplaProcessor {
 				String upc = rawResponse.getString("upc");
 				groupedWork.addUpc(upc);
 
-				ItemInfo itemInfo = new ItemInfo();
-				itemInfo.setItemIdentifier(identifier);
-				itemInfo.seteContentSource("Hoopla");
-				itemInfo.setIsEContent(true);
-				itemInfo.seteContentUrl(rawResponse.getString("url"));
-				itemInfo.setShelfLocation("Online Hoopla Collection");
-				itemInfo.setDetailedLocation("Online Hoopla Collection");
-				itemInfo.setCallNumber("Online Hoopla");
-				itemInfo.setSortableCallNumber("Online Hoopla");
-				itemInfo.setFormat(primaryFormat);
-				itemInfo.setFormatCategory(formatCategory);
+				boolean abridged = productRS.getBoolean("abridged");
+				boolean pa = productRS.getBoolean("pa");
+				boolean profanity = productRS.getBoolean("profanity");
+				String rating = productRS.getString("rating");
+				Date dateAdded = new Date(productRS.getLong("dateFirstDetected") * 1000);
 
-				if (hooplaType.equalsIgnoreCase("Flex")){
-					itemInfo.seteContentSubSource("Flex");
-					getFlexAvailabilityStmt.setString(1, identifier);
-					ResultSet flexAvailabilityRS = getFlexAvailabilityStmt.executeQuery();
-					if (flexAvailabilityRS.next()){
-						int totalCopies = flexAvailabilityRS.getInt("totalCopies");
-						int availableCopies = flexAvailabilityRS.getInt("availableCopies");
-						int holdsQueueSize = flexAvailabilityRS.getInt("holdsQueueSize");
-						itemInfo.setNumCopies(totalCopies);
-						itemInfo.setAvailable(availableCopies > 0);
+				// For Flex titles, create separate ItemInfo per library to support per-library availability
+				// For Instant titles, create single ItemInfo since availability is global
+				if (hooplaType.equalsIgnoreCase("Flex")) {
+					// Get all libraries that have entitlements for this Flex title
+					HashSet<Long> entitledLibraries = getEntitledLibraries(identifier);
 
-						if (availableCopies > 0){
-							itemInfo.setDetailedStatus("Available Online");
-							itemInfo.setGroupedStatus("Available Online");
-							itemInfo.setHoldable(false);
-						}else{
-							itemInfo.setDetailedStatus("Checked Out");
-							itemInfo.setGroupedStatus("Checked Out");
-							itemInfo.setHoldable(true);
+					for (Long libraryId : entitledLibraries) {
+						ItemInfo itemInfo = new ItemInfo();
+						itemInfo.setItemIdentifier(identifier + ":" + libraryId + ":" + primaryFormat);
+						itemInfo.seteContentSource("Hoopla");
+						itemInfo.setIsEContent(true);
+						itemInfo.seteContentUrl(rawResponse.getString("url"));
+						itemInfo.setShelfLocation("Online Hoopla Collection");
+						itemInfo.setDetailedLocation("Online Hoopla Collection");
+						itemInfo.setCallNumber("Online Hoopla");
+						itemInfo.setSortableCallNumber("Online Hoopla");
+						itemInfo.setFormat(primaryFormat);
+						itemInfo.setFormatCategory(formatCategory);
+						itemInfo.setInLibraryUseOnly(false);
+						itemInfo.setDateAdded(dateAdded);
+
+						// Set per-library Flex availability
+						setFlexAvailabilityForLibrary(itemInfo, identifier, libraryId);
+
+						// Scope this ItemInfo only to the relevant library's scopes
+						for (Scope scope : indexer.getScopes()) {
+							boolean okToAdd = false;
+							HooplaScope hooplaScope = scope.getHooplaScope();
+							if (hooplaScope != null && libraryId.equals(scope.getLibraryId())) {
+								// Check entitlement and get purchase model for this library
+								String libraryPurchaseModel = checkEntitlementAndGetPurchaseModel(identifier, libraryId, hooplaType, groupedWork, scope);
+								if (libraryPurchaseModel != null) {
+									// Check if the content passes the scoping rules
+									okToAdd = hooplaScope.isOkToAdd(identifier, kind, price, abridged, pa, profanity, isAdult, isTeen, isKids, rating, genresToAdd, libraryPurchaseModel, logger);
+								}
+							}
+
+							if (okToAdd) {
+								ScopingInfo scopingInfo = itemInfo.addScope(scope);
+								groupedWork.addScopingInfo(scope.getScopeName(), scopingInfo);
+								scopingInfo.setLibraryOwned(true);
+								scopingInfo.setLocallyOwned(true);
+							}
 						}
+
+						hooplaRecord.addItem(itemInfo);
 					}
-					flexAvailabilityRS.close();
-				}else{
-					//Hoopla instant is always 1 copy unlimited use
-					itemInfo.seteContentSubSource("Instant");
+				} else {
+					// For Instant titles, create single ItemInfo with global availability
+					ItemInfo itemInfo = new ItemInfo();
+					itemInfo.setItemIdentifier(identifier);
+					itemInfo.seteContentSource("Hoopla");
+					itemInfo.setIsEContent(true);
+					itemInfo.seteContentUrl(rawResponse.getString("url"));
+					itemInfo.setShelfLocation("Online Hoopla Collection");
+					itemInfo.setDetailedLocation("Online Hoopla Collection");
+					itemInfo.setCallNumber("Online Hoopla");
+					itemInfo.setSortableCallNumber("Online Hoopla");
+					itemInfo.setFormat(primaryFormat);
+					itemInfo.setFormatCategory(formatCategory);
+					itemInfo.setInLibraryUseOnly(false);
+					itemInfo.setDateAdded(dateAdded);
+
+					// For Instant titles, always available
 					itemInfo.setNumCopies(1);
 					itemInfo.setAvailable(true);
 					itemInfo.setDetailedStatus("Available Online");
 					itemInfo.setGroupedStatus("Available Online");
 					itemInfo.setHoldable(false);
-				}
-				itemInfo.setInLibraryUseOnly(false);
 
-				Date dateAdded = new Date(productRS.getLong("dateFirstDetected") * 1000);
-				itemInfo.setDateAdded(dateAdded);
+					// Scope to all libraries that have entitlements for this title
+					for (Scope scope : indexer.getScopes()) {
+						boolean okToAdd = false;
+						HooplaScope hooplaScope = scope.getHooplaScope();
+						if (hooplaScope != null) {
+							Long libraryId = scope.getLibraryId();
+							if (libraryId != null) {
+								// Check entitlement and get purchase model for this library
+								String libraryPurchaseModel = checkEntitlementAndGetPurchaseModel(identifier, libraryId, hooplaType, groupedWork, scope);
+								if (libraryPurchaseModel != null) {
+									// Check if the content passes the scoping rules
+									okToAdd = hooplaScope.isOkToAdd(identifier, kind, price, abridged, pa, profanity, isAdult, isTeen, isKids, rating, genresToAdd, libraryPurchaseModel, logger);
+								}
+							} else {
+								if (groupedWork.isDebugEnabled()) {
+									groupedWork.addDebugMessage("Scope " + scope.getScopeName() + " excluded due to missing libraryId", 2);
+								}
+							}
+						}
 
-				boolean abridged = productRS.getBoolean("abridged");
-				boolean pa = productRS.getBoolean("pa");
-				boolean profanity = productRS.getBoolean("profanity");
-				String rating = productRS.getString("rating");
-
-				for (Scope scope : indexer.getScopes()) {
-					boolean okToAdd;
-					HooplaScope hooplaScope = scope.getHooplaScope();
-					if (hooplaScope != null){
-						okToAdd = hooplaScope.isOkToAdd(identifier, kind, price, abridged, pa, profanity, isAdult, isTeen, isKids, rating, genresToAdd, hooplaType, logger);
-					}else{
-						okToAdd = false;
+						if (okToAdd) {
+							ScopingInfo scopingInfo = itemInfo.addScope(scope);
+							groupedWork.addScopingInfo(scope.getScopeName(), scopingInfo);
+							scopingInfo.setLibraryOwned(true);
+							scopingInfo.setLocallyOwned(true);
+						}
 					}
-					if (okToAdd) {
-						ScopingInfo scopingInfo = itemInfo.addScope(scope);
-						groupedWork.addScopingInfo(scope.getScopeName(), scopingInfo);
-						scopingInfo.setLibraryOwned(true);
-						scopingInfo.setLocallyOwned(true);
-					}
-				}
 
-				hooplaRecord.addItem(itemInfo);
+					hooplaRecord.addItem(itemInfo);
+				}
 
 			}
 			productRS.close();
@@ -500,6 +550,117 @@ class HooplaProcessor {
 		doubleDecodeRawResponseRS.close();
 
 		return null;
+	}
+
+	/**
+	 * Check if the library has an active entitlement for this content and return the purchase model
+	 * @param identifier The Hoopla identifier
+	 * @param libraryId The library ID
+	 * @param fallbackPurchaseModel Fallback purchase model if none is stored
+	 * @param groupedWork For debug messages
+	 * @param scope For debug messages
+	 * @return The purchase model for this library, or null if no entitlement
+	 */
+	private String checkEntitlementAndGetPurchaseModel(String identifier, Long libraryId, String fallbackPurchaseModel, AbstractGroupedWorkSolr groupedWork, Scope scope) {
+		try {
+			checkEntitlementStmt.setString(1, identifier);
+			checkEntitlementStmt.setLong(2, libraryId);
+			ResultSet entitlementRS = checkEntitlementStmt.executeQuery();
+
+			boolean hasEntitlement = entitlementRS.next();
+			String purchaseModel = null;
+
+			if (hasEntitlement) {
+				purchaseModel = entitlementRS.getString("purchaseModel");
+				// If no purchase model is stored, fall back to global hooplaType
+				if (purchaseModel == null || purchaseModel.isEmpty()) {
+					purchaseModel = fallbackPurchaseModel;
+				}
+			} else {
+				if (groupedWork.isDebugEnabled()) {
+					groupedWork.addDebugMessage("Scope " + scope.getScopeName() + " excluded due to inactive entitlement (libraryId " + libraryId + " not found in hoopla_entitlements)", 2);
+				}
+			}
+
+			entitlementRS.close();
+			return hasEntitlement ? purchaseModel : null;
+		} catch (SQLException e) {
+			logger.error("Error checking entitlement for hooplaId " + identifier + " and libraryId " + libraryId, e);
+			return null; // Default to not adding if there's an error
+		}
+	}
+
+	/**
+	 * Get all libraries that have active entitlements for a given Hoopla identifier.
+	 *
+	 * @param identifier The Hoopla identifier
+	 * @return Set of library IDs that have active entitlements
+	 */
+	private HashSet<Long> getEntitledLibraries(String identifier) {
+		HashSet<Long> entitledLibraries = new HashSet<>();
+		try {
+			PreparedStatement getEntitledLibrariesStmt = dbConn.prepareStatement(
+				"SELECT libraryId FROM hoopla_entitlements WHERE hooplaId = ? AND active = 1"
+			);
+			getEntitledLibrariesStmt.setString(1, identifier);
+			ResultSet entitledLibrariesRS = getEntitledLibrariesStmt.executeQuery();
+
+			while (entitledLibrariesRS.next()) {
+				entitledLibraries.add(entitledLibrariesRS.getLong("libraryId"));
+			}
+
+			entitledLibrariesRS.close();
+			getEntitledLibrariesStmt.close();
+
+		} catch (SQLException e) {
+			logger.error("Error getting entitled libraries for hooplaId " + identifier, e);
+		}
+		return entitledLibraries;
+	}
+
+	/**
+	 * Set Flex availability for a specific library by checking that library's availability data.
+	 * Following OverDrive pattern - per-library ItemInfo objects with per-library availability.
+	 *
+	 * @param itemInfo The item info to set availability on
+	 * @param identifier The Hoopla identifier
+	 * @param libraryId The specific library ID
+	 */
+	private void setFlexAvailabilityForLibrary(ItemInfo itemInfo, String identifier, Long libraryId) {
+		// Start with conservative defaults
+		int totalCopies = 1;
+		boolean hasAvailableCopies = false;
+
+		try {
+			// Query this specific library's Flex availability for this title
+			getFlexAvailabilityStmt.setString(1, identifier);
+			getFlexAvailabilityStmt.setLong(2, libraryId);
+			ResultSet flexAvailabilityRS = getFlexAvailabilityStmt.executeQuery();
+
+			if (flexAvailabilityRS.next()) {
+				totalCopies = flexAvailabilityRS.getInt("totalCopies");
+				int availableCopies = flexAvailabilityRS.getInt("availableCopies");
+				hasAvailableCopies = availableCopies > 0;
+			}
+
+			flexAvailabilityRS.close();
+
+		} catch (SQLException e) {
+			logger.error("Error checking Flex availability for hooplaId " + identifier + " and libraryId " + libraryId, e);
+		}
+
+		// Set availability based on findings
+		itemInfo.setNumCopies(totalCopies);
+		itemInfo.setAvailable(hasAvailableCopies);
+		itemInfo.setHoldable(!hasAvailableCopies);
+
+		if (hasAvailableCopies) {
+			itemInfo.setDetailedStatus("Available Online");
+			itemInfo.setGroupedStatus("Available Online");
+		} else {
+			itemInfo.setDetailedStatus("Checked Out");
+			itemInfo.setGroupedStatus("Checked Out");
+		}
 	}
 
 }

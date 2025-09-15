@@ -1,38 +1,23 @@
-<?php /** @noinspection PhpMissingFieldTypeInspection */
+<?php
 require_once ROOT_DIR . '/sys/Hoopla/HooplaScope.php';
+require_once ROOT_DIR . '/sys/Hoopla/HooplaLibrarySetting.php';
 
 class HooplaSetting extends DataObject {
 	public $__table = 'hoopla_settings';    // table name
 	public $id;
 	public $apiUrl;
-	public $libraryId;
 	public $apiUsername;
 	public $apiPassword;
 	public $accessToken;
 	public $tokenExpirationTime;
-	/** @noinspection PhpUnused */
 	public $regroupAllRecords;
-	/** @noinspection PhpUnused */
-	public $runFullUpdateInstant;
-	/** @noinspection PhpUnused */
-	public $lastUpdateOfChangedRecordsInstant;
-	/** @noinspection PhpUnused */
-	public $lastUpdateOfAllRecordsInstant;
-	public $hooplaInstantEnabled;
-	/** @noinspection PhpUnused */
-	public $runFullUpdateFlex;
-	/** @noinspection PhpUnused */
-	public $lastUpdateOfChangedRecordsFlex;
-	/** @noinspection PhpUnused */
-	public $lastUpdateOfAllRecordsFlex;
-	public $hooplaFlexEnabled;
-	public $recordExtractionBatchSize;
-	public $indexingTime;
+	public $lastUpdateOfGlobalContent;
+	public $lastUpdateOfEntitlements;
 
 	private $_scopes;
+	static array $_objectStructure = [];
 
-	static $_objectStructure = [];
-	static function getObjectStructure(string $context = ''): array {
+	public static function getObjectStructure($context = ''): array {
 		if (isset(self::$_objectStructure[$context]) && self::$_objectStructure[$context] !== null) {
 			return self::$_objectStructure[$context];
 		}
@@ -47,145 +32,67 @@ class HooplaSetting extends DataObject {
 				'label' => 'Id',
 				'description' => 'The unique id',
 			],
-			'libraryId' => [
-				'property' => 'libraryId',
-				'type' => 'integer',
-				'label' => 'Library Id',
-				'description' => 'The Library Id to use with the API',
+			'apiUrl' => [
+				'property' => 'apiUrl',
+				'type' => 'url',
+				'label' => 'url',
+				'description' => 'The URL to the API',
 			],
-			'apiConnectionSection' => [
-				'property' => 'apiConnectionSection',
-				'type' => 'section',
-				'label' => 'API Connection Settings',
-				'expandByDefault' => false,
-				'properties' => [
-					'apiUrl' => [
-						'property' => 'apiUrl',
-						'type' => 'url',
-						'label' => 'url',
-						'description' => 'The URL to the API',
-					],
-					'apiUsername' => [
-						'property' => 'apiUsername',
-						'type' => 'text',
-						'label' => 'API Username',
-						'description' => 'The API Username provided by your Aspen support vendor (or Hoopla when registering if not using third-party support or hosting)',
-					],
-					'apiPassword' => [
-						'property' => 'apiPassword',
-						'type' => 'storedPassword',
-						'label' => 'API Password',
-						'description' => 'The API Password provided by your Aspen support vendor (or Hoopla when registering if not using third-party support or hosting)',
-						'hideInLists' => true,
-					],
-				],
+			'librarySettings' => [
+				'property' => 'librarySettings',
+				'type' => 'oneToMany',
+				'label' => 'Library Settings',
+				'description' => 'Configure which libraries use this Hoopla setting and their purchase model preferences',
+				'keyThis' => 'id',
+				'keyOther' => 'settingId',
+				'subObjectType' => 'HooplaLibrarySetting',
+				'structure' => HooplaLibrarySetting::getObjectStructure($context),
+				'sortable' => false,
+				'storeDb' => true,
+				'allowEdit' => true,
+				'canEdit' => true,
+				'canAddNew' => true,
+				'canDelete' => true,
+				'additionalOneToManyActions' => [],
 			],
-			'indexingSettingsSection' => [
-				'property' => 'indexingSettingsSection',
-				'type' => 'section',
-				'label' => 'General Indexing Settings',
-				'expandByDefault' => false,
-				'properties' => [
-					'regroupAllRecords' => [
-						'property' => 'regroupAllRecords',
-						'type' => 'checkbox',
-						'label' => 'Regroup all Records',
-						'description' => 'Whether or not all existing records should be regrouped',
-						'default' => 0,
-					],
-					'indexingTime' => [
-						'property' => 'indexingTime',
-						'type' => 'integer',
-						'label' => 'Indexing Time',
-						'description' => 'In 24 hour format, the hour of the day when the indexing should be run',
-						'note' => '24 hour format, please enter a value between 0 and 23, default is 1',
-						'default' => 1,
-					],
-					'recordExtractionBatchSize' => [
-						'property' => 'recordExtractionBatchSize',
-						'type' => 'enum',
-						'label' => 'Record Extraction Batch Size',
-						'description' => 'The number of records that should be extracted at once.',
-						'note' => 'This normally does not need changes unless requested by Hoopla',
-						'values' => [
-							'100' => '100',
-							'200' => '200',
-							'300' => '300',
-							'400' => '400',
-							'500' => '500',
-						],
-						'default' => '500',
-					]
-				]
+			'apiUsername' => [
+				'property' => 'apiUsername',
+				'type' => 'text',
+				'label' => 'API Username',
+				'description' => 'The API Username provided by Hoopla when registering',
 			],
-			'hooplaInstantRecords' => [
-				'property' => 'hooplaInstantRecords',
-				'type' => 'section',
-				'label' => 'Hoopla Instant',
-				'expandByDefault' => false,
-				'properties' => [
-					'hooplaInstantEnabled' => [
-						'property' => 'hooplaInstantEnabled',
-						'type' => 'checkbox',
-						'label' => 'Hoopla Instant Enabled',
-						'description' => 'Whether or not to use Hoopla Instant Records',
-						'default' => 1,
-					],
-					'runFullUpdateInstant' => [
-						'property' => 'runFullUpdateInstant',
-						'type' => 'checkbox',
-						'label' => 'Run Full Update for Instant',
-						'description' => 'Whether or not a full update of all records should be done on the next pass of indexing',
-						'default' => 0,
-					],
-					'lastUpdateOfChangedRecordsInstant' => [
-						'property' => 'lastUpdateOfChangedRecordsInstant',
-						'type' => 'timestamp',
-						'label' => 'Last Update of Changed Instant Records',
-						'description' => 'The timestamp when just changes were loaded',
-						'default' => 0,
-					],
-					'lastUpdateOfAllRecordsInstant' => [
-						'property' => 'lastUpdateOfAllRecordsInstant',
-						'type' => 'timestamp',
-						'label' => 'Last Update of All Instant Records',
-						'description' => 'The timestamp when all records were loaded',
-						'default' => 0,
-					],
-				],
+			'apiPassword' => [
+				'property' => 'apiPassword',
+				'type' => 'storedPassword',
+				'label' => 'API Password',
+				'description' => 'The API Password provided by Hoopla when registering',
+				'hideInLists' => true,
 			],
-			'hooplaFlexRecords' => [
-				'property' => 'hooplaFlexRecords',
+			'regroupAllRecords' => [
+				'property' => 'regroupAllRecords',
+				'type' => 'checkbox',
+				'label' => 'Regroup all Records',
+				'description' => 'Whether or not all existing records should be regrouped',
+				'default' => 0,
+			],
+			'globalContentEntitlements' => [
+				'property' => 'globalContentEntitlements',
 				'type' => 'section',
-				'label' => 'Hoopla Flex',
-				'expandByDefault' => false,
+				'label' => 'Global Content & Entitlements API',
+				'expandByDefault' => true,
 				'properties' => [
-					'hooplaFlexEnabled' => [
-						'property' => 'hooplaFlexEnabled',
-						'type' => 'checkbox',
-						'label' => 'Hoopla Flex Enabled',
-						'description' => 'Whether or not to use Hoopla Flex',
-						'default' => 0,
-					],
-					'runFullUpdateFlex' => [
-						'property' => 'runFullUpdateFlex',
-						'type' => 'checkbox',
-						'label' => 'Run Full Update for Flex',
-						'description' => 'Whether or not a full update of all records should be done on the next pass of indexing',
-						'default' => 0,
-					],
-					'lastUpdateOfChangedRecordsFlex' => [
-						'property' => 'lastUpdateOfChangedRecordsFlex',
+					'lastUpdateOfGlobalContent' => [
+						'property' => 'lastUpdateOfGlobalContent',
 						'type' => 'timestamp',
-						'label' => 'Last Update of Changed Flex Records',
-						'description' => 'The timestamp when just changes were loaded',
+						'label' => 'Last Update of Global Content',
+						'description' => 'The timestamp when global content was last synced',
 						'default' => 0,
 					],
-					'lastUpdateOfAllRecordsFlex' => [
-						'property' => 'lastUpdateOfAllRecordsFlex',
+					'lastUpdateOfEntitlements' => [
+						'property' => 'lastUpdateOfEntitlements',
 						'type' => 'timestamp',
-						'label' => 'Last Update of All Flex Records',
-						'description' => 'The timestamp when all records were loaded',
+						'label' => 'Last Update of Library Entitlements',
+						'description' => 'The timestamp when library entitlements were last synced',
 						'default' => 0,
 					],
 				],
@@ -214,14 +121,32 @@ class HooplaSetting extends DataObject {
 	}
 
 	public function __toString() {
-		return 'Library ' . $this->libraryId . ' (' . $this->apiUsername . ')';
+		$libraries = $this->getLibraryNames();
+		$libraryText = empty($libraries) ? 'No libraries' : implode(', ', $libraries);
+		return $libraryText . ' (' . $this->apiUsername . ')';
 	}
 
-	public function update(string $context = '') : int|bool {
-		if ($this->indexingTime < 0 || $this->indexingTime > 23) {
-			$this->indexingTime = 1;
+	public function getLibraryNames(): array
+	{
+		$librarySettings = HooplaLibrarySetting::getLibrariesForSetting($this->id);
+		$names = [];
+		foreach ($librarySettings as $librarySetting) {
+			$names[] = $librarySetting->getLibraryName();
 		}
+		return $names;
+	}
 
+	public function getLibraryIds(): array
+	{
+		$librarySettings = HooplaLibrarySetting::getLibrariesForSetting($this->id);
+		$ids = [];
+		foreach ($librarySettings as $librarySetting) {
+			$ids[] = $librarySetting->libraryId;
+		}
+		return $ids;
+	}
+
+	public function update($context = '') {
 		$ret = parent::update();
 		if ($ret !== FALSE) {
 			$this->saveScopes();
@@ -229,7 +154,7 @@ class HooplaSetting extends DataObject {
 		return true;
 	}
 
-	public function insert(string $context = '') : int|bool {
+	public function insert($context = '') {
 		$ret = parent::insert();
 		if ($ret !== FALSE) {
 			if (empty($this->_scopes)) {
@@ -255,7 +180,7 @@ class HooplaSetting extends DataObject {
 		return $ret;
 	}
 
-	public function saveScopes() : void {
+	public function saveScopes() {
 		if (isset ($this->_scopes) && is_array($this->_scopes)) {
 			$this->saveOneToManyOptions($this->_scopes, 'settingId');
 			unset($this->_scopes);

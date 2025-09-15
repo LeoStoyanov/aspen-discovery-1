@@ -72,6 +72,7 @@ public class IndexingUtils {
 				HooplaScope hooplaScope = new HooplaScope();
 				hooplaScope.setId(hooplaScopesRS.getLong("id"));
 				hooplaScope.setName(hooplaScopesRS.getString("name"));
+				hooplaScope.setSettingId(hooplaScopesRS.getLong("settingId"));
 				hooplaScope.setExcludeTitlesWithCopiesFromOtherVendors(hooplaScopesRS.getInt("excludeTitlesWithCopiesFromOtherVendors"));
 				hooplaScope.setIncludeInstant(hooplaScopesRS.getBoolean("includeInstant"));
 				hooplaScope.setIncludeFlex(hooplaScopesRS.getBoolean("includeFlex"));
