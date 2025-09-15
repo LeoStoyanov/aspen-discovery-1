@@ -2370,6 +2370,7 @@ CREATE TABLE `hoopla_export` (
   `rawResponse` mediumblob DEFAULT NULL,
   `dateFirstDetected` bigint(20) DEFAULT NULL,
   `hooplaType` varchar(10) DEFAULT NULL,
+  `scopedLibraryIds` // "1~2~3~4"
   PRIMARY KEY (`id`),
   UNIQUE KEY `hooplaId` (`hooplaId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -2457,17 +2458,11 @@ CREATE TABLE `hoopla_settings` (
   `libraryId` int(11) DEFAULT 0,
   `apiUsername` varchar(50) DEFAULT NULL,
   `apiPassword` varchar(50) DEFAULT NULL,
-  `runFullUpdateInstant` tinyint(1) DEFAULT 0,
-  `lastUpdateOfChangedRecordsInstant` int(11) DEFAULT 0,
-  `lastUpdateOfAllRecordsInstant` int(11) DEFAULT 0,
   `regroupAllRecords` tinyint(1) DEFAULT 0,
-  `hooplaInstantEnabled` tinyint(1) DEFAULT 1,
-  `hooplaFlexEnabled` tinyint(1) DEFAULT 0,
-  `runFullUpdateFlex` tinyint(1) DEFAULT 0,
-  `lastUpdateOfChangedRecordsFlex` int(11) DEFAULT 0,
-  `lastUpdateOfAllRecordsFlex` int(11) DEFAULT 0,
   `accessToken` varchar(255) DEFAULT NULL,
   `tokenExpirationTime` int(11) DEFAULT NULL,
+  `lastUpdateOfGlobalContent` int(11) DEFAULT 0,
+  `lastUpdateOfEntitlements` int(11) DEFAULT 0,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 DROP TABLE IF EXISTS host_information;

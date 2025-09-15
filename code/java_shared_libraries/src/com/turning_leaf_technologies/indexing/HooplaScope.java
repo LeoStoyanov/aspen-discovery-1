@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 public class HooplaScope {
 	private long id;
 	private String name;
+	private long settingId;
 	private int excludeTitlesWithCopiesFromOtherVendors;
 	private boolean includeInstant;
 	private boolean includeFlex;
@@ -50,6 +51,14 @@ public class HooplaScope {
 
 	public void setName(String name) {
 		this.name = name;
+	}
+
+	public long getSettingId() {
+		return settingId;
+	}
+
+	public void setSettingId(long settingId) {
+		this.settingId = settingId;
 	}
 
 	public boolean isIncludeInstant() {
