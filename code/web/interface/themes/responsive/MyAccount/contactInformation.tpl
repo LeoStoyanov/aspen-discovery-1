@@ -209,7 +209,7 @@
 
 								{if $enableThirdPartySMS}
 								<div class="form-group">
-									<div class="col-xs-4"><label for="thirdPartySMSOptIn" class="control-label">{translate text='Opt-In for Third-Party SMS Notifications' isPublicFacing=true}</label></div>
+									<div class="col-xs-4"><label for="thirdPartySMSOptIn">{translate text='Opt-In for Third-Party SMS Notifications' isPublicFacing=true}</label></div>
 									<div class="col-xs-8">
 										{if $edit == true}
 											<input type="checkbox" name="thirdPartySMSOptIn" id="thirdPartySMSOptIn" {if $profile->_thirdPartySMSOptIn==1}checked='checked'{/if} data-switch="">
@@ -240,8 +240,9 @@
 									</div>
 								</div>
 
+								{if !$enableThirdPartySMS}
 								<div class="form-group">
-									<div class="col-xs-4"><label for="availableHoldNotice" class="control-label">{translate text='SMS notices for available holds' isPublicFacing=true}</label></div>
+									<div class="col-xs-4"><label for="availableHoldNotice">{translate text='SMS notices for available holds' isPublicFacing=true}</label></div>
 									<div class="col-xs-8">
 										{if $edit == true}
 											<input type="checkbox" name="availableHoldNotice" id="availableHoldNotice" {if $profile->_availableHoldNotice==1}checked='checked'{/if} data-switch="">
@@ -252,7 +253,7 @@
 								</div>
 
 								<div class="form-group">
-									<div class="col-xs-4"><label for="comingDueNotice" class="control-label">{translate text='SMS notices for due date reminders' isPublicFacing=true}</label></div>
+									<div class="col-xs-4"><label for="comingDueNotice">{translate text='SMS notices for due date reminders' isPublicFacing=true}</label></div>
 									<div class="col-xs-8">
 										{if $edit == true}
 											<input type="checkbox" name="comingDueNotice" id="comingDueNotice" {if $profile->_comingDueNotice==1}checked='checked'{/if} data-switch="">
@@ -261,6 +262,7 @@
 										{/if}
 									</div>
 								</div>
+								{/if}
 
 							{/if}
 
