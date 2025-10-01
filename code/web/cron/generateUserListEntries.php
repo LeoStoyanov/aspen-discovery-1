@@ -16,26 +16,22 @@ require_once __DIR__ . '/../bootstrap_aspen.php';
 set_time_limit(0);
 
 if ($argc < 4) {
-	echo "Usage: php generateUserListEntries.php <server_name> <generation_type> <num_entries> <clear_existing> [patron_barcode]\n";
-	echo "  generation_type: 1 = Test users with no lists, 2 = All test users, 3 = Specified patron\n";
+	echo "Usage: php generateUserListEntries.php <server_name> <num_entries> <clear_existing> [patron_barcode]\n";
 	echo "  num_entries: Number of entries to generate per user\n";
 	echo "  clear_existing: 1 = clear existing lists, 0 = keep existing\n";
 	echo "  patron_barcode: Required only if generation_type is 3\n";
 	die();
 }
 
-$generationType = $argv[2];
-$numEntries = (int)$argv[3];
-$clearExisting = (bool)$argv[4];
+$numEntries = (int)$argv[2];
+$clearExisting = (bool)$argv[3];
 $patronBarcode = '';
 
-if ($generationType == 3) {
-	if ($argc > 5) {
-		$patronBarcode = $argv[5];
-	} else {
-		echo "No patron barcode was supplied for generation type 3\n";
-		die();
-	}
+if ($argc > 4) {
+	$patronBarcode = $argv[4];
+} else {
+	echo "No patron barcode was supplied.\n";
+	die();
 }
 
 if ($numEntries < 1) {
@@ -44,41 +40,18 @@ if ($numEntries < 1) {
 }
 
 echo "Starting user list generation...\n";
-
-$userIdsToProcess = [];
-if ($generationType == '1') {
-	//All test users with no user lists
-	$user = new User();
-	$user->isLocalTestUser = 1;
-	$user->find();
-	while ($user->fetch()) {
-		require_once ROOT_DIR . '/sys/UserLists/UserList.php';
-		$userList = new UserList();
-		$userList->user_id = $user->id;
-		$userList->whereAdd('deleted = 0');
-		if ($userList->count() == 0) {
-			$userIdsToProcess[] = $user->id;
-		}
-	}
-} elseif ($generationType == '2') {
-	//All test users
-	$user = new User();
-	$user->isLocalTestUser = 1;
-	$userIdsToProcess = $user->fetchAll('id', 'id');
+//Specified user
+if (empty($patronBarcode)) {
+	echo "No patron barcode was supplied\n";
+	die();
 } else {
-	//Specified user
-	if (empty($patronBarcode)) {
-		echo "No patron barcode was supplied\n";
-		die();
+	$user = new User();
+	$user->ils_barcode = $patronBarcode;
+	if ($user->find(true)) {
+		$userIdsToProcess[] = $user->id;
 	} else {
-		$user = new User();
-		$user->ils_barcode = $patronBarcode;
-		if ($user->find(true)) {
-			$userIdsToProcess[] = $user->id;
-		} else {
-			echo "Could not find user with barcode: $patronBarcode\n";
-			die();
-		}
+		echo "Could not find user with barcode: $patronBarcode\n";
+		die();
 	}
 }
 
@@ -92,8 +65,7 @@ $sources = [
 	'Lists' => 10,        // Lower weight for other lists
 ];
 
-// Helper function to get a random source based on weights
-function getRandomSource($sources) {
+function getRandomSource($sources): int|string {
 	$totalWeight = array_sum($sources);
 	$random = rand(1, $totalWeight);
 	$currentWeight = 0;
@@ -135,11 +107,11 @@ foreach ($userIdsToProcess as $userId) {
 		require_once ROOT_DIR . '/sys/UserLists/UserList.php';
 		$userList = new UserList();
 		$userList->user_id = $user->id;
-		$userList->title = "Test List for " . $user->getDisplayName();
+		$userList->title = "Test List for " . $user->getDisplayName() ." LONG (BOOK)";
 		$userList->description = "Automatically generated test list";
 		$userList->created = time();
 		$userList->dateUpdated = time();
-		$userList->public = rand(0, 1); // Randomly make some public
+		$userList->public = 1;
 		$userList->searchable = $userList->public;
 		$userList->displayListAuthor = $userList->public;
 		$userList->deleted = 0;
@@ -284,18 +256,23 @@ foreach ($userIdsToProcess as $userId) {
 echo "Processed $numProcessed users.\n";
 echo "User list generation complete.\n";
 
-function getValidGroupedWorkIds($count) {
+function getValidGroupedWorkIds($count): array {
 	$validIds = [];
 	$maxAttempts = 5; // Reduce attempts since we're doing batch validation
 
-	for ($attempt = 1; $attempt <= $maxAttempts && count($validIds) < $count; $attempt++) {
-		echo "    Attempt $attempt: Getting batch of GroupedWork IDs...\n";
+	// First, try to get books (prioritized format)
+	$booksNeeded = $count;
+	$bookAttempts = min(3, $maxAttempts); // Use fewer attempts for books initially
+
+	for ($attempt = 1; $attempt <= $bookAttempts && count($validIds) < $booksNeeded; $attempt++) {
+		echo "    Attempt $attempt: Getting batch of Book format GroupedWork IDs...\n";
 
 		try {
 			// Get a larger batch to account for invalid records
-			$batchSize = max(100, $count * 2);
+			$batchSize = max(100, $booksNeeded * 2);
 			$searchObject = SearchObjectFactory::initSearchObject('GroupedWork');
 			$searchObject->init();
+			$searchObject->addFilter('format:"Book"');
 			$searchObject->setSort('random');
 			$searchObject->setLimit($batchSize);
 			$response = $searchObject->processSearch(false, false);
@@ -309,19 +286,19 @@ function getValidGroupedWorkIds($count) {
 				}
 
 				if (!empty($candidateIds)) {
-					echo "    Got " . count($candidateIds) . " candidate IDs, validating...\n";
+					echo "    Got " . count($candidateIds) . " candidate Book IDs, validating...\n";
 
 					// Validate in smaller batches to avoid overwhelming Solr
 					$batchesToValidate = array_chunk($candidateIds, 25);
 
 					foreach ($batchesToValidate as $batch) {
 						try {
-							$validationSearchObject = SearchObjectFactory::initSearchObject('GroupedWork');
+							$validationSearchObject = SearchObjectFactory::initSearchObject();
 							$records = $validationSearchObject->getRecords($batch);
 
 							// Only add IDs that were actually returned and are valid
 							foreach ($batch as $id) {
-								if (isset($records[$id]) && count($validIds) < $count) {
+								if (isset($records[$id]) && count($validIds) < $booksNeeded) {
 									require_once ROOT_DIR . '/RecordDrivers/GroupedWorkDriver.php';
 									$recordDriver = new GroupedWorkDriver($id);
 									if ($recordDriver->isValid()) {
@@ -337,14 +314,80 @@ function getValidGroupedWorkIds($count) {
 				}
 			}
 
-			echo "    Attempt $attempt completed. Valid IDs found: " . count($validIds) . "\n";
+			echo "    Attempt $attempt completed. Valid Book IDs found: " . count($validIds) . "\n";
 
-			if (count($validIds) >= $count) {
+			if (count($validIds) >= $booksNeeded) {
 				break;
 			}
 
 		} catch (Exception $e) {
 			echo "    Error in attempt $attempt: " . $e->getMessage() . "\n";
+		}
+	}
+
+	// If we still need more IDs, get from any format
+	$remainingNeeded = $count - count($validIds);
+	if ($remainingNeeded > 0) {
+		echo "    Need $remainingNeeded more IDs, getting from any format...\n";
+
+		for ($attempt = 1; $attempt <= $maxAttempts && count($validIds) < $count; $attempt++) {
+			echo "    Attempt $attempt: Getting batch of any format GroupedWork IDs...\n";
+
+			try {
+				// Get a larger batch to account for invalid records
+				$batchSize = max(100, $remainingNeeded * 2);
+				$searchObject = SearchObjectFactory::initSearchObject('GroupedWork');
+				$searchObject->init();
+				$searchObject->setSort('random');
+				$searchObject->setLimit($batchSize);
+				$response = $searchObject->processSearch(false, false);
+
+				if (isset($response['response']['docs']) && is_array($response['response']['docs'])) {
+					$candidateIds = [];
+					foreach ($response['response']['docs'] as $doc) {
+						if (isset($doc['id'])) {
+							$candidateIds[] = $doc['id'];
+						}
+					}
+
+					if (!empty($candidateIds)) {
+						echo "    Got " . count($candidateIds) . " candidate IDs, validating...\n";
+
+						// Validate in smaller batches to avoid overwhelming Solr
+						$batchesToValidate = array_chunk($candidateIds, 25);
+
+						foreach ($batchesToValidate as $batch) {
+							try {
+								$validationSearchObject = SearchObjectFactory::initSearchObject('GroupedWork');
+								$records = $validationSearchObject->getRecords($batch);
+
+								// Only add IDs that were actually returned and are valid
+								foreach ($batch as $id) {
+									if (isset($records[$id]) && count($validIds) < $count) {
+										require_once ROOT_DIR . '/RecordDrivers/GroupedWorkDriver.php';
+										$recordDriver = new GroupedWorkDriver($id);
+										if ($recordDriver->isValid()) {
+											$validIds[] = $id;
+										}
+									}
+								}
+							} catch (Exception $e) {
+								echo "    Error validating batch: " . $e->getMessage() . "\n";
+								continue;
+							}
+						}
+					}
+				}
+
+				echo "    Attempt $attempt completed. Total valid IDs found: " . count($validIds) . "\n";
+
+				if (count($validIds) >= $count) {
+					break;
+				}
+
+			} catch (Exception $e) {
+				echo "    Error in attempt $attempt: " . $e->getMessage() . "\n";
+			}
 		}
 	}
 
@@ -356,7 +399,7 @@ function getValidGroupedWorkIds($count) {
 	return array_slice($validIds, 0, $count);
 }
 
-function getValidEventIds($count) {
+function getValidEventIds($count): array {
 	$validIds = [];
 	$maxAttempts = 3;
 
@@ -389,7 +432,7 @@ function getValidEventIds($count) {
 	return array_slice($validIds, 0, $count);
 }
 
-function getValidOpenArchiveIds($count) {
+function getValidOpenArchiveIds($count): array {
 	$validIds = [];
 	$maxAttempts = 3;
 
@@ -422,7 +465,7 @@ function getValidOpenArchiveIds($count) {
 	return array_slice($validIds, 0, $count);
 }
 
-function getValidListIds($count) {
+function getValidListIds($count): array {
 	$validIds = [];
 
 	try {
