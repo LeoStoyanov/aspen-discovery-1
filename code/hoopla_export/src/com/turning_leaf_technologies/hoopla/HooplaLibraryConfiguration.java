@@ -7,11 +7,13 @@ class HooplaLibraryConfiguration {
 	private final int libraryId;
 	private final boolean enableFlex;
 	private final boolean enableInstant;
+	private final boolean runFullEntitlementsUpdate;
 
 	public HooplaLibraryConfiguration(ResultSet rs) throws SQLException {
 		libraryId = rs.getInt("libraryId");
 		enableFlex = rs.getBoolean("enableFlex");
 		enableInstant = rs.getBoolean("enableInstant");
+		runFullEntitlementsUpdate = rs.getBoolean("runFullEntitlementsUpdate");
 	}
 
 	public int getLibraryId() {
@@ -26,12 +28,18 @@ class HooplaLibraryConfiguration {
 		return enableInstant;
 	}
 
+	public boolean isRunFullEntitlementsUpdate() {
+		return runFullEntitlementsUpdate;
+	}
+
 	public boolean isPurchaseModelEnabled(String purchaseModel) {
 		if (purchaseModel == null) return true;
-		switch (purchaseModel.toLowerCase()) {
-			case "flex":
+		switch (purchaseModel.toUpperCase()) {
+			case "EST": // Flex purchase model
+			case "FLEX":
 				return enableFlex;
-			case "instant":
+			case "PPU": // Instant purchase model
+			case "INSTANT":
 				return enableInstant;
 			default:
 				return true; // Unknown purchase models default to enabled

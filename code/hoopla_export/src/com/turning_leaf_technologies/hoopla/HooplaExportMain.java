@@ -370,7 +370,8 @@ public class HooplaExportMain {
 				}
 
 				// Process library entitlements for each library configuration
-				boolean entitlementsUpdated = syncLibraryEntitlements(settings);
+				// Pass globalContentUpdated flag to determine if entitlements should run
+				boolean entitlementsUpdated = syncLibraryEntitlements(settings, globalContentUpdated);
 				updatesRun |= entitlementsUpdated;
 
 				// Process Flex availability (for titles that support it)
@@ -412,7 +413,7 @@ public class HooplaExportMain {
 	private static boolean syncGlobalContent(HooplaSettings settings) {
 		boolean updatedContent = false;
 		globalContentUpdatedRecords.clear(); // Clear any previous data
-		long lastUpdateOfGlobalContent = settings.getLastUpdateOfGlobalContent();
+		long lastUpdateOfChangedRecords = settings.getLastUpdateOfChangedRecords();
 		String hooplaAPIBaseURL = settings.getApiUrl();
 
 		String accessToken = settings.getAccessToken();
@@ -437,19 +438,19 @@ public class HooplaExportMain {
         long thirtyTwoHoursAgo = thirtyTwoHoursAgoTime.toInstant().getEpochSecond();
 
         if (curHour == 1){
-            if (lastUpdateOfGlobalContent >= startOfTodaySeconds) {
+            if (lastUpdateOfChangedRecords >= startOfTodaySeconds) {
                 logger.warn("Already completed today's global content extraction at 1 AM. Skipping until tomorrow.");
                 return updatedContent;
             }
             //Set last update time to 32 hours ago (go bigger to get more updates)
-            if (thirtyTwoHoursAgo < lastUpdateOfGlobalContent){
-                lastUpdateOfGlobalContent = thirtyTwoHoursAgo;
+            if (thirtyTwoHoursAgo < lastUpdateOfChangedRecords){
+                lastUpdateOfChangedRecords = thirtyTwoHoursAgo;
             }
             logEntry.addNote("Starting daily global content extraction");
         }else{
             //It's not 1 am Local time, skip for now.
             //Figure out when we last indexed this collection.
-            if (lastUpdateOfGlobalContent >= thirtyTwoHoursAgo) {
+            if (lastUpdateOfChangedRecords >= thirtyTwoHoursAgo) {
                 //Go ahead and index even if we are off schedule
                 return updatedContent;
             }
@@ -458,10 +459,10 @@ public class HooplaExportMain {
 
         updatedContent = true;
 
-        if (lastUpdateOfGlobalContent > 0) {
+        if (lastUpdateOfChangedRecords > 0) {
             //Give a 2-minute buffer for the extract
-            lastUpdateOfGlobalContent -= 120;
-            logEntry.addNote("Extracting global content since " + new Date(lastUpdateOfGlobalContent * 1000));
+            lastUpdateOfChangedRecords -= 120;
+            logEntry.addNote("Extracting global content since " + new Date(lastUpdateOfChangedRecords * 1000));
         }
 
         HashMap<String, String> headers = new HashMap<>();
@@ -482,8 +483,8 @@ public class HooplaExportMain {
         do {
             // Build URL with optional startTime and startToken parameters
             String url = hooplaAPIBaseURL + "/api/v1/global/content?limit=500&countryCode=" + settings.getCountryCode();
-            if (lastUpdateOfGlobalContent > 0) {
-                url += "&startTime=" + lastUpdateOfGlobalContent;
+            if (lastUpdateOfChangedRecords > 0) {
+                url += "&startTime=" + lastUpdateOfChangedRecords;
             }
             if (startToken != null) {
                 url += "&startToken=" + startToken;
@@ -552,17 +553,17 @@ public class HooplaExportMain {
         logEntry.saveResults();
 
         try {
-            //Set the extract time for global content and reset lastRecordProcessed
+            //Set the extract time for changed records and reset lastRecordProcessed
             if (response.isSuccess()){
                 PreparedStatement updateSettingsStmt = aspenConn.prepareStatement(
-                    "UPDATE hoopla_settings SET lastUpdateOfGlobalContent = ?, lastRecordProcessed = 0 WHERE id = ?"
+                    "UPDATE hoopla_settings SET lastUpdateOfChangedRecords = ?, lastRecordProcessed = 0 WHERE id = ?"
                 );
                 updateSettingsStmt.setLong(1, startTimeForLogging);
                 updateSettingsStmt.setLong(2, settings.getSettingsId());
                 updateSettingsStmt.executeUpdate();
             }
         } catch (SQLException e) {
-            logEntry.incErrors("Error updating global content timestamp", e);
+            logEntry.incErrors("Error updating changed records timestamp", e);
         }
         return updatedContent;
 	}
@@ -571,7 +572,7 @@ public class HooplaExportMain {
 		List<HooplaLibraryConfiguration> configurations = new ArrayList<>();
 		try {
 			PreparedStatement getLibraryConfigsStmt = aspenConn.prepareStatement(
-				"SELECT libraryId, enableFlex, enableInstant FROM hoopla_library_settings WHERE settingId = ?"
+				"SELECT libraryId, enableFlex, enableInstant, runFullEntitlementsUpdate FROM hoopla_library_settings WHERE settingId = ?"
 			);
 			getLibraryConfigsStmt.setLong(1, settingId);
 			ResultSet libraryConfigRS = getLibraryConfigsStmt.executeQuery();
@@ -586,9 +587,9 @@ public class HooplaExportMain {
 		return configurations;
 	}
 
-	private static boolean syncLibraryEntitlements(HooplaSettings settings) {
+	private static boolean syncLibraryEntitlements(HooplaSettings settings, boolean globalContentWasSynced) {
 		boolean updatedContent = false;
-		long lastUpdateOfEntitlements = settings.getLastUpdateOfEntitlements();
+		long lastUpdateOfChangedRecords = settings.getLastUpdateOfChangedRecords();
 		String hooplaAPIBaseURL = settings.getApiUrl();
 
 		// Get all library configurations for this setting
@@ -612,8 +613,15 @@ public class HooplaExportMain {
 
 		// Process entitlements for each library configured for this setting
 		for (HooplaLibraryConfiguration libraryConfig : libraryConfigs) {
-			int hooplaLibraryId = libraryConfig.getLibraryId();
-			boolean libraryUpdatedContent = syncEntitlementsForLibrary(settings, libraryConfig, accessToken, hooplaAPIBaseURL, lastUpdateOfEntitlements);
+			// Check if this library should run entitlements update
+			boolean shouldRunEntitlements = globalContentWasSynced || libraryConfig.isRunFullEntitlementsUpdate();
+
+			if (!shouldRunEntitlements) {
+				logEntry.addNote("Skipping entitlements update for library " + libraryConfig.getLibraryId() +
+					" - global content was not synced and library does not have full entitlements update enabled");
+				continue;
+			}
+			boolean libraryUpdatedContent = syncEntitlementsForLibrary(settings, libraryConfig, accessToken, hooplaAPIBaseURL, lastUpdateOfChangedRecords);
 			if (libraryUpdatedContent) {
 				updatedContent = true;
 			}
@@ -622,14 +630,14 @@ public class HooplaExportMain {
 		return updatedContent;
 	}
 
-	private static boolean syncEntitlementsForLibrary(HooplaSettings settings, HooplaLibraryConfiguration libraryConfig, String accessToken, String hooplaAPIBaseURL, long lastUpdateOfEntitlements) {
+	private static boolean syncEntitlementsForLibrary(HooplaSettings settings, HooplaLibraryConfiguration libraryConfig, String accessToken, String hooplaAPIBaseURL, long lastUpdateOfChangedRecords) {
 		boolean updatedContent = false;
 		int hooplaLibraryId = libraryConfig.getLibraryId();
 
-        if (lastUpdateOfEntitlements > 0) {
+        if (lastUpdateOfChangedRecords > 0) {
             //Give a 2-minute buffer for the extract
-            lastUpdateOfEntitlements -= 120;
-            logEntry.addNote("Extracting entitlements since " + new Date(lastUpdateOfEntitlements * 1000));
+            lastUpdateOfChangedRecords -= 120;
+            logEntry.addNote("Extracting entitlements since " + new Date(lastUpdateOfChangedRecords * 1000));
         }
 
         HashMap<String, String> headers = new HashMap<>();
@@ -638,14 +646,14 @@ public class HooplaExportMain {
         headers.put("Accept", "application/json");
 
         String startToken = null;
-        boolean isIncremental = (lastUpdateOfEntitlements > 0);
+        boolean isIncremental = (lastUpdateOfChangedRecords > 0);
         WebServiceResponse response = null;
 
         do {
             // Build URL with optional startTime and startToken parameters
             String url = hooplaAPIBaseURL + "/api/v1/libraries/" + hooplaLibraryId + "/entitlements?limit=500";
-            if (lastUpdateOfEntitlements > 0) {
-                url += "&startTime=" + lastUpdateOfEntitlements;
+            if (lastUpdateOfChangedRecords > 0) {
+                url += "&startTime=" + lastUpdateOfChangedRecords;
             }
             if (startToken != null) {
                 url += "&startToken=" + startToken;
@@ -689,15 +697,15 @@ public class HooplaExportMain {
         logEntry.saveResults();
 
         try{
-            //Set the extract time for entitlements
+            //Set the extract time for changed records (only updates if this was successful)
             if (response.isSuccess()){
-                PreparedStatement updateSettingsStmt = aspenConn.prepareStatement("UPDATE hoopla_settings set lastUpdateOfEntitlements = ? where id = ?");
+                PreparedStatement updateSettingsStmt = aspenConn.prepareStatement("UPDATE hoopla_settings set lastUpdateOfChangedRecords = ? where id = ?");
                 updateSettingsStmt.setLong(1, startTimeForLogging);
                 updateSettingsStmt.setLong(2, settings.getSettingsId());
                 updateSettingsStmt.executeUpdate();
             }
         } catch (SQLException e) {
-            logEntry.incErrors("Error updating entitlements timestamp", e);
+            logEntry.incErrors("Error updating changed records timestamp", e);
         }
         updatedContent = true;
 		return updatedContent;
@@ -1400,6 +1408,10 @@ public class HooplaExportMain {
 			recordGroupingProcessorSingleton = new RecordGroupingProcessor(aspenConn, serverName, logEntry, logger);
 		}
 		return recordGroupingProcessorSingleton;
+	}
+
+	private static void indexRecord(String groupedWorkId) {
+		getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
 	}
 
 	private static void regroupAllRecords(Connection dbConn, long settingsId, GroupedWorkIndexer indexer, HooplaExtractLogEntry logEntry)  throws SQLException {
