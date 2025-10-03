@@ -17,6 +17,9 @@ class HooplaSettings {
 	// New API endpoint tracking
 	private final long lastUpdateOfGlobalContent;
 	private final long lastUpdateOfEntitlements;
+	private final long lastRecordProcessed;
+
+	private final String countryCode;
 
 	private final boolean regroupAllRecords;
 
@@ -32,6 +35,10 @@ class HooplaSettings {
 
 		lastUpdateOfGlobalContent = settingsRS.getLong("lastUpdateOfGlobalContent");
 		lastUpdateOfEntitlements = settingsRS.getLong("lastUpdateOfEntitlements");
+		lastRecordProcessed = settingsRS.getLong("lastRecordProcessed");
+
+		String tmpCountryCode = settingsRS.getString("countryCode");
+		countryCode = (tmpCountryCode != null && !tmpCountryCode.isEmpty()) ? tmpCountryCode : "US";
 
 		regroupAllRecords = settingsRS.getBoolean("regroupAllRecords");
 	}
@@ -72,5 +79,13 @@ class HooplaSettings {
 
 	public long getLastUpdateOfEntitlements() {
 		return lastUpdateOfEntitlements;
+	}
+
+	public long getLastRecordProcessed() {
+		return lastRecordProcessed;
+	}
+
+	public String getCountryCode() {
+		return countryCode;
 	}
 }

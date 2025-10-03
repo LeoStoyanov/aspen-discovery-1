@@ -319,9 +319,7 @@ public class HooplaExportMain {
 						allRecordsRS.getLong("id"),
 						hooplaId,
 						allRecordsRS.getLong("rawChecksum"),
-						allRecordsRS.getBoolean("active"),
-						allRecordsRS.getLong("rawResponseLength"),
-						allRecordsRS.getString("hooplaType")
+						allRecordsRS.getLong("rawResponseLength")
 				);
 				existingRecords.put(hooplaId, newTitle);
 			}
@@ -460,94 +458,105 @@ public class HooplaExportMain {
 
         updatedContent = true;
 
-        // Use Global Contents endpoint instead of library-specific content
-        String url = hooplaAPIBaseURL + "/api/v1/global/content";
         if (lastUpdateOfGlobalContent > 0) {
             //Give a 2-minute buffer for the extract
             lastUpdateOfGlobalContent -= 120;
             logEntry.addNote("Extracting global content since " + new Date(lastUpdateOfGlobalContent * 1000));
-            url += "?startTime=" + lastUpdateOfGlobalContent + "&limit=500";
-        } else {
-            url += "?limit=500";
         }
 
         HashMap<String, String> headers = new HashMap<>();
         headers.put("Authorization", "Bearer " + accessToken);
         headers.put("Content-Type", "application/json");
         headers.put("Accept", "application/json");
-        WebServiceResponse response = NetworkUtils.getURL(url, logger, headers);
-        if (!response.isSuccess()){
-            logEntry.incErrors("Could not get global content from " + url + " " + response.getMessage() + " " + response.getResponseCode());
-            return updatedContent;
-        }else {
-            JSONObject responseJSON = new JSONObject(response.getMessage());
-            if (responseJSON.has("titles")) {
-                JSONArray responseTitles = responseJSON.getJSONArray("titles");
-                if (responseTitles != null && !responseTitles.isEmpty()) {
-                    List<Long> updatedIds = updateTitlesInDB(responseTitles, false, false, null, false); // Don't index yet - wait for entitlements
-                    globalContentUpdatedRecords.addAll(updatedIds);
-                    logEntry.saveResults();
-                }
 
-                String startToken = null;
-                if (responseJSON.has("nextStartToken")) {
-                    startToken = responseJSON.get("nextStartToken").toString();
-                }
-
-                int numTries = 0;
-                while (startToken != null) {
-                    if (lastUpdateOfGlobalContent > 0) {
-                        url = hooplaAPIBaseURL + "/api/v1/global/content?startTime=" + lastUpdateOfGlobalContent + "&startToken=" + startToken + "&limit=500";
-                    }else {
-                        url = hooplaAPIBaseURL + "/api/v1/global/content?startToken=" + startToken + "&limit=500";
-                    }
-                    response = NetworkUtils.getURL(url, logger, headers);
-                    if (response.isSuccess()){
-                        responseJSON = new JSONObject(response.getMessage());
-                        if (responseJSON.has("titles")) {
-                            responseTitles = responseJSON.getJSONArray("titles");
-                            if (responseTitles != null && !responseTitles.isEmpty()) {
-                                List<Long> updatedIds = updateTitlesInDB(responseTitles, false, false, null, false);
-                                globalContentUpdatedRecords.addAll(updatedIds);
-                            }
-                        }
-                        if (responseJSON.has("nextStartToken")) {
-                            startToken = responseJSON.get("nextStartToken").toString();
-                        } else {
-                            startToken = null;
-                        }
-                    }else{
-                        if (response.getResponseCode() == 401 || response.getResponseCode() == 504 || response.getResponseCode() == 503){
-                            numTries++;
-                            if (numTries >= 3){
-                                logEntry.incErrors("Error loading global content after 3 attempts from " + url + " " + response.getResponseCode() + " " + response.getMessage());
-                                startToken = null;
-                            }else{
-                                try {
-                                    Thread.sleep(1000 * 60 * 2); //Wait for 2 minutes before trying again
-                                } catch (InterruptedException e) {
-                                    logEntry.incErrors("Error sleeping for 2 minutes", e);
-                                }
-                                accessToken = getAccessToken(settings);
-                                headers.put("Authorization", "Bearer " + accessToken);
-                            }
-                        }else {
-                            logEntry.incErrors("Error loading global content from " + url + " " + response.getResponseCode() + " " + response.getMessage());
-                            startToken = null;
-                        }
-                    }
-
-                    logEntry.saveResults();
-                }
-                logEntry.addNote("Completed global content extraction");
-                logEntry.saveResults();
-            }
+        // Resume from last record processed if we have one, otherwise start fresh
+        long lastRecordProcessed = settings.getLastRecordProcessed();
+        String startToken = lastRecordProcessed > 0 ? String.valueOf(lastRecordProcessed) : null;
+        if (startToken != null) {
+            logEntry.addNote("Resuming global content from record " + lastRecordProcessed);
         }
 
-        try{
-            //Set the extract time for global content
+        int numTries = 0;
+        WebServiceResponse response;
+
+        do {
+            // Build URL with optional startTime and startToken parameters
+            String url = hooplaAPIBaseURL + "/api/v1/global/content?limit=500&countryCode=" + settings.getCountryCode();
+            if (lastUpdateOfGlobalContent > 0) {
+                url += "&startTime=" + lastUpdateOfGlobalContent;
+            }
+            if (startToken != null) {
+                url += "&startToken=" + startToken;
+            }
+
+            response = NetworkUtils.getURL(url, logger, headers);
+            if (!response.isSuccess()) {
+                if (response.getResponseCode() == 401 || response.getResponseCode() == 504 || response.getResponseCode() == 503) {
+                    numTries++;
+                    if (numTries >= 3) {
+                        logEntry.incErrors("Could not get global content after 3 attempts from " + url + " " + response.getResponseCode() + " " + response.getMessage());
+                        break;
+                    } else {
+                        try {
+                            Thread.sleep(1000 * 60 * 2); //Wait for 2 minutes before trying again
+                        } catch (InterruptedException e) {
+                            logEntry.incErrors("Error sleeping for 2 minutes", e);
+                        }
+                        accessToken = getAccessToken(settings);
+                        headers.put("Authorization", "Bearer " + accessToken);
+                        continue; // Retry with new token
+                    }
+                } else {
+                    logEntry.incErrors("Could not get global content from " + url + " " + response.getMessage() + " " + response.getResponseCode());
+                    break;
+                }
+            }
+
+            JSONObject responseJSON = new JSONObject(response.getMessage());
+            if (responseJSON.has("contents")) {
+                JSONArray responseTitles = responseJSON.getJSONArray("contents");
+                if (responseTitles != null && !responseTitles.isEmpty()) {
+                    List<Long> updatedIds = updateGlobalContentMetadata(responseTitles);
+                    globalContentUpdatedRecords.addAll(updatedIds);
+                }
+            }
+
+            // Check for next page (in metadata object for global content)
+            if (responseJSON.has("metadata")) {
+                JSONObject metadata = responseJSON.getJSONObject("metadata");
+                if (metadata.has("nextStartToken")) {
+                    startToken = metadata.getString("nextStartToken");
+
+                    // Save progress after each successful page
+                    try {
+                        PreparedStatement updateProgressStmt = aspenConn.prepareStatement(
+                            "UPDATE hoopla_settings SET lastRecordProcessed = ? WHERE id = ?"
+                        );
+                        updateProgressStmt.setLong(1, Long.parseLong(startToken));
+                        updateProgressStmt.setLong(2, settings.getSettingsId());
+                        updateProgressStmt.executeUpdate();
+                    } catch (SQLException e) {
+                        logEntry.incErrors("Error updating lastRecordProcessed", e);
+                    }
+                } else {
+                    startToken = null;
+                }
+            } else {
+                startToken = null;
+            }
+
+            logEntry.saveResults();
+        } while (startToken != null);
+
+        logEntry.addNote("Completed global content extraction");
+        logEntry.saveResults();
+
+        try {
+            //Set the extract time for global content and reset lastRecordProcessed
             if (response.isSuccess()){
-                PreparedStatement updateSettingsStmt = aspenConn.prepareStatement("UPDATE hoopla_settings set lastUpdateOfGlobalContent = ? where id = ?");
+                PreparedStatement updateSettingsStmt = aspenConn.prepareStatement(
+                    "UPDATE hoopla_settings SET lastUpdateOfGlobalContent = ?, lastRecordProcessed = 0 WHERE id = ?"
+                );
                 updateSettingsStmt.setLong(1, startTimeForLogging);
                 updateSettingsStmt.setLong(2, settings.getSettingsId());
                 updateSettingsStmt.executeUpdate();
@@ -617,92 +626,67 @@ public class HooplaExportMain {
 		boolean updatedContent = false;
 		int hooplaLibraryId = libraryConfig.getLibraryId();
 
-        // Use Library Entitlements endpoint to determine what this library has access to
-        String url = hooplaAPIBaseURL + "/api/v1/libraries/" + hooplaLibraryId + "/entitlements";
         if (lastUpdateOfEntitlements > 0) {
             //Give a 2-minute buffer for the extract
             lastUpdateOfEntitlements -= 120;
             logEntry.addNote("Extracting entitlements since " + new Date(lastUpdateOfEntitlements * 1000));
-            url += "?startTime=" + lastUpdateOfEntitlements + "&limit=500";
-        } else {
-            url += "?limit=500";
         }
 
         HashMap<String, String> headers = new HashMap<>();
         headers.put("Authorization", "Bearer " + accessToken);
         headers.put("Content-Type", "application/json");
         headers.put("Accept", "application/json");
-        WebServiceResponse response = NetworkUtils.getURL(url, logger, headers);
-        if (!response.isSuccess()){
-            logEntry.incErrors("Could not get entitlements from " + url + " " + response.getMessage() + " " + response.getResponseCode());
-            return updatedContent;
-        }else {
-            JSONObject responseJSON = new JSONObject(response.getMessage());
-            if (responseJSON.has("data")) {
-                JSONObject dataObject = responseJSON.getJSONObject("data");
 
-                // Process all entitlement arrays in the data object
-                boolean isIncremental = (lastUpdateOfEntitlements > 0);
-                for (String key : dataObject.keySet()) {
-                    JSONArray entitlements = dataObject.getJSONArray(key);
-                    if (entitlements != null && !entitlements.isEmpty()) {
-                        List<Long> changedIds = updateEntitlementsInDB(entitlements, libraryConfig.getLibraryId(), isIncremental, libraryConfig);
-                        entitlementChangedRecords.addAll(changedIds);
-                    }
-                }
-                logEntry.saveResults();
+        String startToken = null;
+        boolean isIncremental = (lastUpdateOfEntitlements > 0);
+        WebServiceResponse response = null;
 
-                String startToken = null;
-                if (responseJSON.has("metadata")) {
-                    JSONObject metadata = responseJSON.getJSONObject("metadata");
-                    if (metadata.has("nextStartToken")) {
-                        startToken = metadata.getString("nextStartToken");
-                    }
-                }
-
-                while (startToken != null) {
-                    if (lastUpdateOfEntitlements > 0) {
-                        url = hooplaAPIBaseURL + "/api/v1/libraries/" + hooplaLibraryId + "/entitlements?startTime=" + lastUpdateOfEntitlements + "&startToken=" + startToken + "&limit=500";
-                    }else {
-                        url = hooplaAPIBaseURL + "/api/v1/libraries/" + hooplaLibraryId + "/entitlements?startToken=" + startToken + "&limit=500";
-                    }
-                    response = NetworkUtils.getURL(url, logger, headers);
-                    if (response.isSuccess()){
-                        responseJSON = new JSONObject(response.getMessage());
-                        if (responseJSON.has("data")) {
-                            JSONObject paginatedDataObject = responseJSON.getJSONObject("data");
-
-                            // Process all entitlement arrays in the data object
-                            for (String key : paginatedDataObject.keySet()) {
-                                JSONArray entitlements = paginatedDataObject.getJSONArray(key);
-                                if (entitlements != null && !entitlements.isEmpty()) {
-                                    // For subsequent pages, always use incremental mode (don't mark all as inactive again)
-                                    List<Long> changedIds = updateEntitlementsInDB(entitlements, libraryConfig.getLibraryId(), true, libraryConfig);
-                                    entitlementChangedRecords.addAll(changedIds);
-                                }
-                            }
-                        }
-                        if (responseJSON.has("metadata")) {
-                            JSONObject metadata = responseJSON.getJSONObject("metadata");
-                            if (metadata.has("nextStartToken")) {
-                                startToken = metadata.getString("nextStartToken");
-                            } else {
-                                startToken = null;
-                            }
-                        } else {
-                            startToken = null;
-                        }
-                    }else{
-                        logEntry.incErrors("Error loading entitlements from " + url + " " + response.getResponseCode() + " " + response.getMessage());
-                        startToken = null;
-                    }
-
-                    logEntry.saveResults();
-                }
-                logEntry.addNote("Completed entitlements extraction for library " + hooplaLibraryId);
-                logEntry.saveResults();
+        do {
+            // Build URL with optional startTime and startToken parameters
+            String url = hooplaAPIBaseURL + "/api/v1/libraries/" + hooplaLibraryId + "/entitlements?limit=500";
+            if (lastUpdateOfEntitlements > 0) {
+                url += "&startTime=" + lastUpdateOfEntitlements;
             }
-        }
+            if (startToken != null) {
+                url += "&startToken=" + startToken;
+            }
+
+            response = NetworkUtils.getURL(url, logger, headers);
+            if (!response.isSuccess()) {
+                logEntry.incErrors("Could not get entitlements from " + url + " " + response.getMessage() + " " + response.getResponseCode());
+                break;
+            }
+
+            JSONObject responseJSON = new JSONObject(response.getMessage());
+            if (responseJSON.has("entitlements")) {
+                JSONArray entitlements = responseJSON.getJSONArray("entitlements");
+
+                // For first page, use isIncremental flag; for subsequent pages, always incremental
+                boolean useIncremental = (startToken != null) || isIncremental;
+
+                if (entitlements != null && !entitlements.isEmpty()) {
+                    List<Long> changedIds = updateEntitlementsInDB(entitlements, libraryConfig.getLibraryId(), useIncremental, libraryConfig);
+                    entitlementChangedRecords.addAll(changedIds);
+                }
+            }
+
+            // Check for next page
+            if (responseJSON.has("metadata")) {
+                JSONObject metadata = responseJSON.getJSONObject("metadata");
+                if (metadata.has("nextStartToken")) {
+                    startToken = metadata.getString("nextStartToken");
+                } else {
+                    startToken = null;
+                }
+            } else {
+                startToken = null;
+            }
+
+            logEntry.saveResults();
+        } while (startToken != null);
+
+        logEntry.addNote("Completed entitlements extraction for library " + hooplaLibraryId);
+        logEntry.saveResults();
 
         try{
             //Set the extract time for entitlements
@@ -741,8 +725,8 @@ public class HooplaExportMain {
 
 			// Use UPSERT to efficiently update entitlements
 			PreparedStatement upsertEntitlementStmt = aspenConn.prepareStatement(
-				"INSERT INTO hoopla_entitlements (hooplaId, libraryId, active, purchaseModel, dateAdded) VALUES (?, ?, ?, ?, NOW()) " +
-				"ON DUPLICATE KEY UPDATE active = VALUES(active), purchaseModel = VALUES(purchaseModel), dateUpdated = NOW()"
+				"INSERT INTO hoopla_entitlements (hooplaId, libraryId, active, purchaseModel, hooplaType, dateAdded) VALUES (?, ?, ?, ?, ?, NOW()) " +
+				"ON DUPLICATE KEY UPDATE active = VALUES(active), purchaseModel = VALUES(purchaseModel), hooplaType = VALUES(hooplaType), dateUpdated = NOW()"
 			);
 
 			int activeEntitlements = 0;
@@ -762,6 +746,16 @@ public class HooplaExportMain {
 						purchaseModel = entitlement.getString("type");
 					}
 
+					// Determine hooplaType from purchaseModel
+					String hooplaType = null;
+					if (purchaseModel != null) {
+						if (purchaseModel.equals("PPU")) {
+							hooplaType = "Instant";
+						} else if (purchaseModel.equals("EST")) {
+							hooplaType = "Flex";
+						}
+					}
+
 					// Check if this purchase model is enabled for this library
 					if (libraryConfig != null && !libraryConfig.isPurchaseModelEnabled(purchaseModel)) {
 						// This library doesn't have this purchase model enabled, skip or mark inactive
@@ -772,6 +766,7 @@ public class HooplaExportMain {
 					upsertEntitlementStmt.setInt(2, libraryId);
 					upsertEntitlementStmt.setBoolean(3, isActive);
 					upsertEntitlementStmt.setString(4, purchaseModel);
+					upsertEntitlementStmt.setString(5, hooplaType);
 
 					int rowsAffected = upsertEntitlementStmt.executeUpdate();
 					// Track this record as changed (either inserted or updated)
@@ -977,7 +972,13 @@ public class HooplaExportMain {
 					if (responseJSON.has("titles")) {
 						JSONArray responseTitles = responseJSON.getJSONArray("titles");
 						if (responseTitles != null && !responseTitles.isEmpty()) {
-							List<Long> updatedIds = updateTitlesInDB(responseTitles, true, false, singleWorkType, true);
+							List<Long> updatedIds = updateTitlesInDB(responseTitles, true, false, singleWorkType);
+
+							// Index the updated record(s)
+							if (!updatedIds.isEmpty()) {
+								indexUpdatedEntitledRecords(updatedIds);
+							}
+
 							logEntry.saveResults();
 
 							if (singleWorkType.equalsIgnoreCase("Flex")) {
@@ -1041,9 +1042,120 @@ public class HooplaExportMain {
 		}
 	}
 
-	private static List<Long> updateTitlesInDB(JSONArray responseTitles, boolean forceRegrouping, boolean doFullReload, String hooplaType, boolean indexImmediately) {
+	private static List<Long> updateGlobalContentMetadata(JSONArray contentItems) {
+		List<Long> updatedRecordIds = new ArrayList<>();
+		logEntry.incNumProducts(contentItems.length());
+
+		for (int i = 0; i < contentItems.length(); i++) {
+			try {
+				JSONObject content = contentItems.getJSONObject(i);
+
+				String rawResponse = content.toString();
+				checksumCalculator.reset();
+				checksumCalculator.update(rawResponse.getBytes());
+				long rawChecksum = checksumCalculator.getValue();
+
+				long hooplaId = content.getLong("id");
+
+				// Extract price from ppuPrices array (or 0.0 for Flex titles)
+				// Since we pass countryCode to API, response only contains data for that country
+				double price = 0.0;
+				if (content.has("ppuPrices")) {
+					JSONArray ppuPrices = content.getJSONArray("ppuPrices");
+					if (ppuPrices.length() > 0) {
+						price = ppuPrices.getJSONObject(0).getDouble("ppuPrice");
+					}
+				}
+
+				HooplaTitle existingTitle = existingRecords.get(hooplaId);
+				boolean recordUpdated = false;
+
+				if (existingTitle != null) {
+					// Record exists - check if metadata changed
+					if ((existingTitle.getChecksum() != rawChecksum) || (existingTitle.getRawResponseLength() != rawResponse.length())) {
+						recordUpdated = true;
+						logEntry.incUpdated();
+					}
+					existingTitle.setFoundInExport(true);
+				} else {
+					// New record
+					recordUpdated = true;
+					logEntry.incAdded();
+				}
+
+				if (recordUpdated) {
+					// Extract rating (or empty)
+					// Since we pass countryCode to API, response only contains data for that country
+					String rating = "";
+					if (content.has("ratings")) {
+						JSONArray ratings = content.getJSONArray("ratings");
+						if (ratings.length() > 0) {
+							rating = ratings.getJSONObject(0).getString("ratingValue");
+						}
+					}
+
+					if (existingTitle == null) {
+						// INSERT new record
+						addHooplaTitleToDB.setLong(1, hooplaId);
+						addHooplaTitleToDB.setString(2, content.getString("title"));
+						addHooplaTitleToDB.setString(3, content.optString("format", ""));
+						addHooplaTitleToDB.setBoolean(4, content.getBoolean("isParentalAdvisory"));
+						addHooplaTitleToDB.setBoolean(5, content.getBoolean("isDemo"));
+						addHooplaTitleToDB.setBoolean(6, content.getBoolean("containsProfanity"));
+						addHooplaTitleToDB.setString(7, rating);
+						addHooplaTitleToDB.setBoolean(8, content.getBoolean("isAbridged"));
+						addHooplaTitleToDB.setBoolean(9, content.getBoolean("isForChildren"));
+						addHooplaTitleToDB.setDouble(10, price);
+						addHooplaTitleToDB.setLong(11, rawChecksum);
+						addHooplaTitleToDB.setString(12, rawResponse);
+						addHooplaTitleToDB.setLong(13, startTimeForLogging);
+
+						try {
+							addHooplaTitleToDB.executeUpdate();
+							updatedRecordIds.add(hooplaId);
+						} catch (DataTruncation e) {
+							logEntry.addNote("Record " + hooplaId + " " + content.getString("title") + " contained invalid data " + e);
+						} catch (SQLException e) {
+							logEntry.incErrors("Error adding hoopla title to database record " + hooplaId + " " + content.getString("title"), e);
+						}
+					} else {
+						// UPDATE existing record
+						updateHooplaTitleInDB.setString(1, content.getString("title"));
+						updateHooplaTitleInDB.setString(2, content.optString("format", ""));
+						updateHooplaTitleInDB.setBoolean(3, content.getBoolean("isParentalAdvisory"));
+						updateHooplaTitleInDB.setBoolean(4, content.getBoolean("isDemo"));
+						updateHooplaTitleInDB.setBoolean(5, content.getBoolean("containsProfanity"));
+						updateHooplaTitleInDB.setString(6, rating);
+						updateHooplaTitleInDB.setBoolean(7, content.getBoolean("isAbridged"));
+						updateHooplaTitleInDB.setBoolean(8, content.getBoolean("isForChildren"));
+						updateHooplaTitleInDB.setDouble(9, price);
+						updateHooplaTitleInDB.setLong(10, rawChecksum);
+						updateHooplaTitleInDB.setString(11, rawResponse);
+						updateHooplaTitleInDB.setLong(12, existingTitle.getId());
+
+						try {
+							updateHooplaTitleInDB.executeUpdate();
+							updatedRecordIds.add(hooplaId);
+						} catch (DataTruncation e) {
+							logEntry.addNote("Record " + hooplaId + " " + content.getString("title") + " contained invalid data " + e);
+						} catch (SQLException e) {
+							logEntry.incErrors("Error updating hoopla data in database for record " + hooplaId + " " + content.getString("title"), e);
+						}
+					}
+				}
+			} catch (Exception e) {
+				logEntry.incErrors("Error processing global content item", e);
+			}
+		}
+		return updatedRecordIds;
+	}
+
+	// Legacy method for single work extraction - simplified to just update metadata
+	// Active status and hooplaType are now managed via entitlements
+	private static List<Long> updateTitlesInDB(JSONArray responseTitles, boolean forceRegrouping, boolean doFullReload, String hooplaType) {
 		List<Long> updatedRecordIds = new ArrayList<>();
 		logEntry.incNumProducts(responseTitles.length());
+
 		for (int i = 0; i < responseTitles.length(); i++){
 			try {
 				JSONObject curTitle = responseTitles.getJSONObject(i);
@@ -1052,155 +1164,80 @@ public class HooplaExportMain {
 				checksumCalculator.reset();
 				checksumCalculator.update(rawResponse.getBytes());
 				long rawChecksum = checksumCalculator.getValue();
-				// Global content endpoint may or may not include "active" field
-				// If not present, assume the title is active since it's in the global catalog
-				boolean curTitleActive = curTitle.optBoolean("active", true);
 
-				long hooplaId = curTitle.getLong("id"); //formerly titleId was used but this is not unique for tv series
+				long hooplaId = curTitle.getLong("id");
+
+				// Extract price (0.0 for Flex)
+				double price = 0.0;
+				if (hooplaType != null && hooplaType.equalsIgnoreCase("Flex")) {
+					price = 0.0;
+				} else {
+					price = curTitle.optDouble("price", 0.0);
+				}
 
 				HooplaTitle existingTitle = existingRecords.get(hooplaId);
 				boolean recordUpdated = false;
+
 				if (existingTitle != null) {
-					//Record exists
 					if ((existingTitle.getChecksum() != rawChecksum) || (existingTitle.getRawResponseLength() != rawResponse.length())){
 						recordUpdated = true;
 						logEntry.incUpdated();
-						if (existingTitle.isActive() != curTitleActive) {
-							if (curTitleActive) {
-								logEntry.incAdded();
-							} else {
-								logEntry.incDeleted();
-							}
-						}else{
-							logEntry.incUpdated();
-						}
 					}
 					existingTitle.setFoundInExport(true);
-				}else{
-					if (!curTitleActive){
-						logEntry.incSkipped();
-						continue;
-					}
+				} else {
 					recordUpdated = true;
 					logEntry.incAdded();
 				}
 
-				if (!curTitleActive){
-					//Title is currently active (and if we got this far exists, delete it)
-					//Delete the record if it exists
-
-					//Delete the Flex availability if it's a Flex title
-					if (hooplaType != null && hooplaType.equalsIgnoreCase("Flex")) {
-						try {
-							PreparedStatement deleteFlexAvailabilityStmt = aspenConn.prepareStatement(
-								"DELETE from hoopla_flex_availability where hooplaId = ?"
-							);
-							deleteFlexAvailabilityStmt.setLong(1, hooplaId);
-							deleteFlexAvailabilityStmt.executeUpdate();
-						} catch (SQLException e) {
-							logEntry.incErrors("Error deleting Flex availability for inactive title " + hooplaId, e);
-						}
+				if (recordUpdated || doFullReload || forceRegrouping) {
+					// Extract rating
+					String rating = "";
+					if (curTitle.has("rating")) {
+						rating = curTitle.getString("rating");
 					}
 
-					RemoveRecordFromWorkResult result = getRecordGroupingProcessor().removeRecordFromGroupedWork("hoopla", Long.toString(hooplaId));
-					if (result.reindexWork) {
-						getGroupedWorkIndexer().processGroupedWork(result.permanentId);
-					} else if (result.deleteWork) {
-						//Delete the work from solr and the database
-						getGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
-					}
-					logEntry.incDeleted();
-					deleteHooplaItemStmt.setLong(1, existingTitle.getId());
-					deleteHooplaItemStmt.executeUpdate();
-					existingRecords.remove(hooplaId);
-				}else {
 					if (existingTitle == null){
+						// INSERT
 						addHooplaTitleToDB.setLong(1, hooplaId);
-						addHooplaTitleToDB.setBoolean(2, true);
-						addHooplaTitleToDB.setString(3, curTitle.getString("title"));
-						addHooplaTitleToDB.setString(4, curTitle.getString("kind"));
-						addHooplaTitleToDB.setBoolean(5, curTitle.getBoolean("pa"));
-						addHooplaTitleToDB.setBoolean(6, curTitle.getBoolean("demo"));
-						addHooplaTitleToDB.setBoolean(7, curTitle.getBoolean("profanity"));
-						addHooplaTitleToDB.setString(8, curTitle.has("rating") ? curTitle.getString("rating") : "");
-						addHooplaTitleToDB.setBoolean(9, curTitle.getBoolean("abridged"));
-						addHooplaTitleToDB.setBoolean(10, curTitle.getBoolean("children"));
-						// Flex titles don't have a price so set it to 0.0
-						if (hooplaType != null && hooplaType.equalsIgnoreCase("Flex")) {
-							addHooplaTitleToDB.setDouble(11, 0.0);
-						} else {
-							// For global content, try to get price from response, default to 0.0 if not available
-							addHooplaTitleToDB.setDouble(11, curTitle.optDouble("price", 0.0));
-						}
-						addHooplaTitleToDB.setLong(12, rawChecksum);
-						addHooplaTitleToDB.setString(13, rawResponse);
-						addHooplaTitleToDB.setLong(14, startTimeForLogging);
-						// For global content, determine type from the response
-						String titleType = hooplaType;
-						if (titleType == null) {
-							// Determine type from purchase model or other indicators in the response
-							titleType = curTitle.optString("purchaseModel", "Unknown");
-							if (titleType.equals("PPU")) {
-								titleType = "Instant";
-							} else if (titleType.equals("EST")) {
-								titleType = "Flex";
-							}
-						}
-						addHooplaTitleToDB.setString(15, titleType);
+						addHooplaTitleToDB.setString(2, curTitle.getString("title"));
+						addHooplaTitleToDB.setString(3, curTitle.optString("kind", ""));
+						addHooplaTitleToDB.setBoolean(4, curTitle.optBoolean("pa", false));
+						addHooplaTitleToDB.setBoolean(5, curTitle.optBoolean("demo", false));
+						addHooplaTitleToDB.setBoolean(6, curTitle.optBoolean("profanity", false));
+						addHooplaTitleToDB.setString(7, rating);
+						addHooplaTitleToDB.setBoolean(8, curTitle.optBoolean("abridged", false));
+						addHooplaTitleToDB.setBoolean(9, curTitle.optBoolean("children", false));
+						addHooplaTitleToDB.setDouble(10, price);
+						addHooplaTitleToDB.setLong(11, rawChecksum);
+						addHooplaTitleToDB.setString(12, rawResponse);
+						addHooplaTitleToDB.setLong(13, startTimeForLogging);
+
 						try {
 							addHooplaTitleToDB.executeUpdate();
 							updatedRecordIds.add(hooplaId);
-
-							if (indexImmediately) {
-								String groupedWorkId =  getRecordGroupingProcessor().groupHooplaRecord(curTitle, hooplaId);
-								indexRecord(groupedWorkId);
-							}
 						}catch (DataTruncation e) {
 							logEntry.addNote("Record " + hooplaId + " " + curTitle.getString("title") + " contained invalid data " + e);
 						}catch (SQLException e){
 							logEntry.incErrors("Error adding hoopla title to database record " + hooplaId + " " + curTitle.getString("title"), e);
 						}
-					}else if (recordUpdated || doFullReload || forceRegrouping){
-						updateHooplaTitleInDB.setBoolean(1, true);
-						updateHooplaTitleInDB.setString(2, curTitle.getString("title"));
-						updateHooplaTitleInDB.setString(3, curTitle.getString("kind"));
-						updateHooplaTitleInDB.setBoolean(4, curTitle.getBoolean("pa"));
-						updateHooplaTitleInDB.setBoolean(5, curTitle.getBoolean("demo"));
-						updateHooplaTitleInDB.setBoolean(6, curTitle.getBoolean("profanity"));
-						updateHooplaTitleInDB.setString(7, curTitle.has("rating") ? curTitle.getString("rating") : "");
-						updateHooplaTitleInDB.setBoolean(8, curTitle.getBoolean("abridged"));
-						updateHooplaTitleInDB.setBoolean(9, curTitle.getBoolean("children"));
-						// Flex titles don't have a price so set it to 0.0
-						if (hooplaType != null && hooplaType.equalsIgnoreCase("Flex")) {
-							updateHooplaTitleInDB.setDouble(10, 0.0);
-						} else {
-							// For global content, try to get price from response, default to 0.0 if not available
-							updateHooplaTitleInDB.setDouble(10, curTitle.optDouble("price", 0.0));
-						}
-						updateHooplaTitleInDB.setLong(11, rawChecksum);
-						updateHooplaTitleInDB.setString(12, rawResponse);
-						// For global content, determine type from the response
-						String titleType = hooplaType;
-						if (titleType == null) {
-							// Determine type from purchase model or other indicators in the response
-							titleType = curTitle.optString("purchaseModel", "Unknown");
-							if (titleType.equals("PPU")) {
-								titleType = "Instant";
-							} else if (titleType.equals("EST")) {
-								titleType = "Flex";
-							}
-						}
-						updateHooplaTitleInDB.setString(13, titleType);
-						updateHooplaTitleInDB.setLong(14, existingTitle.getId());
+					} else {
+						// UPDATE
+						updateHooplaTitleInDB.setString(1, curTitle.getString("title"));
+						updateHooplaTitleInDB.setString(2, curTitle.optString("kind", ""));
+						updateHooplaTitleInDB.setBoolean(3, curTitle.optBoolean("pa", false));
+						updateHooplaTitleInDB.setBoolean(4, curTitle.optBoolean("demo", false));
+						updateHooplaTitleInDB.setBoolean(5, curTitle.optBoolean("profanity", false));
+						updateHooplaTitleInDB.setString(6, rating);
+						updateHooplaTitleInDB.setBoolean(7, curTitle.optBoolean("abridged", false));
+						updateHooplaTitleInDB.setBoolean(8, curTitle.optBoolean("children", false));
+						updateHooplaTitleInDB.setDouble(9, price);
+						updateHooplaTitleInDB.setLong(10, rawChecksum);
+						updateHooplaTitleInDB.setString(11, rawResponse);
+						updateHooplaTitleInDB.setLong(12, existingTitle.getId());
 
 						try {
 							updateHooplaTitleInDB.executeUpdate();
 							updatedRecordIds.add(hooplaId);
-
-							if (indexImmediately) {
-								String groupedWorkId =  getRecordGroupingProcessor().groupHooplaRecord(curTitle, hooplaId);
-								indexRecord(groupedWorkId);
-							}
 						}catch (DataTruncation e) {
 							logEntry.addNote("Record " + hooplaId + " " + curTitle.getString("title") + " contained invalid data " + e);
 						}catch (SQLException e){
@@ -1209,15 +1246,11 @@ public class HooplaExportMain {
 					}
 				}
 			}catch (Exception e){
-				logEntry.incErrors("Error updating hoopla " + (hooplaType != null ? hooplaType : "global") + " data", e);
+				logEntry.incErrors("Error updating hoopla data for single work extraction", e);
 			}
 		}
-		getGroupedWorkIndexer().commitChanges();
-		return updatedRecordIds;
-	}
 
-	private static void indexRecord(String groupedWorkId) {
-		getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
+		return updatedRecordIds;
 	}
 
 	private static void indexUpdatedEntitledRecords(List<Long> updatedRecordIds) {
@@ -1322,10 +1355,10 @@ public class HooplaExportMain {
 			String databaseConnectionInfo = ConfigUtil.cleanIniValue(configIni.get("Database", "database_aspen_jdbc"));
 			if (databaseConnectionInfo != null) {
 				aspenConn = DriverManager.getConnection(databaseConnectionInfo);
-				getAllExistingHooplaItemsStmt = aspenConn.prepareStatement("SELECT id, hooplaId, rawChecksum, active, UNCOMPRESSED_LENGTH(rawResponse) as rawResponseLength, hooplaType from hoopla_export");
-				addHooplaTitleToDB = aspenConn.prepareStatement("INSERT INTO hoopla_export (hooplaId, active, title, kind, pa, demo, profanity, rating, abridged, children, price, rawChecksum, rawResponse, dateFirstDetected, hooplaType) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,COMPRESS(?),?, ?) ");
-				updateHooplaTitleInDB = aspenConn.prepareStatement("UPDATE hoopla_export set active = ?, title = ?, kind = ?, pa = ?, demo = ?, profanity = ?, " +
-						"rating = ?, abridged = ?, children = ?, price = ?, rawChecksum = ?, rawResponse = COMPRESS(?), hooplaType = ? where id = ?");
+				getAllExistingHooplaItemsStmt = aspenConn.prepareStatement("SELECT id, hooplaId, rawChecksum, UNCOMPRESSED_LENGTH(rawResponse) as rawResponseLength from hoopla_export");
+				addHooplaTitleToDB = aspenConn.prepareStatement("INSERT INTO hoopla_export (hooplaId, title, kind, pa, demo, profanity, rating, abridged, children, price, rawChecksum, rawResponse, dateFirstDetected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COMPRESS(?), ?) ");
+				updateHooplaTitleInDB = aspenConn.prepareStatement("UPDATE hoopla_export SET title = ?, kind = ?, pa = ?, demo = ?, profanity = ?, " +
+						"rating = ?, abridged = ?, children = ?, price = ?, rawChecksum = ?, rawResponse = COMPRESS(?) WHERE id = ?");
 				deleteHooplaItemStmt = aspenConn.prepareStatement("DELETE FROM hoopla_export where id = ?");
 			}else{
 				logger.error("Aspen database connection information was not provided");

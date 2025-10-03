@@ -13,6 +13,8 @@ class HooplaSetting extends DataObject {
 	public $regroupAllRecords;
 	public $lastUpdateOfGlobalContent;
 	public $lastUpdateOfEntitlements;
+	public $lastRecordProcessed;
+	public $countryCode;
 
 	private $_scopes;
 	static array $_objectStructure = [];
@@ -68,6 +70,19 @@ class HooplaSetting extends DataObject {
 				'description' => 'The API Password provided by Hoopla when registering',
 				'hideInLists' => true,
 			],
+			'countryCode' => [
+				'property' => 'countryCode',
+				'type' => 'enum',
+				'label' => 'Country Code',
+				'description' => 'Country code for pricing and ratings display',
+				'values' => [
+					'US' => 'United States (US)',
+					'CA' => 'Canada (CA)',
+					'NZ' => 'New Zealand (NZ)',
+					'AU' => 'Australia (AU)',
+				],
+				'default' => 'US',
+			],
 			'regroupAllRecords' => [
 				'property' => 'regroupAllRecords',
 				'type' => 'checkbox',
@@ -94,6 +109,14 @@ class HooplaSetting extends DataObject {
 						'label' => 'Last Update of Library Entitlements',
 						'description' => 'The timestamp when library entitlements were last synced',
 						'default' => 0,
+					],
+					'lastRecordProcessed' => [
+						'property' => 'lastRecordProcessed',
+						'type' => 'integer',
+						'label' => 'Last Record Processed',
+						'description' => 'Resume point for interrupted global content sync (0 = complete)',
+						'default' => 0,
+						'readOnly' => true,
 					],
 				],
 			],

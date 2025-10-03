@@ -162,5 +162,42 @@ function getUpdates25_09_00(): array {
 			]
 		], //hoopla_multi_library_schema
 
+		'hoopla_settings_add_last_record_processed' => [
+			'title' => 'Add lastRecordProcessed to Hoopla Settings',
+			'description' => 'Add field to track resume point for global content sync if interrupted',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_settings ADD COLUMN lastRecordProcessed BIGINT(20) DEFAULT 0 AFTER lastUpdateOfEntitlements"
+			]
+		], //hoopla_settings_add_last_record_processed
+
+		'hoopla_export_remove_active_and_type' => [
+			'title' => 'Remove Active and HooplaType from Hoopla Export',
+			'description' => 'Remove active and hooplaType columns from hoopla_export as they belong in hoopla_entitlements (determined by entitlements API, not global content)',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_export DROP COLUMN IF EXISTS active",
+				"ALTER TABLE hoopla_export DROP COLUMN IF EXISTS hooplaType"
+			]
+		], //hoopla_export_remove_active_and_type
+
+		'hoopla_entitlements_add_hoopla_type' => [
+			'title' => 'Add HooplaType to Hoopla Entitlements',
+			'description' => 'Add hooplaType column to hoopla_entitlements since this info comes from entitlements API',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_entitlements ADD COLUMN IF NOT EXISTS hooplaType VARCHAR(20) DEFAULT NULL COMMENT 'Instant or Flex' AFTER purchaseModel"
+			]
+		], //hoopla_entitlements_add_hoopla_type
+
+		'hoopla_settings_add_country_code' => [
+			'title' => 'Add Country Code to Hoopla Settings',
+			'description' => 'Add countryCode field to determine which country pricing and ratings to use (US, CA, NZ, AU)',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_settings ADD IF NOT EXISTS countryCode VARCHAR(2) DEFAULT 'US' COMMENT 'Country code for pricing and ratings (US, CA, NZ, AU)' AFTER lastRecordProcessed"
+			]
+		], //hoopla_settings_add_country_code
+
 	];
 }
