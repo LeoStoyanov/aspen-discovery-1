@@ -15,8 +15,7 @@ class HooplaSettings {
 	private final long tokenExpirationTime;
 
 	// New API endpoint tracking
-	private final long lastUpdateOfGlobalContent;
-	private final long lastUpdateOfEntitlements;
+	private final long lastUpdateOfChangedRecords;
 	private final long lastRecordProcessed;
 
 	private final String countryCode;
@@ -33,8 +32,7 @@ class HooplaSettings {
 		accessToken = settingsRS.getString("accessToken");
 		tokenExpirationTime = settingsRS.getLong("tokenExpirationTime");
 
-		lastUpdateOfGlobalContent = settingsRS.getLong("lastUpdateOfGlobalContent");
-		lastUpdateOfEntitlements = settingsRS.getLong("lastUpdateOfEntitlements");
+		lastUpdateOfChangedRecords = settingsRS.getLong("lastUpdateOfChangedRecords");
 		lastRecordProcessed = settingsRS.getLong("lastRecordProcessed");
 
 		String tmpCountryCode = settingsRS.getString("countryCode");
@@ -73,12 +71,8 @@ class HooplaSettings {
 		return regroupAllRecords;
 	}
 
-	public long getLastUpdateOfGlobalContent() {
-		return lastUpdateOfGlobalContent;
-	}
-
-	public long getLastUpdateOfEntitlements() {
-		return lastUpdateOfEntitlements;
+	public long getLastUpdateOfChangedRecords() {
+		return lastUpdateOfChangedRecords;
 	}
 
 	public long getLastRecordProcessed() {
