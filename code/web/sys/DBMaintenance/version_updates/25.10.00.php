@@ -402,12 +402,23 @@ function getUpdates25_10_00(): array {
 
 		'hoopla_settings_add_country_code' => [
 			'title' => 'Add Country Code to Hoopla Settings',
-			'description' => 'Add countryCode field to determine which country pricing and ratings to use (US, CA, NZ, AU)',
+			'description' => 'Add countryCode field to determine which country pricing and ratings (US, CA, NZ, AU)',
 			'continueOnError' => false,
 			'sql' => [
 				"ALTER TABLE hoopla_settings ADD IF NOT EXISTS countryCode VARCHAR(2) DEFAULT 'US' COMMENT 'Country code for pricing and ratings (US, CA, NZ, AU)' AFTER lastRecordProcessed"
 			]
 		], //hoopla_settings_add_country_code
+
+		'hoopla_library_settings_add_purchase_model_flags' => [
+			'title' => 'Add Purchase Model Control Flags to Hoopla Library Settings',
+			'description' => 'Add flags to control full entitlements updates and clearing disabled purchase models',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_library_settings ADD COLUMN runFullEntitlementsUpdate TINYINT(1) DEFAULT 0 COMMENT 'Force full entitlements sync on next run' AFTER enableInstant",
+				"ALTER TABLE hoopla_library_settings ADD COLUMN clearDisabledFlex TINYINT(1) DEFAULT 0 COMMENT 'Run Flex entitlements one more time to clear inactive titles' AFTER runFullEntitlementsUpdate",
+				"ALTER TABLE hoopla_library_settings ADD COLUMN clearDisabledInstant TINYINT(1) DEFAULT 0 COMMENT 'Run Instant entitlements one more time to clear inactive titles' AFTER clearDisabledFlex"
+			]
+		], //hoopla_library_settings_add_purchase_model_flags
 
 		//Talpa Search
 

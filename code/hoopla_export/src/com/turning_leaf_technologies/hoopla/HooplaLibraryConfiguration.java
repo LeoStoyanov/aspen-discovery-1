@@ -8,12 +8,16 @@ class HooplaLibraryConfiguration {
 	private final boolean enableFlex;
 	private final boolean enableInstant;
 	private final boolean runFullEntitlementsUpdate;
+	private final boolean clearDisabledFlex;
+	private final boolean clearDisabledInstant;
 
 	public HooplaLibraryConfiguration(ResultSet rs) throws SQLException {
 		libraryId = rs.getInt("libraryId");
 		enableFlex = rs.getBoolean("enableFlex");
 		enableInstant = rs.getBoolean("enableInstant");
 		runFullEntitlementsUpdate = rs.getBoolean("runFullEntitlementsUpdate");
+		clearDisabledFlex = rs.getBoolean("clearDisabledFlex");
+		clearDisabledInstant = rs.getBoolean("clearDisabledInstant");
 	}
 
 	public int getLibraryId() {
@@ -30,6 +34,14 @@ class HooplaLibraryConfiguration {
 
 	public boolean isRunFullEntitlementsUpdate() {
 		return runFullEntitlementsUpdate;
+	}
+
+	public boolean isClearDisabledFlex() {
+		return clearDisabledFlex;
+	}
+
+	public boolean isClearDisabledInstant() {
+		return clearDisabledInstant;
 	}
 
 	public boolean isPurchaseModelEnabled(String purchaseModel) {

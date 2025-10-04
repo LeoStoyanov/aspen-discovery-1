@@ -418,7 +418,6 @@ public class HooplaExportMain {
 
 		String accessToken = settings.getAccessToken();
 		long tokenExpirationTime = settings.getTokenExpirationTime();
-		int indexingTime = settings.getIndexingTime();
 
 		if (accessToken == null || tokenExpirationTime < (System.currentTimeMillis() / 1000)) {
 			accessToken = getAccessToken(settings);
@@ -572,7 +571,7 @@ public class HooplaExportMain {
 		List<HooplaLibraryConfiguration> configurations = new ArrayList<>();
 		try {
 			PreparedStatement getLibraryConfigsStmt = aspenConn.prepareStatement(
-				"SELECT libraryId, enableFlex, enableInstant, runFullEntitlementsUpdate FROM hoopla_library_settings WHERE settingId = ?"
+				"SELECT libraryId, enableFlex, enableInstant, runFullEntitlementsUpdate, clearDisabledFlex, clearDisabledInstant FROM hoopla_library_settings WHERE settingId = ?"
 			);
 			getLibraryConfigsStmt.setLong(1, settingId);
 			ResultSet libraryConfigRS = getLibraryConfigsStmt.executeQuery();
@@ -634,81 +633,143 @@ public class HooplaExportMain {
 		boolean updatedContent = false;
 		int hooplaLibraryId = libraryConfig.getLibraryId();
 
-        if (lastUpdateOfChangedRecords > 0) {
-            //Give a 2-minute buffer for the extract
-            lastUpdateOfChangedRecords -= 120;
-            logEntry.addNote("Extracting entitlements since " + new Date(lastUpdateOfChangedRecords * 1000));
-        }
+		if (lastUpdateOfChangedRecords > 0) {
+			//Give a 2-minute buffer for the extract
+			lastUpdateOfChangedRecords -= 120;
+			logEntry.addNote("Extracting entitlements since " + new Date(lastUpdateOfChangedRecords * 1000));
+		}
 
-        HashMap<String, String> headers = new HashMap<>();
-        headers.put("Authorization", "Bearer " + accessToken);
-        headers.put("Content-Type", "application/json");
-        headers.put("Accept", "application/json");
+		// Sync Flex entitlements if enabled or if we need to clear disabled titles
+		if (libraryConfig.isFlexEnabled() || libraryConfig.isClearDisabledFlex()) {
+			boolean flexUpdated = syncEntitlementsForPurchaseModel(
+				settings,
+				libraryConfig,
+				accessToken,
+				hooplaAPIBaseURL,
+				lastUpdateOfChangedRecords,
+				"EST",
+				"Flex",
+				libraryConfig.isFlexEnabled()
+			);
+			updatedContent |= flexUpdated;
 
-        String startToken = null;
-        boolean isIncremental = (lastUpdateOfChangedRecords > 0);
-        WebServiceResponse response = null;
+			// Clear the flag if we ran for disabled Flex
+			if (libraryConfig.isClearDisabledFlex() && !libraryConfig.isFlexEnabled()) {
+				clearDisabledFlag(libraryConfig.getLibraryId(), "clearDisabledFlex");
+			}
+		}
 
-        do {
-            // Build URL with optional startTime and startToken parameters
-            String url = hooplaAPIBaseURL + "/api/v1/libraries/" + hooplaLibraryId + "/entitlements?limit=500";
-            if (lastUpdateOfChangedRecords > 0) {
-                url += "&startTime=" + lastUpdateOfChangedRecords;
-            }
-            if (startToken != null) {
-                url += "&startToken=" + startToken;
-            }
+		// Sync Instant entitlements if enabled or if we need to clear disabled titles
+		if (libraryConfig.isInstantEnabled() || libraryConfig.isClearDisabledInstant()) {
+			boolean instantUpdated = syncEntitlementsForPurchaseModel(
+				settings,
+				libraryConfig,
+				accessToken,
+				hooplaAPIBaseURL,
+				lastUpdateOfChangedRecords,
+				"PPU",
+				"Instant",
+				libraryConfig.isInstantEnabled()
+			);
+			updatedContent |= instantUpdated;
 
-            response = NetworkUtils.getURL(url, logger, headers);
-            if (!response.isSuccess()) {
-                logEntry.incErrors("Could not get entitlements from " + url + " " + response.getMessage() + " " + response.getResponseCode());
-                break;
-            }
+			// Clear the flag if we ran for disabled Instant
+			if (libraryConfig.isClearDisabledInstant() && !libraryConfig.isInstantEnabled()) {
+				clearDisabledFlag(libraryConfig.getLibraryId(), "clearDisabledInstant");
+			}
+		}
 
-            JSONObject responseJSON = new JSONObject(response.getMessage());
-            if (responseJSON.has("entitlements")) {
-                JSONArray entitlements = responseJSON.getJSONArray("entitlements");
-
-                // For first page, use isIncremental flag; for subsequent pages, always incremental
-                boolean useIncremental = (startToken != null) || isIncremental;
-
-                if (entitlements != null && !entitlements.isEmpty()) {
-                    List<Long> changedIds = updateEntitlementsInDB(entitlements, libraryConfig.getLibraryId(), useIncremental, libraryConfig);
-                    entitlementChangedRecords.addAll(changedIds);
-                }
-            }
-
-            // Check for next page
-            if (responseJSON.has("metadata")) {
-                JSONObject metadata = responseJSON.getJSONObject("metadata");
-                if (metadata.has("nextStartToken")) {
-                    startToken = metadata.getString("nextStartToken");
-                } else {
-                    startToken = null;
-                }
-            } else {
-                startToken = null;
-            }
-
-            logEntry.saveResults();
-        } while (startToken != null);
-
-        logEntry.addNote("Completed entitlements extraction for library " + hooplaLibraryId);
-        logEntry.saveResults();
-
-        try{
-            //Set the extract time for changed records (only updates if this was successful)
-            if (response.isSuccess()){
-                PreparedStatement updateSettingsStmt = aspenConn.prepareStatement("UPDATE hoopla_settings set lastUpdateOfChangedRecords = ? where id = ?");
-                updateSettingsStmt.setLong(1, startTimeForLogging);
-                updateSettingsStmt.setLong(2, settings.getSettingsId());
-                updateSettingsStmt.executeUpdate();
-            }
-        } catch (SQLException e) {
-            logEntry.incErrors("Error updating changed records timestamp", e);
-        }
-        updatedContent = true;
 		return updatedContent;
+	}
+
+	private static boolean syncEntitlementsForPurchaseModel(HooplaSettings settings, HooplaLibraryConfiguration libraryConfig, String accessToken, String hooplaAPIBaseURL, long lastUpdateOfChangedRecords, String purchaseModel, String purchaseModelName, boolean isEnabled) {
+		boolean updatedContent;
+		int hooplaLibraryId = libraryConfig.getLibraryId();
+
+		HashMap<String, String> headers = new HashMap<>();
+		headers.put("Authorization", "Bearer " + accessToken);
+		headers.put("Content-Type", "application/json");
+		headers.put("Accept", "application/json");
+
+		String startToken = null;
+		boolean isIncremental = (lastUpdateOfChangedRecords > 0);
+		WebServiceResponse response = null;
+
+		logEntry.addNote("Syncing " + purchaseModelName + " entitlements for library " + hooplaLibraryId + (isEnabled ? "" : " (clearing disabled)"));
+
+		do {
+			// Build URL with purchaseModel parameter and optional startTime and startToken parameters
+			String url = hooplaAPIBaseURL + "/api/v1/libraries/" + hooplaLibraryId + "/entitlements?limit=500&purchaseModel=" + purchaseModel;
+			if (lastUpdateOfChangedRecords > 0) {
+				url += "&startTime=" + lastUpdateOfChangedRecords;
+			}
+			if (startToken != null) {
+				url += "&startToken=" + startToken;
+			}
+
+			response = NetworkUtils.getURL(url, logger, headers);
+			if (!response.isSuccess()) {
+				logEntry.incErrors("Could not get " + purchaseModelName + " entitlements from " + url + " " + response.getMessage() + " " + response.getResponseCode());
+				break;
+			}
+
+			JSONObject responseJSON = new JSONObject(response.getMessage());
+			if (responseJSON.has("entitlements")) {
+				JSONArray entitlements = responseJSON.getJSONArray("entitlements");
+
+				// For first page, use isIncremental flag; for subsequent pages, always incremental
+				boolean useIncremental = (startToken != null) || isIncremental;
+
+				if (entitlements != null && !entitlements.isEmpty()) {
+					List<Long> changedIds = updateEntitlementsInDB(entitlements, libraryConfig.getLibraryId(), useIncremental, libraryConfig);
+					entitlementChangedRecords.addAll(changedIds);
+				}
+			}
+
+			// Check for next page
+			if (responseJSON.has("metadata")) {
+				JSONObject metadata = responseJSON.getJSONObject("metadata");
+				if (metadata.has("nextStartToken")) {
+					startToken = metadata.getString("nextStartToken");
+				} else {
+					startToken = null;
+				}
+			} else {
+				startToken = null;
+			}
+
+			logEntry.saveResults();
+		} while (startToken != null);
+
+		logEntry.addNote("Completed " + purchaseModelName + " entitlements extraction for library " + hooplaLibraryId);
+		logEntry.saveResults();
+
+		try {
+			//Set the extract time for changed records (only updates if this was successful)
+			if (response.isSuccess()) {
+				PreparedStatement updateSettingsStmt = aspenConn.prepareStatement("UPDATE hoopla_settings set lastUpdateOfChangedRecords = ? where id = ?");
+				updateSettingsStmt.setLong(1, startTimeForLogging);
+				updateSettingsStmt.setLong(2, settings.getSettingsId());
+				updateSettingsStmt.executeUpdate();
+			}
+		} catch (SQLException e) {
+			logEntry.incErrors("Error updating changed records timestamp", e);
+		}
+		updatedContent = true;
+		return updatedContent;
+	}
+
+	private static void clearDisabledFlag(int libraryId, String flagName) {
+		try {
+			PreparedStatement clearFlagStmt = aspenConn.prepareStatement(
+				"UPDATE hoopla_library_settings SET " + flagName + " = 0 WHERE libraryId = ?"
+			);
+			clearFlagStmt.setInt(1, libraryId);
+			clearFlagStmt.executeUpdate();
+			logEntry.addNote("Cleared " + flagName + " for library " + libraryId);
+		} catch (SQLException e) {
+			logEntry.incErrors("Error clearing " + flagName + " for library " + libraryId, e);
+		}
 	}
 
 

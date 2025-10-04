@@ -17,6 +17,7 @@ class HooplaSetting extends DataObject {
 	public $countryCode;
 
 	private $_scopes;
+	private $_librarySettings;
 	static array $_objectStructure = [];
 
 	public static function getObjectStructure($context = ''): array {
@@ -169,15 +170,18 @@ class HooplaSetting extends DataObject {
 		return $ids;
 	}
 
-	public function update($context = '') {
+	public function update($context = ''): bool|int
+	{
 		$ret = parent::update();
 		if ($ret !== FALSE) {
 			$this->saveScopes();
+			$this->saveLibrarySettings();
 		}
 		return true;
 	}
 
-	public function insert($context = '') {
+	public function insert($context = ''): bool|int
+	{
 		$ret = parent::insert();
 		if ($ret !== FALSE) {
 			if (empty($this->_scopes)) {
@@ -199,6 +203,7 @@ class HooplaSetting extends DataObject {
 				$this->_scopes[] = $allScope;
 			}
 			$this->saveScopes();
+			$this->saveLibrarySettings();
 		}
 		return $ret;
 	}
@@ -207,6 +212,13 @@ class HooplaSetting extends DataObject {
 		if (isset ($this->_scopes) && is_array($this->_scopes)) {
 			$this->saveOneToManyOptions($this->_scopes, 'settingId');
 			unset($this->_scopes);
+		}
+	}
+
+	public function saveLibrarySettings() {
+		if (isset ($this->_librarySettings) && is_array($this->_librarySettings)) {
+			$this->saveOneToManyOptions($this->_librarySettings, 'settingId');
+			unset($this->_librarySettings);
 		}
 	}
 
@@ -222,6 +234,17 @@ class HooplaSetting extends DataObject {
 				}
 			}
 			return $this->_scopes;
+		} elseif ($name == "librarySettings") {
+			if (!isset($this->_librarySettings) && $this->id) {
+				$this->_librarySettings = [];
+				$librarySetting = new HooplaLibrarySetting();
+				$librarySetting->settingId = $this->id;
+				$librarySetting->find();
+				while ($librarySetting->fetch()) {
+					$this->_librarySettings[$librarySetting->id] = clone($librarySetting);
+				}
+			}
+			return $this->_librarySettings;
 		} else {
 			return parent::__get($name);
 		}
@@ -230,6 +253,8 @@ class HooplaSetting extends DataObject {
 	public function __set($name, $value) {
 		if ($name == "scopes") {
 			$this->_scopes = $value;
+		} elseif ($name == "librarySettings") {
+			$this->_librarySettings = $value;
 		} else {
 			parent::__set($name, $value);
 		}

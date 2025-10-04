@@ -9,6 +9,9 @@ class HooplaLibrarySetting extends DataObject {
 	public $libraryId;
 	public $enableFlex;
 	public $enableInstant;
+	public $runFullEntitlementsUpdate;
+	public $clearDisabledFlex;
+	public $clearDisabledInstant;
 	public $dateAdded;
 	public $dateUpdated;
 
@@ -75,6 +78,25 @@ class HooplaLibrarySetting extends DataObject {
 
 	public function __toString() {
 		return $this->getLibraryName() . ' (Flex: ' . ($this->enableFlex ? 'Yes' : 'No') . ', Instant: ' . ($this->enableInstant ? 'Yes' : 'No') . ')';
+	}
+
+	public function update($context = ''): bool|int {
+		// Check if we're disabling a previously enabled purchase model
+		if (isset($this->id) && $this->id) {
+			$existingSetting = new HooplaLibrarySetting();
+			$existingSetting->id = $this->id;
+			if ($existingSetting->find(true)) {
+				// If Flex was enabled and is now being disabled, set the clear flag
+				if ($existingSetting->enableFlex && !$this->enableFlex) {
+					$this->clearDisabledFlex = 1;
+				}
+				// If Instant was enabled and is now being disabled, set the clear flag
+				if ($existingSetting->enableInstant && !$this->enableInstant) {
+					$this->clearDisabledInstant = 1;
+				}
+			}
+		}
+		return parent::update($context);
 	}
 
 	/**
