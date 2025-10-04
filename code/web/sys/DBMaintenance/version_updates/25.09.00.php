@@ -1,7 +1,7 @@
 <?php
 
+/** @noinspection PhpUnused */
 function getUpdates25_09_00(): array {
-	$curTime = time();
 	return [
 		/*'name' => [
 			 'title' => '',
@@ -13,6 +13,159 @@ function getUpdates25_09_00(): array {
 		 ], //name*/
 
 		//mark - Grove
+		'25_09_add_performance_indexes' => [
+			'title' => '25.09 Add Performance Indexes',
+			'description' => '25.09 Add Performance Indexes',
+			'continueOnError' => true,
+			'sql' => [
+				'ALTER TABLE search ADD INDEX searchLookup(searchUrl(500),session_id,user_id)',
+				'ALTER TABLE themes ADD INDEX nameById(id,displayName)',
+				'ALTER TABLE library ADD INDEX isDefault(isDefault)',
+				'ALTER TABLE library ADD INDEX subdomainUrl(subdomain, baseUrl)'
+			]
+		], //25_09_add_performance_indexes
+		'remove_quick_searches' => [
+			'title' => 'Remove Quick Searches',
+			'description' => 'Remove Unused Quick Search Tables',
+			'continueOnError' => false,
+			'sql' => [
+				'DROP TABLE aspen_lida_quick_search_setting',
+				'DROP TABLE aspen_lida_quick_searches'
+			]
+		], //remove_quick_searches
+		'remove_rbdigital_tables' => [
+			'title' => 'Remove RBdigital tables',
+			'description' => 'Remove Unused RBdigital Tables',
+			'continueOnError' => false,
+			'sql' => [
+				'DROP TABLE rbdigital_magazine_issue',
+				'DROP TABLE rbdigital_magazine',
+				'DROP TABLE rbdigital_magazine_usage',
+				'DROP TABLE rbdigital_title',
+				'DROP TABLE rbdigital_record_usage',
+				'DROP TABLE user_rbdigital_usage',
+				"DELETE FROM modules where name = 'RBdigital'",
+				"DELETE FROM role_permissions where permissionId = (SELECT id from permissions where name = 'Administer RBdigital')",
+				"DELETE FROM permissions where name = 'Administer RBdigital'",
+			]
+		], //remove_rbdigital_tables
+		'remove_rbdigital_tables_2' => [
+			'title' => 'Remove additional RBdigital tables',
+			'description' => 'Remove Additional Unused RBdigital Tables',
+			'continueOnError' => false,
+			'sql' => [
+				'DROP TABLE rbdigital_availability',
+				'DROP TABLE rbdigital_magazine_issue_availability',
+			]
+		], //remove_rbdigital_tables_2
+		'remove_redwood_tables' => [
+			'title' => 'Remove Redwood tables',
+			'description' => 'Remove Unused Redwood Table',
+			'continueOnError' => false,
+			'sql' => [
+				'DROP TABLE redwood_user_contribution'
+			]
+		], //remove_redwood_tables
+		'remove_archives_tables' => [
+			'title' => 'Remove Archives tables',
+			'description' => 'Remove Unused Archives Tables',
+			'continueOnError' => false,
+			'sql' => [
+				'DROP TABLE archive_requests',
+				'DROP TABLE claim_authorship_requests'
+			]
+		], //remove_archives_tables
+		'remove_archives_permissions' => [
+			'title' => 'Remove Archives Permissions',
+			'description' => 'Remove Unused Archives Permissions',
+			'continueOnError' => false,
+			'sql' => [
+				"DELETE FROM role_permissions where permissionId = (SELECT id from permissions where name = 'Administer Islandora Archive')",
+				"DELETE FROM permissions where name = 'Administer Islandora Archive'",
+				"DELETE FROM role_permissions where permissionId = (SELECT id from permissions where name = 'Library Islandora Archive Options')",
+				"DELETE FROM permissions where name = 'Library Islandora Archive Options'",
+			]
+		], //remove_archives_tables
+		'remove_development_tracking_tables' => [
+			'title' => 'Remove Development Tracking tables',
+			'description' => 'Remove Development Tracking Tables',
+			'continueOnError' => true,
+			'sql' => [
+				'DROP TABLE component_development_epic_link',
+				'DROP TABLE component_development_task_link',
+				'DROP TABLE development_epic',
+				'DROP TABLE development_sprint',
+				'DROP TABLE development_task',
+				'DROP TABLE development_epic_partner_link',
+				'DROP TABLE development_task_developer_link',
+				'DROP TABLE development_task_epic_link',
+				'DROP TABLE development_task_partner_link',
+				'DROP TABLE development_task_qa_link',
+				'DROP TABLE development_task_sprint_link',
+				'DROP TABLE development_task_ticket_link',
+				'ALTER TABLE ticket DROP COLUMN developmentTaskId'
+			]
+		], //remove_development_tracking_tables
+		'add_grouped_work_display_format_display' => [
+			'title' => 'Grouped Display Settings add Format Display Option',
+			'description' => 'Grouped Display Settings add Format Display Option',
+			'continueOnError' => false,
+			'sql' => [
+				'ALTER TABLE grouped_work_display_settings ADD COLUMN formatDisplayStyle INT DEFAULT 1'
+			]
+		], //add_grouped_work_display_format_display
+		'add_self_check_completion_message' => [
+			'title' => 'Add Self Check Completion Message',
+			'description' => 'Add configuration table for self check completion messages',
+			'continueOnError' => false,
+			'sql' => [
+				"CREATE TABLE self_check_completion_message (
+					id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+					formats VARCHAR(500),
+					owningLocations VARCHAR(500),
+					checkoutLocations VARCHAR(500)
+				) ENGINE INNODB",
+			]
+		], //add_self_check_completion_message
+		'set_defaults_for_self_check_completion_message' => [
+			'title' => 'Set Defaults for Self Check Completion Message',
+			'description' => 'Set default values for self check completion messages',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE self_check_completion_message CHANGE COLUMN owningLocations owningLocations VARCHAR(500) DEFAULT '.*'",
+				"ALTER TABLE self_check_completion_message CHANGE COLUMN checkoutLocations checkoutLocations VARCHAR(500) DEFAULT '.*'",
+			]
+		], //set_defaults_for_self_check_completion_message
+		'add_removeTheWordSeriesFromEndOfSeries' => [
+			'title' => 'Add Remove the word series from the end of series option',
+			'description' => 'Add Remove the word series from the end of series option',
+			'continueOnError' => false,
+			'sql' => [
+				'ALTER TABLE system_variables ADD COLUMN removeTheWordSeriesFromEndOfSeries TINYINT DEFAULT 1',
+			]
+		], //add_removeTheWordSeriesFromEndOfSeries
+		'force_regrouping_all_works_25_09' => [
+			'title' => 'Force Regrouping All Works 25.09',
+			'description' => 'Force Regrouping All Works',
+			'sql' => [
+				"UPDATE system_variables set regroupAllRecordsDuringNightlyIndex = 1",
+			],
+		], //force_regrouping_all_works_25_09
+		'increase_series_member_priority_score_length' => [
+			'title' => 'Increase series priority score length',
+			'description' => 'Increase series priority score length',
+			'sql' => [
+				"ALTER TABLE series_member CHANGE COLUMN priorityScore priorityScore INT NOT NULL DEFAULT 1;",
+			]
+		], //increase_series_member_priority_score_length
+		'add_switch_for_sending_slack_alerts' => [
+			'title' => 'Add a switch for sending slack alerts',
+			'description' => 'Update Aspen Sites in the Greenhouse to have a switch for which sites should have alerts sent for them',
+			'sql' => [
+				'ALTER TABLE aspen_sites ADD COLUMN sendSlackAlerts TINYINT DEFAULT 1',
+				'UPDATE aspen_sites SET sendSlackAlerts = 0 WHERE NOT ((implementationStatus = 2 or implementationStatus = 3) AND siteType = 0)'
+			]
+		], //add_switch_for_sending_slack_alerts
 
 		//katherine - Grove
 
@@ -25,62 +178,55 @@ function getUpdates25_09_00(): array {
 		//Yanjun Li - ByWater
 
 		// Leo Stoyanov - BWS
-		'hoopla_entitlements_table' => [
-			'title' => 'Create Hoopla Entitlements Table',
-			'description' => 'Create a normalized table to track library entitlements for Hoopla content, replacing the inefficient scopedLibraryIds string field',
+		'add_self_reg_note_setting' => [
+			'title' => 'Add Self Registration Note Setting',
+			'description' => 'Add setting to control whether self-registration note is added to Sierra patron records.',
 			'continueOnError' => false,
 			'sql' => [
-				"CREATE TABLE IF NOT EXISTS hoopla_entitlements (
-					hooplaId bigint(20) NOT NULL,
-					settingId bigint(20) NOT NULL,
-					active tinyint(1) DEFAULT 1,
-					purchaseModel varchar(20) DEFAULT NULL COMMENT 'Instant, Flex, or other purchase model for this library',
-					dateAdded timestamp DEFAULT CURRENT_TIMESTAMP,
-					dateUpdated timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-					PRIMARY KEY (hooplaId, settingId),
-					INDEX idx_hoopla_id (hooplaId),
-					INDEX idx_setting_id (settingId),
-					INDEX idx_setting_active (settingId, active),
-					INDEX idx_active (active),
-					INDEX idx_purchase_model (purchaseModel)
-				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
-			]
-		], //hoopla_entitlements_table
-
-		'migrate_scoped_library_ids_to_entitlements' => [
-			'title' => 'Migrate Existing Scoped Library IDs to Entitlements Table',
-			'description' => 'Migrate existing scopedLibraryIds data from hoopla_export to the new hoopla_entitlements table',
-			'continueOnError' => true,
+				'ALTER TABLE self_registration_form_sierra ADD COLUMN addSelfRegNote TINYINT DEFAULT 1'
+			],
+		], // add_self_reg_note_setting
+		'increase_browse_category_label_length' => [
+			'title' => 'Increase Browse Category Label Length',
+			'description' => 'Increase the allowed length for browse category labels from 50 to 100 characters.',
+			'continueOnError' => false,
 			'sql' => [
-				// Migration query to parse scopedLibraryIds and insert into new table
-				"INSERT IGNORE INTO hoopla_entitlements (hooplaId, settingId, active, dateAdded)
-				 SELECT
-					 e.hooplaId,
-					 CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(e.scopedLibraryIds, '~', n.n), '~', -1) AS UNSIGNED) as settingId,
-					 1 as active,
-					 NOW() as dateAdded
-				 FROM hoopla_export e
-				 CROSS JOIN (
-					 SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
-					 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
-				 ) n
-				 WHERE e.scopedLibraryIds IS NOT NULL
-				   AND e.scopedLibraryIds != ''
-				   AND CHAR_LENGTH(e.scopedLibraryIds) - CHAR_LENGTH(REPLACE(e.scopedLibraryIds, '~', '')) >= n.n - 1
-				   AND SUBSTRING_INDEX(SUBSTRING_INDEX(e.scopedLibraryIds, '~', n.n), '~', -1) != ''
-				   AND SUBSTRING_INDEX(SUBSTRING_INDEX(e.scopedLibraryIds, '~', n.n), '~', -1) REGEXP '^[0-9]+$'"
-			]
-		], //migrate_scoped_library_ids_to_entitlements
-
-		// Laura Escamilla - ByWater Solutions
+				'ALTER TABLE browse_category MODIFY label VARCHAR(100) NOT NULL'
+			],
+		], // increase_browse_category_label_length
+		'increase_browse_category_textId_length' => [
+			'title' => 'Increase Browse Category TextId Length',
+			'description' => 'Increase the allowed length for browse category textId from 50 to 150 characters to accommodate longer generated textIds.',
+			'continueOnError' => false,
+			'sql' => [
+				'ALTER TABLE browse_category MODIFY textId VARCHAR(150) NOT NULL'
+			],
+		], // increase_browse_category_textId_length
 
 		//alexander - Open Fifth
+		'increase_location_display_name_allowed_length' => [
+			'title' => 'Increase Location Display Name Allowed Length',
+			'description' => 'Increase the allowed length for the location display name',
+			'continueOnError' => false,
+			'sql' => [
+				'ALTER TABLE location MODIFY displayName VARCHAR(100) NOT NULL'
+			],
+		], // increase_location_display_name_allowed_length
+		'add_title_to_user_work_review' => [
+			'title' => 'Add Title To user Work Review',
+			'description' => 'Add title of reviewed work to table',
+			'sql' => [
+				"ALTER TABLE user_work_review ADD COLUMN title VARCHAR(512) DEFAULT ''",
+			]
+		], //add_title_to_user_work_review
 
 		//chloe - Open Fifth
+
 
 		//Jacob - Open Fifth
 
 		//Pedro - Open Fifth
+
 
 		//James Staub - Nashville Public Library
 
@@ -90,114 +236,15 @@ function getUpdates25_09_00(): array {
 
 		//Talpa Search
 
-		'migrate_hoopla_entitlements_to_library_id' => [
-			'title' => 'Migrate Hoopla Entitlements to Use Library ID',
-			'description' => 'Convert hoopla_entitlements from settingId to libraryId before schema restructure',
-			'continueOnError' => true,
-			'sql' => [
-				// First, update existing entitlements to use libraryId from the hoopla_settings
-				"UPDATE hoopla_entitlements he
-				 INNER JOIN hoopla_settings hs ON he.settingId = hs.id
-				 SET he.settingId = hs.libraryId
-				 WHERE hs.libraryId IS NOT NULL"
-			]
-		], //migrate_hoopla_entitlements_to_library_id
-
-		'hoopla_flex_availability_per_library' => [
-			'title' => 'Update Hoopla Flex Availability for Per-Library Support',
-			'description' => 'Add libraryId to hoopla_flex_availability to support per-library availability tracking',
-			'continueOnError' => false,
-			'sql' => [
-				// Add libraryId to hoopla_flex_availability
-				"ALTER TABLE hoopla_flex_availability
-				 ADD COLUMN libraryId int(11) NOT NULL DEFAULT 0 AFTER hooplaId,
-				 DROP INDEX hooplaId,
-				 ADD UNIQUE KEY unique_hoopla_library (hooplaId, libraryId),
-				 ADD INDEX idx_library_id (libraryId),
-				 ADD FOREIGN KEY (libraryId) REFERENCES library(libraryId) ON DELETE CASCADE"
-			]
-		], //hoopla_flex_availability_per_library
-
-		'hoopla_multi_library_schema' => [
-			'title' => 'Update Hoopla Schema for Multi-Library Support',
-			'description' => 'Restructure Hoopla tables to support one setting serving multiple libraries with per-library purchase model configuration',
-			'continueOnError' => false,
-			'sql' => [
-				// Create junction table for hoopla settings to libraries first
-				"CREATE TABLE IF NOT EXISTS hoopla_library_settings (
-					id int(11) NOT NULL AUTO_INCREMENT,
-					settingId bigint(20) NOT NULL,
-					libraryId int(11) NOT NULL,
-					enableFlex tinyint(1) DEFAULT 1 COMMENT 'Whether this library has Flex titles enabled',
-					enableInstant tinyint(1) DEFAULT 1 COMMENT 'Whether this library has Instant titles enabled',
-					dateAdded timestamp DEFAULT CURRENT_TIMESTAMP,
-					dateUpdated timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-					PRIMARY KEY (id),
-					UNIQUE KEY unique_setting_library (settingId, libraryId),
-					INDEX idx_setting_id (settingId),
-					INDEX idx_library_id (libraryId),
-					INDEX idx_flex_enabled (enableFlex),
-					INDEX idx_instant_enabled (enableInstant),
-					FOREIGN KEY (libraryId) REFERENCES library(libraryId) ON DELETE CASCADE
-				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
-
-				// Migrate existing hoopla_settings to junction table
-				"INSERT IGNORE INTO hoopla_library_settings (settingId, libraryId, enableFlex, enableInstant)
-				 SELECT id, libraryId, 1, 1 FROM hoopla_settings WHERE libraryId IS NOT NULL",
-
-				// Remove the single libraryId from hoopla_settings
-				"ALTER TABLE hoopla_settings DROP COLUMN IF EXISTS libraryId",
-
-				// Update hoopla_entitlements to use libraryId instead of settingId
-				"ALTER TABLE hoopla_entitlements
-				 DROP FOREIGN KEY IF EXISTS fk_hoopla_entitlements_setting,
-				 DROP INDEX IF EXISTS idx_setting_id,
-				 DROP INDEX IF EXISTS idx_setting_active,
-				 CHANGE COLUMN settingId libraryId int(11) NOT NULL,
-				 DROP PRIMARY KEY,
-				 ADD PRIMARY KEY (hooplaId, libraryId),
-				 ADD INDEX idx_library_id (libraryId),
-				 ADD INDEX idx_library_active (libraryId, active),
-				 ADD FOREIGN KEY (libraryId) REFERENCES library(libraryId) ON DELETE CASCADE"
-			]
-		], //hoopla_multi_library_schema
-
-		'hoopla_settings_add_last_record_processed' => [
-			'title' => 'Add lastRecordProcessed to Hoopla Settings',
-			'description' => 'Add field to track resume point for global content sync if interrupted',
-			'continueOnError' => false,
-			'sql' => [
-				"ALTER TABLE hoopla_settings ADD COLUMN lastRecordProcessed BIGINT(20) DEFAULT 0 AFTER lastUpdateOfEntitlements"
-			]
-		], //hoopla_settings_add_last_record_processed
-
-		'hoopla_export_remove_active_and_type' => [
-			'title' => 'Remove Active and HooplaType from Hoopla Export',
-			'description' => 'Remove active and hooplaType columns from hoopla_export as they belong in hoopla_entitlements (determined by entitlements API, not global content)',
-			'continueOnError' => false,
-			'sql' => [
-				"ALTER TABLE hoopla_export DROP COLUMN IF EXISTS active",
-				"ALTER TABLE hoopla_export DROP COLUMN IF EXISTS hooplaType"
-			]
-		], //hoopla_export_remove_active_and_type
-
-		'hoopla_entitlements_add_hoopla_type' => [
-			'title' => 'Add HooplaType to Hoopla Entitlements',
-			'description' => 'Add hooplaType column to hoopla_entitlements since this info comes from entitlements API',
-			'continueOnError' => false,
-			'sql' => [
-				"ALTER TABLE hoopla_entitlements ADD COLUMN IF NOT EXISTS hooplaType VARCHAR(20) DEFAULT NULL COMMENT 'Instant or Flex' AFTER purchaseModel"
-			]
-		], //hoopla_entitlements_add_hoopla_type
-
-		'hoopla_settings_add_country_code' => [
-			'title' => 'Add Country Code to Hoopla Settings',
-			'description' => 'Add countryCode field to determine which country pricing and ratings to use (US, CA, NZ, AU)',
-			'continueOnError' => false,
-			'sql' => [
-				"ALTER TABLE hoopla_settings ADD IF NOT EXISTS countryCode VARCHAR(2) DEFAULT 'US' COMMENT 'Country code for pricing and ratings (US, CA, NZ, AU)' AFTER lastRecordProcessed"
-			]
-		], //hoopla_settings_add_country_code
-
+		// Brendan Lawlor
+		'addLibraryEmailToCustomForm' => [
+			 'title' => 'Add library email to custom form',
+			 'description' => 'Add library email to custom form',
+			 'continueOnError' => false,
+			 'sql' => [
+				 'ALTER TABLE library_web_builder_custom_form ADD COLUMN emailResultsTo varchar(100) DEFAULT ""'
+			 ]
+		 ], //addLibraryEmailToCustomForm
+		
 	];
 }
