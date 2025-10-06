@@ -3,7 +3,7 @@
 		<div class="relatedRecord row striped-{cycle values="odd,even"} {if !empty($promptAlternateEdition) && $index===0} danger{/if}" style="padding:1px">
 			{if !empty($showEditionCovers) && $showEditionCovers == 1}
 				<div class="col-tn-2 col-md-2 col-lg-2">
-					<img src="{$relatedRecord->getBookcoverUrl('small')}" class="img-thumbnail {$coverStyle}" alt="{translate text='Book Cover' inAttribute=true isPublicFacing=true}">
+					<img src="{$relatedRecord->getBookcoverUrl('small')}" class="img-thumbnail{if $useOriginalCoverUrls} use-original-covers{/if} {$coverStyle}" alt="{translate text='Book Cover' inAttribute=true isPublicFacing=true}">
 				</div>
 			{/if}
 
@@ -52,7 +52,7 @@
 				<div class="btn-group btn-group-vertical btn-group-md btn-block">
 					<a href="{$relatedRecord->getUrl()}" class="btn btn-sm btn-info">{translate text="More Info" isPublicFacing=true}</a>
 					{foreach from=$relatedRecord->getActions($variationId) item=curAction}
-						<a href="{if !empty($curAction.url)}{$curAction.url}{else}#{/if}" data-promptEdition="false" {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if} class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.id)}id="relatedRecord{$curAction.id}"{/if} {if !empty($curAction.alt)}title="{$curAction.alt}"{/if} {if !empty($curAction['data-needs-refresh'])}data-needs-refresh="{$curAction['data-needs-refresh']}"{/if} {if !empty($curAction['data-record-id'])}data-record-id="{$curAction['data-record-id']}"{/if} {if !empty($curAction['data-record-source'])}data-record-source="{$curAction['data-record-source']}"{/if}>{$curAction.title}</a>
+						<a href="{if !empty($curAction.url)}{$curAction.url}{else}#{/if}" data-prompt-edition="false" {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if} class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.id)}id="relatedRecord{$curAction.id}"{/if} {if !empty($curAction.alt)}title="{$curAction.alt}"{/if} {if !empty($curAction['data-needs-refresh'])}data-needs-refresh="{$curAction['data-needs-refresh']}"{/if} {if !empty($curAction['data-record-id'])}data-record-id="{$curAction['data-record-id']}"{/if} {if !empty($curAction['data-record-source'])}data-record-source="{$curAction['data-record-source']}"{/if}>{$curAction.title}</a>
 					{/foreach}
 				</div>
 			</div>

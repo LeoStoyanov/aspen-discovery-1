@@ -19,7 +19,7 @@
 		<div class="col-tn-4" style="padding-right: 0">
 			<div class="btn-group btn-group-vertical btn-group-md btn-block">
 				{foreach from=$firstRecord->getActions($variationId) item=curAction}
-					<a href="{if !empty($curAction.url)}{$curAction.url}{else}#{/if}" data-promptEdition="true" {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if} class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.id)}id="firstRecord{$curAction.id}"{/if} {if !empty($curAction.alt)}title="{$curAction.alt}"{/if} {if !empty($curAction['data-needs-refresh'])}data-needs-refresh="{$curAction['data-needs-refresh']}"{/if} {if !empty($curAction['data-record-id'])}data-record-id="{$curAction['data-record-id']}"{/if} {if !empty($curAction['data-record-source'])}data-record-source="{$curAction['data-record-source']}"{/if}>{$curAction.title}</a>
+					<a href="{if !empty($curAction.url)}{$curAction.url}{else}#{/if}" data-prompt-edition="{if count($relatedRecords) > 1 && $curAction.type == 'ils_hold' && $curAction.subtype == 'standard_ils_hold'}true{else}false{/if}" {if !empty($curAction.onclick)}onclick="{$curAction.onclick}"{/if} class="btn btn-sm {if empty($curAction.btnType)}btn-action{else}{$curAction.btnType}{/if} btn-wrap" {if !empty($curAction.target)}target="{$curAction.target}"{/if} {if !empty($curAction.id)}id="firstRecord{$curAction.id}"{/if} {if !empty($curAction.alt)}title="{$curAction.alt}"{/if} {if !empty($curAction['data-needs-refresh'])}data-needs-refresh="{$curAction['data-needs-refresh']}"{/if} {if !empty($curAction['data-record-id'])}data-record-id="{$curAction['data-record-id']}"{/if} {if !empty($curAction['data-record-source'])}data-record-source="{$curAction['data-record-source']}"{/if}>{$curAction.title}</a>
 				{/foreach}
 			</div>
 		</div>
@@ -51,8 +51,8 @@
 		<div class="row horizDisplayShowEditionsRow" id="horizDisplayShowEditionsRow_{$workId}">
 			<div class="col-tn-12">
 				<div class="horiz-line-left"></div>
-				<button class="horizDisplayShowEditionsBtn btn btn-sm" onclick="AspenDiscovery.GroupedWork.showAllEditionsForVariation('{$workId}', '{$format}', '{$variationId}')">{translate text="Show %1% Editions" 1=count($relatedRecords)}</button>
-				<button class="horizDisplayHideEditionsBtn btn btn-sm" style="display:none" onclick="AspenDiscovery.GroupedWork.hideAllEditionsForVariation('{$workId}', '{$format}', '{$variationId}')">{translate text="Hide %1% Editions" 1=count($relatedRecords)}</button>
+				<button class="horizDisplayShowEditionsBtn btn btn-sm" onclick="AspenDiscovery.GroupedWork.showAllEditionsForVariation('{$workId}', '{$format}', '{$variationId}')">{translate text="Show %1% Editions" 1=count($relatedRecords) isPublicFacing=true}</button>
+				<button class="horizDisplayHideEditionsBtn btn btn-sm" style="display:none" onclick="AspenDiscovery.GroupedWork.hideAllEditionsForVariation('{$workId}', '{$format}', '{$variationId}')">{translate text="Hide %1% Editions" 1=count($relatedRecords) isPublicFacing=true}</button>
 				<div class="horiz-line-right"></div>
 			</div>
 		</div>
