@@ -525,6 +525,8 @@ class Library extends DataObject {
 	/** @var LibraryCombinedResultSection[] */
 	private $_combinedResultSections;
 	private $_accountProfile = null;
+	/** @var HooplaLibrarySetting[] */
+	private $_hooplaLibrarySettings;
 
 	public function getNumericColumnNames(): array {
 		return [
@@ -830,6 +832,10 @@ class Library extends DataObject {
 		while ($hooplaScope->fetch()) {
 			$hooplaScopes[$hooplaScope->id] = $hooplaScope->name;
 		}
+
+		require_once ROOT_DIR . '/sys/Hoopla/HooplaLibrarySetting.php';
+		$hooplaLibrarySettingStructure = HooplaLibrarySetting::getObjectStructure($context);
+		unset($hooplaLibrarySettingStructure['settingId']);
 
 		require_once ROOT_DIR . '/sys/Axis360/Axis360Scope.php';
 		$axis360Scope = new Axis360Scope();
@@ -4077,14 +4083,6 @@ class Library extends DataObject {
 				'renderAsHeading' => true,
 				'permissions' => ['Library Records included in Catalog'],
 				'properties' => [
-					'hooplaLibraryID' => [
-						'property' => 'hooplaLibraryID',
-						'type' => 'integer',
-						'label' => 'Hoopla Library ID',
-						'description' => 'The ID Number Hoopla uses for this library',
-						'note' => 'Set to 0 to replace the "Check Out" and "Place Hold" buttons with the "Access Online" button.',
-						'hideInLists' => true,
-					],
 					'hooplaScopeId' => [
 						'property' => 'hooplaScopeId',
 						'type' => 'enum',
@@ -4094,6 +4092,22 @@ class Library extends DataObject {
 						'hideInLists' => true,
 						'default' => -1,
 						'forcesReindex' => true,
+					],
+					'hooplaLibrarySettings' => [
+						'property' => 'hooplaLibrarySettings',
+						'type' => 'oneToMany',
+						'label' => 'Hoopla Library Settings',
+						'description' => 'Settings for this library in Hoopla',
+						'keyThis' => 'libraryId',
+						'keyOther' => 'libraryId',
+						'subObjectType' => 'HooplaLibrarySetting',
+						'structure' => $hooplaLibrarySettingStructure,
+						'sortable' => false,
+						'storeDb' => true,
+						'allowEdit' => true,
+						'canEdit' => true,
+						'canAddNew' => true,
+						'canDelete' => true,
 					],
 				],
 			],

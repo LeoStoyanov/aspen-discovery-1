@@ -271,15 +271,13 @@ function getUpdates25_10_00(): array {
 					hooplaId bigint(20) NOT NULL,
 					settingId bigint(20) NOT NULL,
 					active tinyint(1) DEFAULT 1,
-					purchaseModel varchar(20) DEFAULT NULL COMMENT 'Instant, Flex, or other purchase model for this library',
 					dateAdded timestamp DEFAULT CURRENT_TIMESTAMP,
 					dateUpdated timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 					PRIMARY KEY (hooplaId, settingId),
 					INDEX idx_hoopla_id (hooplaId),
 					INDEX idx_setting_id (settingId),
 					INDEX idx_setting_active (settingId, active),
-					INDEX idx_active (active),
-					INDEX idx_purchase_model (purchaseModel)
+					INDEX idx_active (active)
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
 			]
 		], //hoopla_entitlements_table
@@ -345,10 +343,8 @@ function getUpdates25_10_00(): array {
 					id int(11) NOT NULL AUTO_INCREMENT,
 					settingId bigint(20) NOT NULL,
 					libraryId int(11) NOT NULL,
-					enableFlex tinyint(1) DEFAULT 1 COMMENT 'Whether this library has Flex titles enabled',
-					enableInstant tinyint(1) DEFAULT 1 COMMENT 'Whether this library has Instant titles enabled',
-					dateAdded timestamp DEFAULT CURRENT_TIMESTAMP,
-					dateUpdated timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+					enableFlex tinyint(1) DEFAULT 0 COMMENT 'Whether this library has Flex titles enabled',
+					enableInstant tinyint(1) DEFAULT 0 COMMENT 'Whether this library has Instant titles enabled',
 					PRIMARY KEY (id),
 					UNIQUE KEY unique_setting_library (settingId, libraryId),
 					INDEX idx_setting_id (settingId),
@@ -365,26 +361,53 @@ function getUpdates25_10_00(): array {
 				// Remove the single libraryId from hoopla_settings
 				"ALTER TABLE hoopla_settings DROP COLUMN IF EXISTS libraryId",
 
-				// Update hoopla_entitlements to use libraryId instead of settingId
+				// Update hoopla_entitlements: remove settingId/libraryId/active, keep hooplaId as PK
 				"ALTER TABLE hoopla_entitlements
 				 DROP FOREIGN KEY IF EXISTS fk_hoopla_entitlements_setting,
 				 DROP INDEX IF EXISTS idx_setting_id,
 				 DROP INDEX IF EXISTS idx_setting_active,
-				 CHANGE COLUMN settingId libraryId int(11) NOT NULL,
+				 DROP INDEX IF EXISTS idx_library_id,
+				 DROP INDEX IF EXISTS idx_library_active,
+				 DROP INDEX IF EXISTS idx_active_type,
+				 DROP COLUMN IF EXISTS settingId,
+				 DROP COLUMN IF EXISTS active,
 				 DROP PRIMARY KEY,
-				 ADD PRIMARY KEY (hooplaId, libraryId),
-				 ADD INDEX idx_library_id (libraryId),
-				 ADD INDEX idx_library_active (libraryId, active),
-				 ADD FOREIGN KEY (libraryId) REFERENCES library(libraryId) ON DELETE CASCADE"
+				 ADD PRIMARY KEY (hooplaId),
+				 ADD INDEX idx_hoopla_type (hooplaType)"
 			]
 		], //hoopla_multi_library_schema
 
+		'create_hoopla_entitlement_scopes_junction' => [
+			'title' => 'Create Hoopla Entitlement Scopes Junction Table',
+			'description' => 'Create junction table to track which libraries have access to which Hoopla titles',
+			'continueOnError' => false,
+			'sql' => [
+				"CREATE TABLE hoopla_entitlement_scopes (
+				    entitlementId int(11) NOT NULL,
+				    libraryId int(11) NOT NULL,
+				    PRIMARY KEY (entitlementId, libraryId),
+				    INDEX idx_library (libraryId),
+				    INDEX idx_entitlement (entitlementId),
+				    FOREIGN KEY (entitlementId) REFERENCES hoopla_entitlements(id) ON DELETE CASCADE,
+				    FOREIGN KEY (libraryId) REFERENCES library(libraryId) ON DELETE CASCADE
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+			]
+		], //create_hoopla_entitlement_scopes_junction
+
+		'hoopla_settings_add_last_update_of_changed_records' => [
+			'title' => 'Add lastUpdateOfChangedRecords to Hoopla Settings',
+			'description' => 'Add unified timestamp field for tracking last global content sync',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_settings ADD COLUMN lastUpdateOfChangedRecords BIGINT(20) DEFAULT 0 COMMENT 'Timestamp of last global content sync'"
+			]
+		], //hoopla_settings_add_last_update_of_changed_records
 		'hoopla_settings_add_last_record_processed' => [
 			'title' => 'Add lastRecordProcessed to Hoopla Settings',
 			'description' => 'Add field to track resume point for global content sync if interrupted',
 			'continueOnError' => false,
 			'sql' => [
-				"ALTER TABLE hoopla_settings ADD COLUMN lastRecordProcessed BIGINT(20) DEFAULT 0 AFTER lastUpdateOfEntitlements"
+				"ALTER TABLE hoopla_settings ADD COLUMN lastRecordProcessed BIGINT(20) DEFAULT 0"
 			]
 		], //hoopla_settings_add_last_record_processed
 
@@ -403,7 +426,7 @@ function getUpdates25_10_00(): array {
 			'description' => 'Add hooplaType column to hoopla_entitlements since this info comes from entitlements API',
 			'continueOnError' => false,
 			'sql' => [
-				"ALTER TABLE hoopla_entitlements ADD COLUMN IF NOT EXISTS hooplaType VARCHAR(20) DEFAULT NULL COMMENT 'Instant or Flex' AFTER purchaseModel"
+				"ALTER TABLE hoopla_entitlements ADD COLUMN IF NOT EXISTS hooplaType VARCHAR(20) DEFAULT NULL COMMENT 'Instant or Flex' AFTER active"
 			]
 		], //hoopla_entitlements_add_hoopla_type
 
@@ -421,11 +444,43 @@ function getUpdates25_10_00(): array {
 			'description' => 'Add flags to control full entitlements updates and clearing disabled purchase models',
 			'continueOnError' => false,
 			'sql' => [
-				"ALTER TABLE hoopla_library_settings ADD COLUMN runFullEntitlementsUpdate TINYINT(1) DEFAULT 0 COMMENT 'Force full entitlements sync on next run' AFTER enableInstant",
-				"ALTER TABLE hoopla_library_settings ADD COLUMN clearDisabledFlex TINYINT(1) DEFAULT 0 COMMENT 'Run Flex entitlements one more time to clear inactive titles' AFTER runFullEntitlementsUpdate",
-				"ALTER TABLE hoopla_library_settings ADD COLUMN clearDisabledInstant TINYINT(1) DEFAULT 0 COMMENT 'Run Instant entitlements one more time to clear inactive titles' AFTER clearDisabledFlex"
+				"ALTER TABLE hoopla_library_settings ADD COLUMN runFullEntitlementsUpdate TINYINT(1) DEFAULT 0 COMMENT 'Force full entitlements sync on next run'",
+				"ALTER TABLE hoopla_library_settings ADD COLUMN clearDisabledFlex TINYINT(1) DEFAULT 0 COMMENT 'Run Flex entitlements one more time to clear inactive titles'",
+				"ALTER TABLE hoopla_library_settings ADD COLUMN clearDisabledInstant TINYINT(1) DEFAULT 0 COMMENT 'Run Instant entitlements one more time to clear inactive titles'"
 			]
 		], //hoopla_library_settings_add_purchase_model_flags
+		'hoopla_library_settings_add_hoopla_library_id' => [
+			'title' => 'Add Hoopla Library ID to Hoopla Library Settings',
+			'description' => 'Add hooplaLibraryId field to store the actual Hoopla API library ID (distinct from Aspen internal libraryId)',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_library_settings ADD COLUMN hooplaLibraryId INT(11) NOT NULL DEFAULT 0 COMMENT 'The library ID provided by Hoopla for API calls'"
+			]
+		], //hoopla_library_settings_add_hoopla_library_id
+		'hoopla_library_settings_add_enable_circulation_buttons' => [
+			'title' => 'Add Enable Circulation Buttons to Hoopla Library Settings',
+			'description' => 'Add enableCirculationButtons field to control whether to show Hold/Checkout buttons vs Access Online button',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_library_settings ADD COLUMN enableCirculationButtons TINYINT(1) DEFAULT 1 COMMENT 'Show Hold and Checkout buttons instead of Access Online button'"
+			]
+		], //hoopla_library_settings_add_enable_circulation_buttons
+		'hoopla_settings_add_run_full_global_content_update' => [
+			'title' => 'Add Run Full Global Content Update to Hoopla Settings',
+			'description' => 'Add flag to force a full global content sync on next run',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_settings ADD COLUMN runFullGlobalContentUpdate TINYINT(1) DEFAULT 0 COMMENT 'Force a full global content sync on next run (ignores lastUpdateOfChangedRecords)'"
+			]
+		], //hoopla_settings_add_run_full_global_content_update
+		'hoopla_export_increase_rating_length' => [
+			'title' => 'Increase Hoopla Export Rating Column Length',
+			'description' => 'Increase rating column from VARCHAR(10) to VARCHAR(25) to accommodate longer rating values',
+			'continueOnError' => false,
+			'sql' => [
+				"ALTER TABLE hoopla_export MODIFY COLUMN rating VARCHAR(25) DEFAULT NULL"
+			]
+		], //hoopla_export_increase_rating_length
 
 		//Talpa Search
 

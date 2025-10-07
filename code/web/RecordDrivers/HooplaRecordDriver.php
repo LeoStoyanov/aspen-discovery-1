@@ -3,6 +3,7 @@
 require_once ROOT_DIR . '/RecordDrivers/RecordInterface.php';
 require_once ROOT_DIR . '/RecordDrivers/GroupedWorkSubDriver.php';
 require_once ROOT_DIR . '/sys/Hoopla/HooplaExtract.php';
+require_once ROOT_DIR . '/sys/Hoopla/HooplaEntitlement.php';
 
 class HooplaRecordDriver extends GroupedWorkSubDriver {
 	protected $id;
@@ -136,7 +137,7 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 	 */
 	public function getTableOfContents() {
 		$tableOfContents = [];
-		$segments = $this->hooplaRawMetadata->segments;
+		$segments = isset($this->hooplaRawMetadata->segments) ? $this->hooplaRawMetadata->segments : null;
 		if (!empty($segments)) {
 			foreach ($segments as $segment) {
 				$label = $segment->name;
@@ -265,7 +266,17 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 
 				/** @var Library $searchLibrary */
 				$searchLibrary = Library::getSearchLibrary();
-				if ($searchLibrary->hooplaLibraryID > 0) { // Library is enabled for Hoopla patron action integration
+				require_once ROOT_DIR . '/sys/Hoopla/HooplaLibrarySetting.php';
+				$librarySetting = new HooplaLibrarySetting();
+				$librarySetting->libraryId = $searchLibrary->libraryId;
+				$hasHooplaConfigured = $librarySetting->find(true) && $librarySetting->hooplaLibraryId > 0;
+				$circulationButtonsEnabled = $hasHooplaConfigured && $librarySetting->enableCirculationButtons;
+				$isEntitled = false;
+				if ($hasHooplaConfigured) {
+					$isEntitled = HooplaEntitlement::isLibraryEntitled($this->id, $searchLibrary->libraryId);
+				}
+
+				if ($circulationButtonsEnabled && $isEntitled) {
 					$id = $this->id;
 					$hooplaType = $this->getHooplaType();
 					if (!$isAvailable) {
@@ -385,11 +396,21 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 	}
 
 	public function getHooplaType() : string {
-		if (!empty($this->hooplaExtract->hooplaType)) {
-			return $this->hooplaExtract->hooplaType;
-		} else {
-			return 'Instant';
+		// Get the current library context to determine which entitlement to check
+		require_once ROOT_DIR . '/sys/LibraryLocation/Library.php';
+		$searchLibrary = Library::getSearchLibrary();
+		if ($searchLibrary && $searchLibrary->libraryId) {
+			// Look up the entitlement for this title and library
+			$entitlement = new HooplaEntitlement();
+			$entitlement->hooplaId = $this->id;
+			$entitlement->libraryId = $searchLibrary->libraryId;
+			$entitlement->active = 1;
+			if ($entitlement->find(true) && !empty($entitlement->hooplaType)) {
+				return $entitlement->hooplaType;
+			}
 		}
+		// Default to Instant if no entitlement found
+		return 'Instant';
 	}
 
 	/**
@@ -427,7 +448,10 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 	 * @return array
 	 */
 	function getPublicationDates() {
-		return [$this->hooplaRawMetadata->year];
+		if (isset($this->hooplaRawMetadata->releaseYear)) {
+			return [$this->hooplaRawMetadata->releaseYear];
+		}
+		return [];
 	}
 
 	public function getRecordType() {
@@ -506,7 +530,17 @@ class HooplaRecordDriver extends GroupedWorkSubDriver {
 
 		/** @var Library $searchLibrary */
 		$searchLibrary = Library::getSearchLibrary();
-		if ($searchLibrary->hooplaLibraryID > 0) { // Library is enabled for Hoopla patron action integration
+		require_once ROOT_DIR . '/sys/Hoopla/HooplaLibrarySetting.php';
+		$librarySetting = new HooplaLibrarySetting();
+		$librarySetting->libraryId = $searchLibrary->libraryId;
+		$hasHooplaConfigured = $librarySetting->find(true) && $librarySetting->hooplaLibraryId > 0;
+		$circulationButtonsEnabled = $hasHooplaConfigured && $librarySetting->enableCirculationButtons;
+		$isEntitled = false;
+		if ($hasHooplaConfigured) {
+			$isEntitled = HooplaEntitlement::isLibraryEntitled($this->id, $searchLibrary->libraryId);
+		}
+
+		if ($circulationButtonsEnabled && $isEntitled) {
 			$hooplaType = $this->getHooplaType();
 			$title = translate([
 				'text' => 'Check Out Hoopla',

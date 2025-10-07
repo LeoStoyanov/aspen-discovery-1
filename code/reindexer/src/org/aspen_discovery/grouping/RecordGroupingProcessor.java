@@ -1053,7 +1053,8 @@ public class RecordGroupingProcessor {
 				subTitle = "";
 			}
 		}
-		String mediaType = itemDetails.getString("kind");
+		// Handle both old library content API ("kind") and new global content API ("format")
+		String mediaType = itemDetails.has("kind") ? itemDetails.getString("kind") : itemDetails.getString("format");
 		String primaryFormat;
 		switch (mediaType) {
 			case "MOVIE":

@@ -3,7 +3,6 @@
 class HooplaExtract extends DataObject {
 	public $id;
 	public $hooplaId;
-	public $active;
 	public $title;
 	public $kind;
 	public $pa;  //Parental Advisory
@@ -20,7 +19,6 @@ class HooplaExtract extends DataObject {
 	public $rawChecksum;
 	public $rawResponse;
 	public $dateFirstDetected;
-	public $hooplaType;
 
 	public $__table = 'hoopla_export';
 

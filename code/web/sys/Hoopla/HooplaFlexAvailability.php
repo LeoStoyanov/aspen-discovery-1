@@ -5,6 +5,7 @@ class HooplaFlexAvailability extends DataObject {
 
 	public $id;
 	public $hooplaId;
+	public $libraryId;
 	public $holdsQueueSize;
 	/** @noinspection PhpUnused */
 	public $availableCopies;

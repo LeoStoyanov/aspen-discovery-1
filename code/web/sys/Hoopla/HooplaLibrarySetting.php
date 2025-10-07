@@ -7,16 +7,15 @@ class HooplaLibrarySetting extends DataObject {
 	public $id;
 	public $settingId;
 	public $libraryId;
+	public $hooplaLibraryId;
 	public $enableFlex;
 	public $enableInstant;
+	public $enableCirculationButtons;
 	public $runFullEntitlementsUpdate;
 	public $clearDisabledFlex;
 	public $clearDisabledInstant;
-	public $dateAdded;
-	public $dateUpdated;
 
 	static array $_objectStructure = [];
-
 	static function getObjectStructure($context = ''): array {
 		if (isset(self::$_objectStructure[$context]) && self::$_objectStructure[$context] !== null) {
 			return self::$_objectStructure[$context];
@@ -45,19 +44,40 @@ class HooplaLibrarySetting extends DataObject {
 				'description' => 'The library this setting applies to',
 				'required' => true,
 			],
+			'hooplaLibraryId' => [
+				'property' => 'hooplaLibraryId',
+				'type' => 'integer',
+				'label' => 'Hoopla Library ID',
+				'description' => 'The library ID provided by Hoopla for API calls (distinct from Aspen internal library ID)',
+				'required' => true,
+			],
 			'enableFlex' => [
 				'property' => 'enableFlex',
 				'type' => 'checkbox',
 				'label' => 'Enable Flex',
 				'description' => 'Whether Flex titles are enabled for this library',
-				'default' => 1,
+				'default' => 0,
 			],
 			'enableInstant' => [
 				'property' => 'enableInstant',
 				'type' => 'checkbox',
 				'label' => 'Enable Instant',
 				'description' => 'Whether Instant titles are enabled for this library',
+				'default' => 0,
+			],
+			'enableCirculationButtons' => [
+				'property' => 'enableCirculationButtons',
+				'type' => 'checkbox',
+				'label' => 'Enable Circulation Buttons',
+				'description' => 'Show Hold and Checkout buttons instead of Access Online button',
 				'default' => 1,
+			],
+			'runFullEntitlementsUpdate' => [
+				'property' => 'runFullEntitlementsUpdate',
+				'type' => 'checkbox',
+				'label' => 'Run Full Entitlements Update',
+				'description' => 'Force a full entitlements sync on next run for this library (runs even when global content was not synced)',
+				'default' => 0,
 			],
 		];
 
@@ -80,6 +100,10 @@ class HooplaLibrarySetting extends DataObject {
 		return $this->getLibraryName() . ' (Flex: ' . ($this->enableFlex ? 'Yes' : 'No') . ', Instant: ' . ($this->enableInstant ? 'Yes' : 'No') . ')';
 	}
 
+	public function getEditLink(): string {
+		return '';
+	}
+
 	public function update($context = ''): bool|int {
 		// Check if we're disabling a previously enabled purchase model
 		if (isset($this->id) && $this->id) {
@@ -88,11 +112,11 @@ class HooplaLibrarySetting extends DataObject {
 			if ($existingSetting->find(true)) {
 				// If Flex was enabled and is now being disabled, set the clear flag
 				if ($existingSetting->enableFlex && !$this->enableFlex) {
-					$this->clearDisabledFlex = 1;
+					$this->__set('clearDisabledFlex', 1);
 				}
 				// If Instant was enabled and is now being disabled, set the clear flag
 				if ($existingSetting->enableInstant && !$this->enableInstant) {
-					$this->clearDisabledInstant = 1;
+					$this->__set('clearDisabledInstant', 1);
 				}
 			}
 		}
@@ -104,7 +128,7 @@ class HooplaLibrarySetting extends DataObject {
 	 * @param int $settingId
 	 * @return array Array of library configurations
 	 */
-	public static function getLibrariesForSetting($settingId): array
+	public static function getLibrariesForSetting(int $settingId): array
 	{
 		$librarySettings = new HooplaLibrarySetting();
 		$librarySettings->settingId = $settingId;

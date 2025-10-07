@@ -5,6 +5,7 @@ import java.sql.SQLException;
 
 class HooplaLibraryConfiguration {
 	private final int libraryId;
+	private final int hooplaLibraryId;
 	private final boolean enableFlex;
 	private final boolean enableInstant;
 	private final boolean runFullEntitlementsUpdate;
@@ -13,6 +14,7 @@ class HooplaLibraryConfiguration {
 
 	public HooplaLibraryConfiguration(ResultSet rs) throws SQLException {
 		libraryId = rs.getInt("libraryId");
+		hooplaLibraryId = rs.getInt("hooplaLibraryId");
 		enableFlex = rs.getBoolean("enableFlex");
 		enableInstant = rs.getBoolean("enableInstant");
 		runFullEntitlementsUpdate = rs.getBoolean("runFullEntitlementsUpdate");
@@ -22,6 +24,10 @@ class HooplaLibraryConfiguration {
 
 	public int getLibraryId() {
 		return libraryId;
+	}
+
+	public int getHooplaLibraryId() {
+		return hooplaLibraryId;
 	}
 
 	public boolean isFlexEnabled() {

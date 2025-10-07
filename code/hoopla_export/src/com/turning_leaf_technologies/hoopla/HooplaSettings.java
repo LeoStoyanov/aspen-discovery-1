@@ -21,6 +21,7 @@ class HooplaSettings {
 	private final String countryCode;
 
 	private final boolean regroupAllRecords;
+	private final boolean runFullGlobalContentUpdate;
 
 	public HooplaSettings(ResultSet settingsRS) throws SQLException {
 		settingsId = settingsRS.getLong("id");
@@ -39,6 +40,7 @@ class HooplaSettings {
 		countryCode = (tmpCountryCode != null && !tmpCountryCode.isEmpty()) ? tmpCountryCode : "US";
 
 		regroupAllRecords = settingsRS.getBoolean("regroupAllRecords");
+		runFullGlobalContentUpdate = settingsRS.getBoolean("runFullGlobalContentUpdate");
 	}
 
 	public long getSettingsId() {
@@ -81,5 +83,9 @@ class HooplaSettings {
 
 	public String getCountryCode() {
 		return countryCode;
+	}
+
+	public boolean isRunFullGlobalContentUpdate() {
+		return runFullGlobalContentUpdate;
 	}
 }

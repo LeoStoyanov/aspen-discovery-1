@@ -30,18 +30,20 @@ class HooplaProcessor {
 	private PreparedStatement getFlexAvailabilityStmt;
 	private PreparedStatement checkEntitlementStmt;
 	private PreparedStatement hasAnyEntitlementsStmt;
+	private PreparedStatement hasFlexEntitlementsStmt;
 	HooplaProcessor(GroupedWorkIndexer indexer, Connection dbConn, Logger logger) {
 		this.indexer = indexer;
 		this.logger = logger;
 		this.dbConn = dbConn;
 
 		try {
-			getProductInfoStmt = dbConn.prepareStatement("SELECT id, hooplaId, title, kind, pa, demo, profanity, rating, abridged, children, price, rawChecksum, UNCOMPRESS(rawResponse) as rawResponse, dateFirstDetected, hooplaType from hoopla_export where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
+			getProductInfoStmt = dbConn.prepareStatement("SELECT id, hooplaId, title, kind, pa, demo, profanity, rating, abridged, children, price, rawChecksum, UNCOMPRESS(rawResponse) as rawResponse, dateFirstDetected from hoopla_export where hooplaId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			doubleDecodeRawResponseStmt = dbConn.prepareStatement("SELECT UNCOMPRESS(UNCOMPRESS(rawResponse)) as rawResponse from hoopla_export where id = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			updateRawResponseStmt = dbConn.prepareStatement("UPDATE hoopla_export SET rawResponse = COMPRESS(?) where id = ?");
 			getFlexAvailabilityStmt = dbConn.prepareStatement("SELECT * from hoopla_flex_availability where hooplaId = ? AND libraryId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
-			checkEntitlementStmt = dbConn.prepareStatement("SELECT purchaseModel FROM hoopla_entitlements WHERE hooplaId = ? AND libraryId = ? AND active = 1", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			checkEntitlementStmt = dbConn.prepareStatement("SELECT hooplaType FROM hoopla_entitlements WHERE hooplaId = ? AND libraryId = ? AND active = 1", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			hasAnyEntitlementsStmt = dbConn.prepareStatement("SELECT 1 FROM hoopla_entitlements WHERE hooplaId = ? AND active = 1 LIMIT 1", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			hasFlexEntitlementsStmt = dbConn.prepareStatement("SELECT 1 FROM hoopla_entitlements WHERE hooplaId = ? AND hooplaType = 'Flex' AND active = 1 LIMIT 1", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 		} catch (SQLException e) {
 			logger.error("Error setting up hoopla processor", e);
 		}
@@ -72,7 +74,13 @@ class HooplaProcessor {
 				}
 				String kind = productRS.getString("kind");
 				float price = productRS.getFloat("price");
-				String hooplaType = productRS.getString("hooplaType");
+
+				// Determine if this title has any Flex entitlements
+				hasFlexEntitlementsStmt.setString(1, identifier);
+				ResultSet hasFlexRS = hasFlexEntitlementsStmt.executeQuery();
+				boolean hasFlex = hasFlexRS.next();
+				hasFlexRS.close();
+				String hooplaType = hasFlex ? "Flex" : "Instant";
 
 				RecordInfo hooplaRecord = groupedWork.addRelatedRecord("hoopla", identifier);
 				hooplaRecord.setRecordIdentifier("hoopla", identifier);
@@ -168,7 +176,8 @@ class HooplaProcessor {
 					groupedWork.addSeriesWithVolume(series, volume, 2);
 				}
 
-				boolean children = rawResponse.getBoolean("children");
+				// Handle both old API field name "children" and new API field name "isForChildren"
+				boolean children = rawResponse.optBoolean("children", rawResponse.optBoolean("isForChildren", false));
 				boolean isAdult = false;
 				boolean isTeen = false;
 				boolean isKids = false;
@@ -359,14 +368,16 @@ class HooplaProcessor {
 					groupedWork.addKeywords(artistsToAdd);
 				}
 
-				JSONArray genres = rawResponse.getJSONArray("genres");
 				HashSet<String> genresToAdd = new HashSet<>();
 				HashSet<String> topicsToAdd = new HashSet<>();
-				for (int i = 0; i < genres.length(); i++) {
-					String genre = genres.getString(i);
+				if (rawResponse.has("genres")) {
+					JSONArray genres = rawResponse.getJSONArray("genres");
+					for (int i = 0; i < genres.length(); i++) {
+						String genre = genres.getString(i);
 
-					genresToAdd.add(genre);
-					topicsToAdd.add(genre);
+						genresToAdd.add(genre);
+						topicsToAdd.add(genre);
+					}
 				}
 				groupedWork.addGenre(genresToAdd);
 				groupedWork.addGenreFacet(genresToAdd);
@@ -375,8 +386,10 @@ class HooplaProcessor {
 
 				HashMap<String, Integer> literaryForm = new HashMap<>();
 				HashMap<String, Integer> literaryFormFull = new HashMap<>();
-				if (rawResponse.has("fiction")){
-					if (rawResponse.getBoolean("fiction")){
+				// Handle both old API field name "fiction" and new API field name "isFiction"
+				if (rawResponse.has("fiction") || rawResponse.has("isFiction")){
+					boolean isFiction = rawResponse.optBoolean("fiction", rawResponse.optBoolean("isFiction", false));
+					if (isFiction){
 						Util.addToMapWithCount(literaryForm, "Fiction");
 						Util.addToMapWithCount(literaryFormFull, "Fiction");
 						if (groupedWork != null && groupedWork.isDebugEnabled()) {groupedWork.addDebugMessage("Literary Form is fiction based on Hoopla record", 2);}
@@ -395,8 +408,15 @@ class HooplaProcessor {
 
 				String publisher = rawResponse.getString("publisher");
 				groupedWork.addPublisher(publisher);
-				//publication date
-				Object yearObj = rawResponse.get("year");
+				//publication date - handle both old API field name "year" and new API field name "releaseYear"
+				Object yearObj;
+				if (rawResponse.has("year")) {
+					yearObj = rawResponse.get("year");
+				} else if (rawResponse.has("releaseYear")) {
+					yearObj = rawResponse.get("releaseYear");
+				} else {
+					yearObj = "";
+				}
 				String releaseYear = yearObj.toString();
 
 				groupedWork.addPublicationDate(releaseYear);
@@ -433,6 +453,7 @@ class HooplaProcessor {
 						ItemInfo itemInfo = new ItemInfo();
 						itemInfo.setItemIdentifier(identifier + ":" + libraryId + ":" + primaryFormat);
 						itemInfo.seteContentSource("Hoopla");
+						itemInfo.seteContentSubSource(hooplaType);
 						itemInfo.setIsEContent(true);
 						itemInfo.seteContentUrl(rawResponse.getString("url"));
 						itemInfo.setShelfLocation("Online Hoopla Collection");
@@ -475,6 +496,7 @@ class HooplaProcessor {
 					ItemInfo itemInfo = new ItemInfo();
 					itemInfo.setItemIdentifier(identifier);
 					itemInfo.seteContentSource("Hoopla");
+					itemInfo.seteContentSubSource(hooplaType);
 					itemInfo.setIsEContent(true);
 					itemInfo.seteContentUrl(rawResponse.getString("url"));
 					itemInfo.setShelfLocation("Online Hoopla Collection");
@@ -571,7 +593,7 @@ class HooplaProcessor {
 			String purchaseModel = null;
 
 			if (hasEntitlement) {
-				purchaseModel = entitlementRS.getString("purchaseModel");
+				purchaseModel = entitlementRS.getString("hooplaType");
 				// If no purchase model is stored, fall back to global hooplaType
 				if (purchaseModel == null || purchaseModel.isEmpty()) {
 					purchaseModel = fallbackPurchaseModel;

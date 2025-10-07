@@ -3,7 +3,7 @@ require_once ROOT_DIR . '/sys/Hoopla/HooplaScope.php';
 require_once ROOT_DIR . '/sys/Hoopla/HooplaLibrarySetting.php';
 
 class HooplaSetting extends DataObject {
-	public $__table = 'hoopla_settings';    // table name
+	public $__table = 'hoopla_settings';
 	public $id;
 	public $apiUrl;
 	public $apiUsername;
@@ -11,8 +11,8 @@ class HooplaSetting extends DataObject {
 	public $accessToken;
 	public $tokenExpirationTime;
 	public $regroupAllRecords;
-	public $lastUpdateOfGlobalContent;
-	public $lastUpdateOfEntitlements;
+	public $runFullGlobalContentUpdate;
+	public $lastUpdateOfChangedRecords;
 	public $lastRecordProcessed;
 	public $countryCode;
 
@@ -41,6 +41,68 @@ class HooplaSetting extends DataObject {
 				'label' => 'url',
 				'description' => 'The URL to the API',
 			],
+			'apiUsername' => [
+				'property' => 'apiUsername',
+				'type' => 'text',
+				'label' => 'API Username',
+				'description' => 'The API Username provided by Hoopla when registering',
+			],
+			'apiPassword' => [
+				'property' => 'apiPassword',
+				'type' => 'storedPassword',
+				'label' => 'API Password',
+				'description' => 'The API Password provided by Hoopla when registering',
+				'hideInLists' => true,
+			],
+			'globalContentEntitlements' => [
+				'property' => 'globalContentEntitlements',
+				'type' => 'section',
+				'label' => 'Global Content & Entitlements API',
+				'expandByDefault' => true,
+				'properties' => [
+					'countryCode' => [
+						'property' => 'countryCode',
+						'type' => 'enum',
+						'label' => 'Country Code',
+						'description' => 'Country code for pricing and ratings display',
+						'values' => [
+							'US' => 'United States (US)',
+							'CA' => 'Canada (CA)',
+							'NZ' => 'New Zealand (NZ)',
+							'AU' => 'Australia (AU)',
+						],
+						'default' => 'US',
+					],
+					'runFullGlobalContentUpdate' => [
+						'property' => 'runFullGlobalContentUpdate',
+						'type' => 'checkbox',
+						'label' => 'Run Full Global Content Update',
+						'description' => 'Force a full global content sync on next run (ignores lastUpdateOfChangedRecords)',
+						'default' => 0,
+					],
+					'regroupAllRecords' => [
+						'property' => 'regroupAllRecords',
+						'type' => 'checkbox',
+						'label' => 'Regroup all Records',
+						'description' => 'Whether or not all existing records should be regrouped',
+						'default' => 0,
+					],
+					'lastUpdateOfChangedRecords' => [
+						'property' => 'lastUpdateOfChangedRecords',
+						'type' => 'timestamp',
+						'label' => 'Last Update of Changed Records',
+						'description' => 'Timestamp of last global content sync',
+						'default' => 0,
+					],
+					'lastRecordProcessed' => [
+						'property' => 'lastRecordProcessed',
+						'type' => 'integer',
+						'label' => 'Last Record Processed',
+						'description' => 'Resume point for interrupted global content sync (0 = complete)',
+						'default' => 0,
+					],
+				],
+			],
 			'librarySettings' => [
 				'property' => 'librarySettings',
 				'type' => 'oneToMany',
@@ -57,69 +119,6 @@ class HooplaSetting extends DataObject {
 				'canAddNew' => true,
 				'canDelete' => true,
 				'additionalOneToManyActions' => [],
-			],
-			'apiUsername' => [
-				'property' => 'apiUsername',
-				'type' => 'text',
-				'label' => 'API Username',
-				'description' => 'The API Username provided by Hoopla when registering',
-			],
-			'apiPassword' => [
-				'property' => 'apiPassword',
-				'type' => 'storedPassword',
-				'label' => 'API Password',
-				'description' => 'The API Password provided by Hoopla when registering',
-				'hideInLists' => true,
-			],
-			'countryCode' => [
-				'property' => 'countryCode',
-				'type' => 'enum',
-				'label' => 'Country Code',
-				'description' => 'Country code for pricing and ratings display',
-				'values' => [
-					'US' => 'United States (US)',
-					'CA' => 'Canada (CA)',
-					'NZ' => 'New Zealand (NZ)',
-					'AU' => 'Australia (AU)',
-				],
-				'default' => 'US',
-			],
-			'regroupAllRecords' => [
-				'property' => 'regroupAllRecords',
-				'type' => 'checkbox',
-				'label' => 'Regroup all Records',
-				'description' => 'Whether or not all existing records should be regrouped',
-				'default' => 0,
-			],
-			'globalContentEntitlements' => [
-				'property' => 'globalContentEntitlements',
-				'type' => 'section',
-				'label' => 'Global Content & Entitlements API',
-				'expandByDefault' => true,
-				'properties' => [
-					'lastUpdateOfGlobalContent' => [
-						'property' => 'lastUpdateOfGlobalContent',
-						'type' => 'timestamp',
-						'label' => 'Last Update of Global Content',
-						'description' => 'The timestamp when global content was last synced',
-						'default' => 0,
-					],
-					'lastUpdateOfEntitlements' => [
-						'property' => 'lastUpdateOfEntitlements',
-						'type' => 'timestamp',
-						'label' => 'Last Update of Library Entitlements',
-						'description' => 'The timestamp when library entitlements were last synced',
-						'default' => 0,
-					],
-					'lastRecordProcessed' => [
-						'property' => 'lastRecordProcessed',
-						'type' => 'integer',
-						'label' => 'Last Record Processed',
-						'description' => 'Resume point for interrupted global content sync (0 = complete)',
-						'default' => 0,
-						'readOnly' => true,
-					],
-				],
 			],
 			'scopes' => [
 				'property' => 'scopes',
@@ -158,16 +157,6 @@ class HooplaSetting extends DataObject {
 			$names[] = $librarySetting->getLibraryName();
 		}
 		return $names;
-	}
-
-	public function getLibraryIds(): array
-	{
-		$librarySettings = HooplaLibrarySetting::getLibrariesForSetting($this->id);
-		$ids = [];
-		foreach ($librarySettings as $librarySetting) {
-			$ids[] = $librarySetting->libraryId;
-		}
-		return $ids;
 	}
 
 	public function update($context = ''): bool|int
@@ -215,7 +204,7 @@ class HooplaSetting extends DataObject {
 		}
 	}
 
-	public function saveLibrarySettings() {
+	public function saveLibrarySettings(): void {
 		if (isset ($this->_librarySettings) && is_array($this->_librarySettings)) {
 			$this->saveOneToManyOptions($this->_librarySettings, 'settingId');
 			unset($this->_librarySettings);
