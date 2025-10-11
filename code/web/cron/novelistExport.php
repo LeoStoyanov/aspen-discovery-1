@@ -1,8 +1,8 @@
 <?php
+/** @noinspection SqlDialectInspection */
 
 require_once __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../bootstrap_aspen.php';
-
 require_once ROOT_DIR . '/sys/CronLogEntry.php';
 require_once ROOT_DIR . '/sys/SearchObject/SearchObjectFactory.php';
 
@@ -24,178 +24,194 @@ if (!$file) {;
     die("Error: Could not create export file\n");
 }
 
-// Write header
 fwrite($file, "isbn\titemid\tbibrecordcallno\tbibrecordid\ttitle\n");
 
 echo "Starting NoveList export using optimized Solr approach...\n";
-flush();
+flush(); // Occasionally flush for echo output.
 
 try {
     echo "Querying Solr directly for all records with ISBNs...\n";
     flush();
 
     $solrUrl = $configArray['Index']['url'] . '/grouped_works_v2/select';
-	$solrParams = [
-		'q' => '*:*',
-		'fl' => 'id,primary_isbn,isbn',
-		'rows' => 9999999, // Get all records by using very large number.
-		'wt' => 'json'
-	];
+    $solrChunkSize = 5000;
+    $solrBaseParams = [
+        'q' => '*:*',
+        'fl' => 'id,primary_isbn,isbn',
+        'rows' => $solrChunkSize,
+        'wt' => 'json',
+        'sort' => 'id asc',
+    ];
 
-	$fullSolrUrl = $solrUrl . '?' . http_build_query($solrParams);
-    echo "Solr URL: " . $fullSolrUrl . "\n";
+    $initialSolrUrl = $solrUrl . '?' . http_build_query($solrBaseParams + ['cursorMark' => '*']);
+    // Use Solr cursorMark paging to stream results without materializing the full result set in PHP.
+    echo "Solr URL (cursor-based): " . $initialSolrUrl . "\n";
     flush();
 
-    $response = file_get_contents($fullSolrUrl);
-    if ($response === false) {
-        throw new Exception("Failed to query Solr at: " . $fullSolrUrl);
-    }
-    
-    $solrResult = json_decode($response, true);
-    if (!$solrResult || !isset($solrResult['response']['docs'])) {
-        throw new Exception("Invalid Solr response or no documents returned");
-    }
-    
-    $solrRecords = $solrResult['response']['docs'];
-    $totalSolrRecords = count($solrRecords);
-    
-    echo "Retrieved " . $totalSolrRecords . " total records from Solr\n";
-    echo "Total matches in index: " . ($solrResult['response']['numFound'] ?? 'unknown') . "\n";
-    flush();
-    
-    echo "Found $totalSolrRecords records with ISBNs in Solr\n";
-    flush();
-    
-    // Create lookup table of grouped work IDs to ISBNs; filter for records with ISBNs.
-    echo "Building ISBN lookup table from Solr results...\n";
-    flush();
-    
-    $recordIsbns = [];
+    $cursorMark = '*';
     $totalRecordsChecked = 0;
     $recordsWithIsbns = 0;
-    
-    foreach ($solrRecords as $doc) {
-        $totalRecordsChecked++;
-        $workId = $doc['id'] ?? '';
-        
-        $isbns = [];
-        
-        // Get primary ISBN.
-        if (!empty($doc['primary_isbn'])) {
-            $isbns[] = $doc['primary_isbn'];
-        }
-        
-        // Get additional ISBNs.
-        if (!empty($doc['isbn'])) {
-            if (is_array($doc['isbn'])) {
-                $isbns = array_merge($isbns, $doc['isbn']);
-            } else {
-                $isbns[] = $doc['isbn'];
-            }
-        }
-
-        // Remove duplicates and store only if there are ISBNs.
-        $isbns = array_unique($isbns);
-        if (!empty($isbns)) {
-            $recordIsbns[$workId] = [
-                'isbns' => $isbns
-            ];
-            $recordsWithIsbns++;
-        }
-
-        if ($totalRecordsChecked % 50000 == 0) {
-            echo "Checked $totalRecordsChecked records, found $recordsWithIsbns with ISBNs...\n";
-            flush();
-        }
-    }
-    
-    echo "Checked $totalRecordsChecked total records, found $recordsWithIsbns with ISBNs\n";
-    echo "Built ISBN lookup table for " . count($recordIsbns) . " works\n";
-    flush();
-    echo "Querying database for all items...\n";
-    flush();
-    
-    $query = "
-        SELECT DISTINCT 
-            gw.permanent_id,
-            gw.full_title,
-            gwr.recordIdentifier,
-            gwri.itemId,
-            gwri.callNumberId,
-            cn.callNumber
-        FROM grouped_work gw
-        INNER JOIN grouped_work_records gwr ON gw.id = gwr.groupedWorkId
-        INNER JOIN grouped_work_record_items gwri ON gwr.id = gwri.groupedWorkRecordId
-        LEFT JOIN (
-            SELECT id, callNumber FROM indexed_call_number
-        ) cn ON gwri.callNumberId = cn.id
-        WHERE gwri.itemId IS NOT NULL 
-            AND gwri.itemId != ''
-            AND gwr.recordIdentifier IS NOT NULL
-    ";
-    
-    $result = $aspen_db->prepare($query);
-    $result->execute();
-    
-    if (!$result) {
-        throw new Exception("Database query failed");
-    }
-    
-    echo "Processing database results and writing output...\n";
-    flush();
-    
+    $totalSolrRecords = 0;
+    $chunksProcessed = 0;
+    $totalMatchesInIndex = null;
+    $uniqueWorksWithIsbns = 0;
     $processedRecords = 0;
     $itemsProcessed = 0;
-    
-    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
-        $workId = $row['permanent_id'];
-        $itemId = $row['itemId'];
-        $callNumber = $row['callNumber'] ?: '';
-        $bibRecordId = $row['recordIdentifier'];
-        $title = $row['full_title'];
-        
-        $itemsProcessed++;
-        
-        // Check if this work has ISBNs in the lookup table.
-        if (isset($recordIsbns[$workId])) {
-            $isbns = $recordIsbns[$workId]['isbns'];
-            
-            // Write one line per ISBN/Item ID combination.
-            foreach ($isbns as $isbn) {
-                // Ensure ISBN is clean (should already be from Solr, but double-check).
-                $cleanISBN = preg_replace('/[^0-9X]/', '', $isbn);
-                if (strlen($cleanISBN) == 10) {
-                    $cleanISBN = convertISBN10to13($cleanISBN);
-                }
-                
-                if (strlen($cleanISBN) == 13 || (strlen($cleanISBN) == 10 && str_contains($cleanISBN, 'X'))) {
-                    $line = implode("\t", [
-                        $cleanISBN,
-                        $itemId,
-                        $callNumber,
-                        $bibRecordId,
-                        $title
-                    ]) . "\n";
-                    
-                    fwrite($file, $line);
-                    $processedRecords++;
-                }
+
+    do {
+        $solrParams = $solrBaseParams;
+        $solrParams['cursorMark'] = $cursorMark;
+
+        $fullSolrUrl = $solrUrl . '?' . http_build_query($solrParams);
+        $response = file_get_contents($fullSolrUrl);
+        if ($response === false) {
+            throw new Exception("Failed to query Solr at: " . $fullSolrUrl);
+        }
+
+        $solrResult = json_decode($response, true);
+        if (!$solrResult || !isset($solrResult['response']['docs'])) {
+            throw new Exception("Invalid Solr response or no documents returned");
+        }
+
+        if ($chunksProcessed === 0) {
+            $totalMatchesInIndex = $solrResult['response']['numFound'] ?? null;
+            if ($totalMatchesInIndex !== null) {
+                echo "Total matches in index: " . $totalMatchesInIndex . "\n";
             }
         }
 
-        if ($itemsProcessed % 50000 == 0) {
-            echo "Processed $itemsProcessed items, wrote $processedRecords ISBN records...\n";
-            flush();
+        $docs = $solrResult['response']['docs'];
+        $docCount = count($docs);
+        if ($docCount === 0) {
+            break;
         }
-    }
-    
+
+        $totalSolrRecords += $docCount;
+        $chunksProcessed++;
+
+        $workIsbns = [];
+        foreach ($docs as $doc) {
+            $totalRecordsChecked++;
+            $workId = $doc['id'] ?? '';
+            if ($workId === '') {
+                continue;
+            }
+
+            $isbns = [];
+
+            if (!empty($doc['primary_isbn'])) {
+                $isbns[] = $doc['primary_isbn'];
+            }
+
+            if (!empty($doc['isbn'])) {
+                if (is_array($doc['isbn'])) {
+                    $isbns = array_merge($isbns, $doc['isbn']);
+                } else {
+                    $isbns[] = $doc['isbn'];
+                }
+            }
+
+            $isbns = array_unique($isbns);
+            if (!empty($isbns)) {
+                $workIsbns[$workId] = $isbns;
+                $recordsWithIsbns++;
+            }
+
+            if ($totalRecordsChecked % 50000 == 0) {
+                echo "Checked $totalRecordsChecked records, found $recordsWithIsbns with ISBNs...\n";
+                flush();
+            }
+        }
+
+        $uniqueWorksWithIsbns += count($workIsbns);
+
+        if (!empty($workIsbns)) {
+            $placeholders = implode(',', array_fill(0, count($workIsbns), '?'));
+            $query = "
+                SELECT DISTINCT 
+                    gw.permanent_id,
+                    gw.full_title,
+                    gwr.recordIdentifier,
+                    gwri.itemId,
+                    gwri.callNumberId,
+                    cn.callNumber
+                FROM grouped_work gw
+                INNER JOIN grouped_work_records gwr ON gw.id = gwr.groupedWorkId
+                    AND gwr.recordIdentifier IS NOT NULL
+                INNER JOIN grouped_work_record_items gwri ON gwr.id = gwri.groupedWorkRecordId
+                    AND gwri.itemId IS NOT NULL
+                    AND gwri.itemId != ''
+                LEFT JOIN indexed_call_number cn ON gwri.callNumberId = cn.id
+                WHERE gw.permanent_id IN ($placeholders)
+            ";
+
+            $chunkStmt = $aspen_db->prepare($query);
+            $chunkStmt->execute(array_keys($workIsbns));
+
+            while ($row = $chunkStmt->fetch(PDO::FETCH_ASSOC)) {
+                $itemsProcessed++;
+
+                $workId = $row['permanent_id'];
+                if (!isset($workIsbns[$workId])) {
+                    continue;
+                }
+
+                $itemId = $row['itemId'];
+                $callNumber = $row['callNumber'] ?: '';
+                $bibRecordId = $row['recordIdentifier'];
+                $title = $row['full_title'];
+
+                foreach ($workIsbns[$workId] as $isbn) {
+                    $cleanISBN = preg_replace('/[^0-9X]/', '', $isbn);
+                    if (strlen($cleanISBN) == 10) {
+                        $cleanISBN = convertISBN10to13($cleanISBN);
+                    }
+
+                    if (strlen($cleanISBN) == 13 || (strlen($cleanISBN) == 10 && str_contains($cleanISBN, 'X'))) {
+                        $line = implode("\t", [
+                            $cleanISBN,
+                            $itemId,
+                            $callNumber,
+                            $bibRecordId,
+                            $title,
+                        ]) . "\n";
+
+                        fwrite($file, $line);
+                        $processedRecords++;
+                    }
+                }
+
+                if ($itemsProcessed % 50000 == 0) {
+                    echo "Processed $itemsProcessed items, wrote $processedRecords ISBN records...\n";
+                    flush();
+                }
+            }
+			// Explicitly free MySQL cursor before the next Solr batch so the prepared statement can reuse server resources.
+            $chunkStmt->closeCursor();
+        }
+
+        $nextCursorMark = $solrResult['nextCursorMark'] ?? null;
+        if ($nextCursorMark === null || $nextCursorMark === $cursorMark) {
+            break;
+        }
+
+        $cursorMark = $nextCursorMark;
+        unset($workIsbns);
+    } while (true);
+
     fclose($file);
 
+    echo "Retrieved " . $totalSolrRecords . " total records from Solr\n";
+    if ($totalMatchesInIndex !== null) {
+        echo "Total matches in index: " . $totalMatchesInIndex . "\n";
+    }
+    echo "Checked $totalRecordsChecked total records, found $recordsWithIsbns with ISBNs\n";
+    echo "Processed $chunksProcessed Solr chunks\n";
     echo "NoveList export completed successfully!\n";
     echo "File: $filepath\n";
     echo "Total items processed: $itemsProcessed\n";
     echo "ISBN records exported: $processedRecords\n";
-    echo "Unique works with ISBNs: " . count($recordIsbns) . "\n";
+    echo "Unique works with ISBNs: " . $uniqueWorksWithIsbns . "\n";
 
 } catch (Exception $e) {
     if (isset($file) && $file) {
@@ -205,9 +221,10 @@ try {
 }
 
 /**
- * Convert 10-digit ISBN to 13-digit ISBN
- * @param string $isbn10 The 10-digit ISBN
- * @return string The 13-digit ISBN
+ * Convert 10-digit ISBN to 13-digit ISBN.
+ *
+ * @param string $isbn10 The 10-digit ISBN.
+ * @return string The 13-digit ISBN.
  */
 function convertISBN10to13(string $isbn10): string {
     if (strlen($isbn10) != 10) {
