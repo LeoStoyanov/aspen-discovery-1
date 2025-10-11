@@ -360,7 +360,7 @@ public class HooplaExportMain {
 
 			// First, process global content once (not per library)
 			boolean globalContentUpdated = false;
-			entitlementChangedRecords.clear(); // Clear any previous entitlement changes
+			hooplaIdsToReindex.clear(); // Clear any previous entitlement changes
 
 			while (getSettingsRS.next()) {
 				HooplaSettings settings = new HooplaSettings(getSettingsRS);
@@ -370,7 +370,7 @@ public class HooplaExportMain {
 				if (!globalContentUpdated) {
 					globalContentUpdated = syncGlobalContent(settings);
 					updatesRun |= globalContentUpdated;
-				}
+				}  
 
 				// Process library entitlements for each library configuration
 				// Pass globalContentUpdated flag to determine if entitlements should run
@@ -388,8 +388,9 @@ public class HooplaExportMain {
 
 			// After all entitlements are processed, index the entitled content that was updated
 			if (globalContentUpdated || updatesRun) {
-				if (!entitlementChangedRecords.isEmpty()) {
-					indexUpdatedEntitledRecords(new ArrayList<>(entitlementChangedRecords));
+				if (!hooplaIdsToReindex.isEmpty()) {
+					indexQueuedHooplaRecords(new ArrayList<>(hooplaIdsToReindex));
+					hooplaIdsToReindex.clear();
 				}
 			}
 
@@ -402,7 +403,7 @@ public class HooplaExportMain {
 		return updatesRun;
 	}
 
-	private static final Set<Long> entitlementChangedRecords = new HashSet<>();
+private static final Set<Long> hooplaIdsToReindex = new HashSet<>();
 
 	private static boolean syncGlobalContent(HooplaSettings settings) {
 		boolean updatedContent = false;
@@ -717,7 +718,7 @@ public class HooplaExportMain {
 
 				if (entitlements != null && !entitlements.isEmpty()) {
 					List<Long> changedIds = updateEntitlementsInDB(entitlements, libraryConfig.getLibraryId(), useIncremental, libraryConfig);
-					entitlementChangedRecords.addAll(changedIds);
+					hooplaIdsToReindex.addAll(changedIds);
 				}
 			}
 
@@ -766,34 +767,32 @@ public class HooplaExportMain {
 			logEntry.incErrors("Error clearing " + flagName + " for library " + libraryId, e);
 		}
 	}
-
 	private static List<Long> updateEntitlementsInDB(JSONArray entitlements, int libraryId, boolean isIncremental, HooplaLibraryConfiguration libraryConfig) {
 		List<Long> changedRecords = new ArrayList<>();
 		try {
 			// Prepare statements
 			PreparedStatement checkEntitlementStmt = aspenConn.prepareStatement(
-				"SELECT hooplaId, hooplaType FROM hoopla_entitlements WHERE hooplaId = ?"
+					"SELECT id FROM hoopla_entitlements WHERE hooplaId = ? AND hooplaType = ?"
 			);
 			PreparedStatement insertEntitlementStmt = aspenConn.prepareStatement(
-				"INSERT INTO hoopla_entitlements (hooplaId, hooplaType, dateAdded) VALUES (?, ?, NOW())"
-			);
-			PreparedStatement updateEntitlementStmt = aspenConn.prepareStatement(
-				"UPDATE hoopla_entitlements SET hooplaType = ?, dateUpdated = NOW() WHERE hooplaId = ?"
+					"INSERT INTO hoopla_entitlements (hooplaId, hooplaType, dateAdded) VALUES (?, ?, NOW())",
+					Statement.RETURN_GENERATED_KEYS
 			);
 			PreparedStatement checkScopeStmt = aspenConn.prepareStatement(
-				"SELECT entitlementId FROM hoopla_entitlement_scopes WHERE entitlementId = ? AND libraryId = ?"
+					"SELECT entitlementId FROM hoopla_entitlement_scopes WHERE entitlementId = ? AND libraryId = ?"
 			);
 			PreparedStatement insertScopeStmt = aspenConn.prepareStatement(
-				"INSERT INTO hoopla_entitlement_scopes (entitlementId, libraryId) VALUES (?, ?)"
+					"INSERT INTO hoopla_entitlement_scopes (entitlementId, libraryId) VALUES (?, ?)"
 			);
 			PreparedStatement deleteScopeStmt = aspenConn.prepareStatement(
-				"DELETE FROM hoopla_entitlement_scopes WHERE entitlementId = ? AND libraryId = ?"
+					"DELETE FROM hoopla_entitlement_scopes WHERE entitlementId = ? AND libraryId = ?"
 			);
+
 
 			int activeEntitlements = 0;
 			int inactiveEntitlements = 0;
 			int entitlementsInserted = 0;
-			int entitlementsUpdated = 0;
+			int entitlementsExisting = 0;
 			int scopesAdded = 0;
 			int scopesRemoved = 0;
 
@@ -803,7 +802,6 @@ public class HooplaExportMain {
 					long contentId = entitlement.getLong("contentId");
 					boolean isActive = entitlement.getBoolean("active");
 
-					// Extract purchase model if available
 					String purchaseModel = null;
 					if (entitlement.has("purchaseModel")) {
 						purchaseModel = entitlement.getString("purchaseModel");
@@ -811,7 +809,6 @@ public class HooplaExportMain {
 						purchaseModel = entitlement.getString("type");
 					}
 
-					// Determine hooplaType from purchaseModel
 					String hooplaType = null;
 					if (purchaseModel != null) {
 						if (purchaseModel.equals("PPU")) {
@@ -820,61 +817,69 @@ public class HooplaExportMain {
 							hooplaType = "Flex";
 						}
 					}
+					if (hooplaType == null) {
+						logEntry.incErrors("Unrecognized Hoopla purchase model for content " + contentId + ": " + purchaseModel);
+						continue;
+					}
 
-					// Check if this purchase model is enabled for this library
 					if (libraryConfig != null && !libraryConfig.isPurchaseModelEnabled(purchaseModel)) {
-						// This library doesn't have this purchase model enabled, skip or mark inactive
 						isActive = false;
 					}
 
-					// Check if entitlement exists
-					checkEntitlementStmt.setLong(1, contentId);
-					ResultSet existingEntitlement = checkEntitlementStmt.executeQuery();
-
-					boolean entitlementExists = existingEntitlement.next();
-					boolean needsUpdate;
-
-					if (entitlementExists) {
-						// Check if values changed
-						String existingType = existingEntitlement.getString("hooplaType");
-						needsUpdate = !Objects.equals(hooplaType, existingType);
-
-						if (needsUpdate) {
-							updateEntitlementStmt.setString(1, hooplaType);
-							updateEntitlementStmt.setLong(2, contentId);
-							updateEntitlementStmt.executeUpdate();
-							entitlementsUpdated++;
+						checkEntitlementStmt.setLong(1, contentId);
+						checkEntitlementStmt.setString(2, hooplaType);
+						long entitlementDbId = -1;
+						try (ResultSet existingEntitlement = checkEntitlementStmt.executeQuery()) {
+							if (existingEntitlement.next()) {
+								entitlementDbId = existingEntitlement.getLong("id");
+								entitlementsExisting++;
+							} else {
+								insertEntitlementStmt.setLong(1, contentId);
+								insertEntitlementStmt.setString(2, hooplaType);
+								insertEntitlementStmt.executeUpdate();
+								entitlementsInserted++;
+							try (ResultSet generatedKeys = insertEntitlementStmt.getGeneratedKeys()) {
+								if (generatedKeys.next()) {
+									entitlementDbId = generatedKeys.getLong(1);
+								}
+							}
+								if (entitlementDbId == -1) {
+									checkEntitlementStmt.setLong(1, contentId);
+									checkEntitlementStmt.setString(2, hooplaType);
+								try (ResultSet insertedEntitlement = checkEntitlementStmt.executeQuery()) {
+									if (insertedEntitlement.next()) {
+										entitlementDbId = insertedEntitlement.getLong("id");
+									}
+								}
+							}
 						}
-					} else {
-						// Insert new entitlement
-						insertEntitlementStmt.setLong(1, contentId);
-						insertEntitlementStmt.setString(2, hooplaType);
-						insertEntitlementStmt.executeUpdate();
-						entitlementsInserted++;
 					}
-					changedRecords.add(contentId); // Always reindex
-					existingEntitlement.close();
 
-					// Manage scope for this library
-					checkScopeStmt.setLong(1, contentId);
+					if (entitlementDbId == -1) {
+						logEntry.incErrors("Could not determine entitlement id for Hoopla title " + contentId);
+						continue;
+					}
+
+						changedRecords.add(contentId); // Always reindex
+
+					checkScopeStmt.setLong(1, entitlementDbId);
 					checkScopeStmt.setInt(2, libraryId);
-					ResultSet existingScope = checkScopeStmt.executeQuery();
-					boolean scopeExists = existingScope.next();
-					existingScope.close();
+					boolean scopeExists;
+					try (ResultSet existingScope = checkScopeStmt.executeQuery()) {
+						scopeExists = existingScope.next();
+					}
 
 					if (isActive) {
-						// Should have scope
 						if (!scopeExists) {
-							insertScopeStmt.setLong(1, contentId);
+							insertScopeStmt.setLong(1, entitlementDbId);
 							insertScopeStmt.setInt(2, libraryId);
 							insertScopeStmt.executeUpdate();
 							scopesAdded++;
 						}
 						activeEntitlements++;
 					} else {
-						// Should not have scope
 						if (scopeExists) {
-							deleteScopeStmt.setLong(1, contentId);
+							deleteScopeStmt.setLong(1, entitlementDbId);
 							deleteScopeStmt.setInt(2, libraryId);
 							deleteScopeStmt.executeUpdate();
 							scopesRemoved++;
@@ -884,52 +889,45 @@ public class HooplaExportMain {
 				}
 			}
 
-			checkEntitlementStmt.close();
-			insertEntitlementStmt.close();
-			updateEntitlementStmt.close();
-			checkScopeStmt.close();
-			insertScopeStmt.close();
-			deleteScopeStmt.close();
-
-			// Clean up orphaned entitlements (those with no scopes)
-			PreparedStatement findOrphanedStmt = aspenConn.prepareStatement(
-				"SELECT e.hooplaId FROM hoopla_entitlements e " +
-				"LEFT JOIN hoopla_entitlement_scopes s ON e.hooplaId = s.entitlementId " +
+			try (PreparedStatement findOrphanedStmt = aspenConn.prepareStatement(
+				"SELECT e.id, e.hooplaId FROM hoopla_entitlements e " +
+				"LEFT JOIN hoopla_entitlement_scopes s ON e.id = s.entitlementId " +
 				"WHERE s.entitlementId IS NULL"
 			);
-			ResultSet orphanedRS = findOrphanedStmt.executeQuery();
-			List<Long> orphanedEntitlements = new ArrayList<>();
-			while (orphanedRS.next()) {
-				orphanedEntitlements.add(orphanedRS.getLong("hooplaId"));
-			}
-			orphanedRS.close();
-			findOrphanedStmt.close();
-
-			if (!orphanedEntitlements.isEmpty()) {
-				PreparedStatement deleteOrphanedStmt = aspenConn.prepareStatement(
-					"DELETE FROM hoopla_entitlements WHERE hooplaId = ?"
-				);
-				for (Long orphanedId : orphanedEntitlements) {
-					deleteOrphanedStmt.setLong(1, orphanedId);
-					deleteOrphanedStmt.executeUpdate();
-					// Add to changed records so it gets reindexed (removed from index)
-					changedRecords.add(orphanedId);
+				ResultSet orphanedRS = findOrphanedStmt.executeQuery()) {
+				List<Long> orphanedEntitlementIds = new ArrayList<>();
+				List<Long> orphanedHooplaIds = new ArrayList<>();
+				while (orphanedRS.next()) {
+					orphanedEntitlementIds.add(orphanedRS.getLong("id"));
+					orphanedHooplaIds.add(orphanedRS.getLong("hooplaId"));
 				}
-				deleteOrphanedStmt.close();
-				logEntry.addNote("Deleted " + orphanedEntitlements.size() + " orphaned entitlements (no scopes)");
+				if (!orphanedEntitlementIds.isEmpty()) {
+					try (PreparedStatement deleteOrphanedStmt = aspenConn.prepareStatement(
+						"DELETE FROM hoopla_entitlements WHERE id = ?"
+					)) {
+						for (int i = 0; i < orphanedEntitlementIds.size(); i++) {
+							Long entitlementId = orphanedEntitlementIds.get(i);
+							Long hooplaId = orphanedHooplaIds.get(i);
+							deleteOrphanedStmt.setLong(1, entitlementId);
+							deleteOrphanedStmt.executeUpdate();
+							changedRecords.add(hooplaId);
+						}
+					}
+					logEntry.addNote("Deleted " + orphanedEntitlementIds.size() + " orphaned entitlements (no scopes)");
+				}
 			}
 
 			String syncType = isIncremental ? "incremental" : "full";
 			logEntry.addNote("Updated entitlements for library " + libraryId + " (" + syncType + " sync): " +
-							entitlements.length() + " entitlements processed (" +
-							activeEntitlements + " active, " + inactiveEntitlements + " inactive), " +
-							entitlementsInserted + " inserted, " + entitlementsUpdated + " updated, " +
-							scopesAdded + " scopes added, " + scopesRemoved + " scopes removed");
+						entitlements.length() + " entitlements processed (" +
+						activeEntitlements + " active, " + inactiveEntitlements + " inactive), " +
+						entitlementsInserted + " inserted, " + entitlementsExisting + " existing, " +
+						scopesAdded + " scopes added, " + scopesRemoved + " scopes removed");
 		} catch (Exception e) {
 			logEntry.incErrors("Error updating entitlements in database", e);
 		}
-		return changedRecords;
-	}
+	return changedRecords;
+}
 
 	private static boolean getFlexAvailability(HooplaSettings settings) {
 		// Update all the flex titles availability
@@ -958,30 +956,33 @@ public class HooplaExportMain {
 			logEntry.incErrors("Could not load access token");
 			return true;
 		}
-		try {
-			PreparedStatement getFlexTitlesStmt = aspenConn.prepareStatement("SELECT t.id, t.hooplaId, UNCOMPRESS(t.rawResponse) as rawResponse, fa.holdsQueueSize, fa.availableCopies, fa.totalCopies, fa.status, fa.hooplaId " +
-			"FROM hoopla_export t " +
-			"INNER JOIN hoopla_entitlements ent ON t.hooplaId = ent.hooplaId " +
-			"INNER JOIN hoopla_entitlement_scopes scope ON ent.hooplaId = scope.entitlementId " +
-			"LEFT JOIN hoopla_flex_availability fa ON t.hooplaId = fa.hooplaId " +
-			"WHERE ent.hooplaType = 'Flex'");
-			ResultSet flexTitlesRS = getFlexTitlesStmt.executeQuery();
-			PreparedStatement updateFlexAvailabilityStmt = aspenConn.prepareStatement("INSERT INTO hoopla_flex_availability (hooplaId, libraryId, holdsQueueSize, availableCopies, totalCopies, status) " +
-			"VALUES (?, ?, ?, ?, ?, ?) " +
-			"ON DUPLICATE KEY UPDATE " +
-			"holdsQueueSize = VALUES(holdsQueueSize), " +
-			"availableCopies = VALUES(availableCopies), " +
-			"totalCopies = VALUES(totalCopies), " +
-			"status = VALUES(status)"
-			);
+	try (PreparedStatement getFlexTitlesStmt = aspenConn.prepareStatement(
+		"SELECT t.id, t.hooplaId, UNCOMPRESS(t.rawResponse) as rawResponse, fa.holdsQueueSize, fa.availableCopies, fa.totalCopies, fa.status, scope.libraryId " +
+		"FROM hoopla_export t " +
+		"INNER JOIN hoopla_entitlements ent ON t.hooplaId = ent.hooplaId " +
+		"INNER JOIN hoopla_entitlement_scopes scope ON ent.id = scope.entitlementId " +
+		"LEFT JOIN hoopla_flex_availability fa ON t.hooplaId = fa.hooplaId AND scope.libraryId = fa.libraryId " +
+		"WHERE ent.hooplaType = 'Flex'"
+	);
+		ResultSet flexTitlesRS = getFlexTitlesStmt.executeQuery();
+		PreparedStatement updateFlexAvailabilityStmt = aspenConn.prepareStatement(
+		"INSERT INTO hoopla_flex_availability (hooplaId, libraryId, holdsQueueSize, availableCopies, totalCopies, status) " +
+		"VALUES (?, ?, ?, ?, ?, ?) " +
+		"ON DUPLICATE KEY UPDATE " +
+		"holdsQueueSize = VALUES(holdsQueueSize), " +
+		"availableCopies = VALUES(availableCopies), " +
+		"totalCopies = VALUES(totalCopies), " +
+		"status = VALUES(status)"
+	)) {
 
-			while (flexTitlesRS.next()) {
-				long hooplaId = flexTitlesRS.getLong("hooplaId");
-				boolean existingInDB = flexTitlesRS.getString("status") != null;
-				int existingHoldsQueueSize = existingInDB ? flexTitlesRS.getInt("holdsQueueSize") : 0;
-				int existingAvailableCopies = existingInDB ? flexTitlesRS.getInt("availableCopies") : 0;
-				int existingTotalCopies = existingInDB ? flexTitlesRS.getInt("totalCopies") : 0;
-				String existingStatus = existingInDB ? flexTitlesRS.getString("status") : null;
+		while (flexTitlesRS.next()) {
+			long hooplaId = flexTitlesRS.getLong("hooplaId");
+			boolean existingInDB = flexTitlesRS.getString("status") != null;
+			int existingHoldsQueueSize = existingInDB ? flexTitlesRS.getInt("holdsQueueSize") : 0;
+			int existingAvailableCopies = existingInDB ? flexTitlesRS.getInt("availableCopies") : 0;
+			int existingTotalCopies = existingInDB ? flexTitlesRS.getInt("totalCopies") : 0;
+			String existingStatus = existingInDB ? flexTitlesRS.getString("status") : null;
+			int scopeLibraryId = flexTitlesRS.getInt("libraryId");
 
 				if (!doFullReloadFlex && existingInDB){
 					logEntry.incNumProducts(1);
@@ -1019,27 +1020,23 @@ public class HooplaExportMain {
 							boolean needsUpdate =  !existingInDB || existingHoldsQueueSize != newHoldsQueueSize || existingAvailableCopies != newAvailableCopies || existingTotalCopies != newTotalCopies || !Objects.equals(existingStatus, newStatus);
 
 							if (needsUpdate) {
-								try {
-									updateFlexAvailabilityStmt.setLong(1, hooplaId);
-									updateFlexAvailabilityStmt.setInt(2, hooplaLibraryId);
-									updateFlexAvailabilityStmt.setInt(3, newHoldsQueueSize);
-									updateFlexAvailabilityStmt.setInt(4, newAvailableCopies);
-									updateFlexAvailabilityStmt.setInt(5, newTotalCopies);
-									updateFlexAvailabilityStmt.setString(6, newStatus);
-									updateFlexAvailabilityStmt.executeUpdate();
-									numUpdates++;
-									logEntry.incAvailabilityChanges();
-
-									String rawResponse = flexTitlesRS.getString("rawResponse");
-									JSONObject curTitle = new JSONObject(rawResponse);
-									String groupedWorkId =  getRecordGroupingProcessor().groupHooplaRecord(curTitle, hooplaId);
-									indexRecord(groupedWorkId);
-								} catch (SQLException e) {
-									logEntry.incErrors("Error updating flex availability for title " + hooplaId, e);
-								}
-							}
-						}
+					try {
+						updateFlexAvailabilityStmt.setLong(1, hooplaId);
+						updateFlexAvailabilityStmt.setInt(2, scopeLibraryId);
+						updateFlexAvailabilityStmt.setInt(3, newHoldsQueueSize);
+						updateFlexAvailabilityStmt.setInt(4, newAvailableCopies);
+						updateFlexAvailabilityStmt.setInt(5, newTotalCopies);
+						updateFlexAvailabilityStmt.setString(6, newStatus);
+						updateFlexAvailabilityStmt.executeUpdate();
+						numUpdates++;
+						logEntry.incAvailabilityChanges();
+						hooplaIdsToReindex.add(hooplaId);
+					} catch (SQLException e) {
+						logEntry.incErrors("Error updating flex availability for title " + hooplaId, e);
 					}
+				}
+				}
+			}
 				} catch (JSONException e) {
 					logEntry.incErrors("Error parsing availability JSON for title " + hooplaId + ". Response: " + response.getMessage(), e);
 				}
@@ -1376,54 +1373,82 @@ public class HooplaExportMain {
 						}
 					}
 				}
-			}catch (Exception e){
-				logEntry.incErrors("Error updating hoopla data for single work extraction", e);
-			}
+		}catch (Exception e){
+			logEntry.incErrors("Error updating hoopla data for single work extraction", e);
+		}
 		}
 
 		return updatedRecordIds;
 	}
 
-	private static void indexUpdatedEntitledRecords(List<Long> updatedRecordIds) {
-		if (updatedRecordIds.isEmpty()) {
+	private static void indexQueuedHooplaRecords(List<Long> hooplaIds) {
+		if (hooplaIds.isEmpty()) {
 			return;
 		}
 
-		try {
-			logEntry.addNote("Starting to index " + updatedRecordIds.size() + " updated entitled records");
-
-			// Build a query to select only the updated records that have active entitlements
-			StringBuilder hooplaIdList = new StringBuilder();
-			for (int i = 0; i < updatedRecordIds.size(); i++) {
-				if (i > 0) hooplaIdList.append(",");
-				hooplaIdList.append(updatedRecordIds.get(i));
+		try (PreparedStatement findOrphanedStmt = aspenConn.prepareStatement(
+			"SELECT e.id, e.hooplaId FROM hoopla_entitlements e " +
+			"LEFT JOIN hoopla_entitlement_scopes s ON e.id = s.entitlementId " +
+			"WHERE s.entitlementId IS NULL"
+		);
+			ResultSet orphanedRS = findOrphanedStmt.executeQuery()) {
+			List<Long> orphanedEntitlementIds = new ArrayList<>();
+			List<Long> orphanedHooplaIds = new ArrayList<>();
+			while (orphanedRS.next()) {
+				orphanedEntitlementIds.add(orphanedRS.getLong("id"));
+				orphanedHooplaIds.add(orphanedRS.getLong("hooplaId"));
 			}
-
-			PreparedStatement getUpdatedEntitledTitlesStmt = aspenConn.prepareStatement(
-				"SELECT DISTINCT e.hooplaId, UNCOMPRESS(e.rawResponse) as rawResponse " +
-				"FROM hoopla_export e " +
-				"INNER JOIN hoopla_entitlements ent ON e.hooplaId = ent.hooplaId " +
-				"INNER JOIN hoopla_entitlement_scopes scope ON ent.hooplaId = scope.entitlementId " +
-				"WHERE e.hooplaId IN (" + hooplaIdList + ")"
-			);
-			ResultSet entitledTitlesRS = getUpdatedEntitledTitlesStmt.executeQuery();
-			int numIndexed = 0;
-
-			while (entitledTitlesRS.next()) {
-				try {
-					long hooplaId = entitledTitlesRS.getLong("hooplaId");
-					String rawResponse = entitledTitlesRS.getString("rawResponse");
-					JSONObject curTitle = new JSONObject(rawResponse);
-
-					String groupedWorkId = getRecordGroupingProcessor().groupHooplaRecord(curTitle, hooplaId);
-					indexRecord(groupedWorkId);
-					numIndexed++;
-				} catch (Exception e) {
-					logEntry.incErrors("Error indexing updated entitled content", e);
+			if (!orphanedEntitlementIds.isEmpty()) {
+				try (PreparedStatement deleteOrphanedStmt = aspenConn.prepareStatement(
+					"DELETE FROM hoopla_entitlements WHERE id = ?"
+				)) {
+					for (int i = 0; i < orphanedEntitlementIds.size(); i++) {
+						Long entitlementId = orphanedEntitlementIds.get(i);
+						Long hooplaId = orphanedHooplaIds.get(i);
+						deleteOrphanedStmt.setLong(1, entitlementId);
+						deleteOrphanedStmt.executeUpdate();
+						hooplaIds.add(hooplaId);
+					}
 				}
+				logEntry.addNote("Deleted " + orphanedEntitlementIds.size() + " orphaned entitlements (no scopes)");
 			}
+		} catch (SQLException e) {
+			logEntry.incErrors("Error cleaning up orphaned Hoopla entitlements", e);
+		}
 
-			logEntry.addNote("Indexed " + numIndexed + " updated entitled titles");
+		if (hooplaIds.isEmpty()) {
+			return;
+		}
+
+		String placeholders = String.join(",", Collections.nCopies(hooplaIds.size(), "?"));
+		String sql = "SELECT DISTINCT e.hooplaId, UNCOMPRESS(e.rawResponse) as rawResponse " +
+			"FROM hoopla_export e " +
+			"INNER JOIN hoopla_entitlements ent ON e.hooplaId = ent.hooplaId " +
+			"INNER JOIN hoopla_entitlement_scopes scope ON ent.id = scope.entitlementId " +
+			"WHERE e.hooplaId IN (" + placeholders + ")";
+
+		try (PreparedStatement getUpdatedEntitledTitlesStmt = aspenConn.prepareStatement(sql)) {
+			int paramIndex = 1;
+			for (Long hooplaId : hooplaIds) {
+				getUpdatedEntitledTitlesStmt.setLong(paramIndex++, hooplaId);
+			}
+			try (ResultSet entitledTitlesRS = getUpdatedEntitledTitlesStmt.executeQuery()) {
+				int numIndexed = 0;
+				while (entitledTitlesRS.next()) {
+					try {
+						long hooplaId = entitledTitlesRS.getLong("hooplaId");
+						String rawResponse = entitledTitlesRS.getString("rawResponse");
+						JSONObject curTitle = new JSONObject(rawResponse);
+
+						String groupedWorkId = getRecordGroupingProcessor().groupHooplaRecord(curTitle, hooplaId);
+						getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
+						numIndexed++;
+					} catch (Exception e) {
+						logEntry.incErrors("Error indexing updated entitled content", e);
+					}
+				}
+				logEntry.addNote("Indexed " + numIndexed + " updated entitled titles");
+			}
 			getGroupedWorkIndexer().commitChanges();
 		} catch (Exception e) {
 			logEntry.incErrors("Error during updated entitled content indexing", e);
@@ -1534,17 +1559,13 @@ public class HooplaExportMain {
 		return recordGroupingProcessorSingleton;
 	}
 
-	private static void indexRecord(String groupedWorkId) {
-		getGroupedWorkIndexer().processGroupedWork(groupedWorkId);
-	}
-
 	private static void regroupAllRecords(Connection dbConn, long settingsId, GroupedWorkIndexer indexer, HooplaExtractLogEntry logEntry)  throws SQLException {
 		logEntry.addNote("Starting to regroup all records");
 		PreparedStatement getAllRecordsToRegroupStmt = dbConn.prepareStatement(
 			"SELECT DISTINCT e.hooplaId, UNCOMPRESS(e.rawResponse) as rawResponse " +
 			"FROM hoopla_export e " +
 			"INNER JOIN hoopla_entitlements ent ON e.hooplaId = ent.hooplaId " +
-			"INNER JOIN hoopla_entitlement_scopes scope ON ent.hooplaId = scope.entitlementId",
+			"INNER JOIN hoopla_entitlement_scopes scope ON ent.id = scope.entitlementId",
 			ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 		//It turns out to be quite slow to look this up repeatedly, just grab the existing values for all and store in memory
 		PreparedStatement getOriginalPermanentIdForRecordStmt = dbConn.prepareStatement("SELECT identifier, permanent_id from grouped_work_primary_identifiers join grouped_work on grouped_work_id = grouped_work.id WHERE type = 'hoopla'", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
