@@ -33,6 +33,8 @@ import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.Date;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class KohaExportMain {
 	private static Logger logger;
@@ -46,6 +48,16 @@ public class KohaExportMain {
 	private static Ini configIni;
 	private static Connection dbConn;
 	private static String serverName;
+
+	// Threading support
+	private static ExecutorService threadPool;
+	private static BlockingQueue<String> recordQueue;
+	private static final AtomicInteger processedCount = new AtomicInteger(0);
+	private static final AtomicInteger errorCount = new AtomicInteger(0);
+	private static volatile boolean shutdownRequested = false;
+	private static int numThreads = 8; // Default thread count
+	private static final Object dbLock = new Object(); // Synchronization for DB operations
+	private static KohaInstanceInformation sharedKohaInfo; // Shared connection info
 
 	private static Long startTimeForLogging;
 	private static IlsExtractLogEntry logEntry;
@@ -110,6 +122,17 @@ public class KohaExportMain {
 					System.exit(1);
 				}
 
+				// Initialize threading configuration
+				String threadCountStr = configIni.get("Koha", "numThreads");
+				if (threadCountStr != null && !threadCountStr.isEmpty()) {
+					try {
+						numThreads = Integer.parseInt(threadCountStr);
+						logger.info("Using {} threads for processing", numThreads);
+					} catch (NumberFormatException e) {
+						logger.warn("Invalid numThreads value: {}, using default: {}", threadCountStr, numThreads);
+					}
+				}
+
 				//Check to see if the jar has changes, and if so quit
 				if (myChecksumAtStart != JarUtil.getChecksumForJar(logger, processName, "./" + processName + ".jar")){
 					IndexingUtils.markNightlyIndexNeeded(dbConn, logger);
@@ -143,8 +166,12 @@ public class KohaExportMain {
 					logEntry.setFinished();
 					continue;
 				} else {
+					sharedKohaInfo = kohaInstanceInformation; // Store for thread use
 					kohaConn = kohaInstanceInformation.kohaConnection;
 					profileToLoad = kohaInstanceInformation.indexingProfileName;
+
+					// Initialize threading now that we have Koha connection info
+					initializeThreading();
 				}
 
 				indexingProfile = IndexingProfile.loadIndexingProfile(serverName, dbConn, profileToLoad, logger, logEntry);
@@ -181,6 +208,11 @@ public class KohaExportMain {
 				//Update works that have changed since the last index
 				numChanges = updateRecords(dbConn, kohaConn, singleWorkId);
 
+				// Shutdown threading before closing connections
+				if (threadPool != null) {
+					shutdownThreading();
+				}
+
 				kohaConn.close();
 
 				logEntry.setFinished();
@@ -189,6 +221,10 @@ public class KohaExportMain {
 				logger.info(currentTime + ": Finished Koha Extract");
 			} catch (Exception e) {
 				logger.error("Error connecting to database ", e);
+				// Ensure threading is shutdown on error
+				if (threadPool != null) {
+					shutdownThreading();
+				}
 				//Don't exit, we will try again in a few minutes
 			}
 
@@ -252,10 +288,9 @@ public class KohaExportMain {
 	private static MarcReader streamMarcData(ResultSet resultSet, String marcFormat) throws SQLException {
 		MarcReader reader  = null;
 		try {
-			if (marcFormat == "marc"){
-				InputStream stream = resultSet.getBinaryStream(marcFormat);
+			if (Objects.equals(marcFormat, "marc")){
 				reader = new MarcStreamReader(resultSet.getBinaryStream(marcFormat), "UTF8");
-				
+
 			} else {
 				String marcXML = resultSet.getString(marcFormat);
 				marcXML = AspenStringUtils.stripNonValidXMLCharacters(marcXML);
@@ -279,15 +314,14 @@ public class KohaExportMain {
 			//limit based on modification time
 			long curTime = new Date().getTime() / 1000;
 			Timestamp lastUpdateOfAuthorities = new Timestamp(indexingProfile.getLastUpdateOfAuthorities() * 1000);
-			//noinspection SpellCheckingInspection
 
 			float kohaVersion = getKohaVersion(kohaConn);
-			PreparedStatement getAuthorAuthoritiesStmt = null;
+			PreparedStatement getAuthorAuthoritiesStmt;
 			String marcFormat = "marcxml";
 
 			if(kohaVersion < 24.1200011 ){
 				marcFormat = "marc";
-			} 
+			}
 
 			getAuthorAuthoritiesStmt = kohaConn.prepareStatement("SELECT authid, modification_time, authtypecode, " + marcFormat + " from auth_header where authtypecode IN('PERSO_NAME', 'CORPO_NAME') AND modification_time >= ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getAuthorAuthoritiesStmt.setTimestamp(1, lastUpdateOfAuthorities);
@@ -295,7 +329,7 @@ public class KohaExportMain {
 			PreparedStatement addAuthorStmt = dbConn.prepareStatement("INSERT INTO author_authority (id, dateAdded, author) VALUES (NULL, ?, ?) ON DUPLICATE KEY UPDATE id=id", Statement.RETURN_GENERATED_KEYS);
 			PreparedStatement getAuthorIdStmt = dbConn.prepareStatement("SELECT id from author_authority where author = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			PreparedStatement addAlternativeNameStmt = dbConn.prepareStatement("INSERT INTO author_authority_alternative (id, authorId, alternativeAuthor) VALUES (NULL, ?, ?) ON DUPLICATE KEY UPDATE id=id", Statement.RETURN_GENERATED_KEYS);
-			
+
 			while (getAuthorAuthoritiesRS.next()){
 				String authId = getAuthorAuthoritiesRS.getString("authid");
 				String authTypeCode = getAuthorAuthoritiesRS.getString("authtypecode");
@@ -683,6 +717,7 @@ public class KohaExportMain {
 					kohaInstanceInformation = new KohaInstanceInformation();
 					kohaInstanceInformation.kohaConnection = kohaConn;
 					kohaInstanceInformation.indexingProfileName = accountProfileRS.getString("recordSource");
+					kohaInstanceInformation.kohaConnectionJDBC = kohaConnectionJDBC; // Store for thread reuse
 				}else{
 					logger.debug("Connection string " + kohaConnectionJDBC);
 				}
@@ -908,7 +943,7 @@ public class KohaExportMain {
 			PreparedStatement updatePatronTypeCanSuggest = dbConn.prepareStatement("UPDATE ptype SET canSuggestMaterials = 1 WHERE pType = ?");
 
 			//variables
-			String kohaPSLimitsString = "";
+			String kohaPSLimitsString;
 			Set<String> kohaPSLimitsSet = new HashSet<>();
 			float kohaVersion = getKohaVersion(kohaConn);
 
@@ -1624,22 +1659,76 @@ public class KohaExportMain {
 			logEntry.saveResults();
 			int numProcessed = 0;
 			if (singleWorkId == null && indexingProfile.getLastChangeProcessed() > 0){
-				logEntry.addNote("Skipping the first " + indexingProfile.getLastChangeProcessed() + " records because they were processed previously see (Last Record ID Processed for the Indexing Profile).");
+				logEntry.addNote("Skipping the first " + indexingProfile.getLastChangeProcessed() + " records because they were processed previously (see \"Last Record ID Processed\" under the Indexing Profile).");
 			}
-			for (String curBibId : changedBibIds.values()) {
-				logEntry.setCurrentId(curBibId);
-				if ((singleWorkId != null) || (numProcessed >= indexingProfile.getLastChangeProcessed())) {
-					//Update the marc record
-					updateBibRecord(curBibId);
-					indexingProfile.setLastChangeProcessed(numProcessed);
-				}else{
-					logEntry.incSkipped();
+			// Use threading for record processing
+			if (numThreads > 1 && singleWorkId == null && changedBibIds.size() > 100) {
+				// Use threaded processing for large batches
+				logger.info("Processing {} records using {} threads", changedBibIds.size(), numThreads);
+				long threadingStartTime = System.currentTimeMillis();
+
+				// Queue records for processing
+				int recordsQueued = 0;
+				for (String curBibId : changedBibIds.values()) {
+					if (numProcessed >= indexingProfile.getLastChangeProcessed()) {
+						try {
+							recordQueue.put(curBibId);
+							recordsQueued++;
+						} catch (InterruptedException e) {
+							Thread.currentThread().interrupt();
+							logger.error("Interrupted while queuing record", e);
+							break;
+						}
+					} else {
+						logEntry.incSkipped();
+					}
+					numProcessed++;
 				}
 
-				numProcessed++;
-				if (numProcessed % 250 == 0) {
-					logEntry.saveResults();
-					indexingProfile.updateLastChangeProcessed(dbConn, logEntry);
+				// Periodic progress monitoring (every 1000 records processed)
+				int lastReportedCount = 0;
+				while (processedCount.get() < recordsQueued) {
+					int currentCount = processedCount.get();
+					if (currentCount - lastReportedCount >= 1000) {
+						logger.info("Threading progress: " + currentCount + "/" + recordsQueued + " records processed");
+						synchronized (dbLock) {
+							logEntry.saveResults();
+						}
+						lastReportedCount = currentCount;
+					}
+
+					try {
+						Thread.sleep(5000); // Check every 5 seconds instead of every second
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+						break;
+					}
+				}
+
+				// Final update
+				indexingProfile.setLastChangeProcessed(0);
+				indexingProfile.updateLastChangeProcessed(dbConn, logEntry);
+
+				long threadingEndTime = System.currentTimeMillis();
+				logger.info("Threading completed in {}ms. Processed: {}, Errors: {}", threadingEndTime - threadingStartTime, processedCount.get(), errorCount.get());
+
+			} else {
+				// Use sequential processing for small batches or single work processing
+				for (String curBibId : changedBibIds.values()) {
+					logEntry.setCurrentId(curBibId);
+					if ((singleWorkId != null) || (numProcessed >= indexingProfile.getLastChangeProcessed())) {
+						//Update the marc record
+						updateBibRecord(curBibId);
+						indexingProfile.setLastChangeProcessed(numProcessed);
+					}else{
+						logEntry.incSkipped();
+					}
+
+					numProcessed++;
+					if (numProcessed % 5000 == 0) {
+						logEntry.saveResults();
+						indexingProfile.updateLastChangeProcessed(dbConn, logEntry);
+					}
 				}
 			}
 			indexingProfile.setLastChangeProcessed(0);
@@ -1650,6 +1739,28 @@ public class KohaExportMain {
 			//Process any bibs that have been deleted
 			int numRecordsDeleted = 0;
 			if (singleWorkId == null) {
+				// Validate/reconnect to Koha after long threading operation
+				try {
+					if (!kohaConn.isValid(5)) {
+						throw new SQLException("Connection validation failed");
+					}
+				} catch (SQLException e) {
+					logger.info("Koha connection invalid after threading, reconnecting...");
+					try {
+						kohaConn.close();
+					} catch (SQLException closeEx) {
+						logger.debug("Error closing stale connection", closeEx);
+					}
+					// Replacing an existing connection that's managed at a higher
+					// scope, so we assign to local variable and then reassign.
+					Connection newKohaConn = connectToKohaDatabase(sharedKohaInfo.kohaConnectionJDBC);
+					if (newKohaConn == null) {
+						logger.error("Failed to reconnect to Koha database for deleted bibs processing");
+						return totalChanges;
+					}
+					kohaConn = newKohaConn;
+				}
+
 				PreparedStatement getDeletedBibsFromKohaStmt;
 				if (indexingProfile.isRunFullUpdate()) {
 					getDeletedBibsFromKohaStmt = kohaConn.prepareStatement("select DISTINCT biblionumber from deletedbiblio");
@@ -1931,7 +2042,268 @@ public class KohaExportMain {
 			if (fullAddress.length() > 0) fullAddress.append(", ");
 			fullAddress.append(branchCountry.trim());
 		}
-		
+
 		return new String[]{fullAddress.toString(), branchPhone, branchEmail};
+	}
+
+	private static void initializeThreading() {
+		recordQueue = new LinkedBlockingQueue<>();
+		threadPool = Executors.newFixedThreadPool(numThreads);
+		processedCount.set(0);
+		errorCount.set(0);
+		shutdownRequested = false;
+
+		// Start worker threads
+		for (int i = 0; i < numThreads; i++) {
+			threadPool.submit(new RecordProcessor());
+		}
+
+		logger.info("Initialized {} worker threads for record processing", numThreads);
+	}
+
+	private static void shutdownThreading() {
+		shutdownRequested = true;
+
+		// Add poison pills to stop worker threads
+		for (int i = 0; i < numThreads; i++) {
+			try {
+				recordQueue.put("SHUTDOWN");
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				break;
+			}
+		}
+
+		// Shutdown thread pool
+		threadPool.shutdown();
+		try {
+			if (!threadPool.awaitTermination(60, TimeUnit.SECONDS)) {
+				threadPool.shutdownNow();
+				if (!threadPool.awaitTermination(60, TimeUnit.SECONDS)) {
+					logger.error("Thread pool did not terminate");
+				}
+			}
+		} catch (InterruptedException e) {
+			threadPool.shutdownNow();
+			Thread.currentThread().interrupt();
+		}
+
+		logger.info("Threading shutdown complete. Processed: {}, Errors: {}", processedCount.get(), errorCount.get());
+	}
+
+	private static class RecordProcessor implements Runnable {
+		private Connection threadAspenConn;
+		private Connection threadKohaConn;
+		private PreparedStatement threadGetBaseMarcRecordStmt;
+		private PreparedStatement threadGetBibItemsStmt;
+		private MarcRecordGrouper threadRecordGrouper;
+		private GroupedWorkIndexer threadGroupedWorkIndexer;
+
+		@Override
+		public void run() {
+			// Initialize thread-local database connections
+			try {
+				initializeThreadConnections();
+			} catch (Exception e) {
+				logger.error("Failed to initialize thread database connections", e);
+				return;
+			}
+
+			while (!shutdownRequested) {
+				String recordId = null;
+				try {
+					recordId = recordQueue.poll(1, TimeUnit.SECONDS);
+					if (recordId == null) continue;
+					if ("SHUTDOWN".equals(recordId)) break;
+
+					// Process the record without global locks
+					updateBibRecordThreadSafe(recordId);
+
+					int processed = processedCount.incrementAndGet();
+
+					// Periodic logging and maintenance (still needs synchronization)
+					if (processed % 250 == 0) {
+						synchronized (dbLock) {
+							logEntry.saveResults();
+							indexingProfile.setLastChangeProcessed(processed);
+							indexingProfile.updateLastChangeProcessed(dbConn, logEntry);
+						}
+					}
+
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					break;
+				} catch (Exception e) {
+					errorCount.incrementAndGet();
+					String recordInfo = (recordId != null) ? recordId : "unknown";
+					logger.error("Error processing record {}", recordInfo, e);
+					synchronized (dbLock) {
+						logEntry.incErrors("Error processing record " + recordInfo, e);
+					}
+				}
+			}
+
+			// Clean up thread connections
+			try {
+				closeThreadConnections();
+			} catch (Exception e) {
+				logger.error("Error closing thread connections", e);
+			}
+		}
+
+		private void initializeThreadConnections() throws SQLException {
+			// Create thread-local Aspen connection
+			String databaseConnectionInfo = ConfigUtil.cleanIniValue(configIni.get("Database", "database_aspen_jdbc"));
+			threadAspenConn = DriverManager.getConnection(databaseConnectionInfo);
+
+			// Create thread-local Koha connection using stored connection string
+			threadKohaConn = DriverManager.getConnection(sharedKohaInfo.kohaConnectionJDBC);
+
+			// Create thread-local prepared statements
+			threadGetBaseMarcRecordStmt = threadKohaConn.prepareStatement("SELECT metadata from biblio_metadata where biblionumber = ?");
+			threadGetBibItemsStmt = threadKohaConn.prepareStatement("select items.*, issues.date_due from items left join issues on items.itemnumber = issues.itemnumber where biblionumber = ?;");
+
+			// Note: threadRecordGrouper and threadGroupedWorkIndexer will be created lazily when needed
+			// because they require indexingProfile which may not be available yet
+		}
+
+		private MarcRecordGrouper getThreadRecordGrouper() {
+			if (threadRecordGrouper == null) {
+				threadRecordGrouper = new MarcRecordGrouper(serverName, threadAspenConn, indexingProfile, logEntry, logger);
+			}
+			return threadRecordGrouper;
+		}
+
+		private GroupedWorkIndexer getThreadGroupedWorkIndexer() {
+			if (threadGroupedWorkIndexer == null) {
+				threadGroupedWorkIndexer = new GroupedWorkIndexer(serverName, threadAspenConn, configIni, false, false, logEntry, logger);
+			}
+			return threadGroupedWorkIndexer;
+		}
+
+		private void closeThreadConnections() throws SQLException {
+			if (threadGetBaseMarcRecordStmt != null) threadGetBaseMarcRecordStmt.close();
+			if (threadGetBibItemsStmt != null) threadGetBibItemsStmt.close();
+			if (threadKohaConn != null) threadKohaConn.close();
+			if (threadAspenConn != null) threadAspenConn.close();
+			if (threadRecordGrouper != null) threadRecordGrouper.close();
+			if (threadGroupedWorkIndexer != null) threadGroupedWorkIndexer.close();
+		}
+
+		private void updateBibRecordThreadSafe(String curBibId) throws SQLException {
+			// Thread-safe version using thread-local connections
+			try {
+				threadGetBaseMarcRecordStmt.setString(1, curBibId);
+				ResultSet baseMarcRecordRS = threadGetBaseMarcRecordStmt.executeQuery();
+				if (baseMarcRecordRS.next()) {
+					String marcXML = baseMarcRecordRS.getString("metadata");
+					marcXML = AspenStringUtils.stripNonValidXMLCharacters(marcXML);
+					MarcXmlReader marcXmlReader = new MarcXmlReader(new ByteArrayInputStream(marcXML.getBytes(StandardCharsets.UTF_8)));
+
+					Record marcRecord = marcXmlReader.next();
+
+					if (marcRecord.getLeader().getTypeOfRecord() == 'z'){
+						RemoveRecordFromWorkResult result = getThreadRecordGrouper().removeRecordFromGroupedWork(indexingProfile.getName(), curBibId);
+						if (result.reindexWork){
+							getThreadGroupedWorkIndexer().processGroupedWork(result.permanentId);
+						}else if (result.deleteWork){
+							getThreadGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
+						}
+						synchronized (dbLock) {
+							logEntry.incDeleted();
+						}
+					}else {
+						try {
+							threadGetBibItemsStmt.setString(1, curBibId);
+							ResultSet bibItemsRS = threadGetBibItemsStmt.executeQuery();
+							while (bibItemsRS.next()) {
+								DataField itemField = marcFactory.newDataField("952", ' ', ' ');
+
+								addSubfield(itemField, '0', bibItemsRS.getString("withdrawn"));
+								addSubfield(itemField, '1', bibItemsRS.getString("itemlost"));
+								addSubfield(itemField, '2', bibItemsRS.getString("cn_source"));
+								addSubfield(itemField, '3', bibItemsRS.getString("materials"));
+								addSubfield(itemField, '4', bibItemsRS.getString("damaged"));
+								addSubfield(itemField, '5', bibItemsRS.getString("restricted"));
+								addSubfield(itemField, '6', bibItemsRS.getString("cn_sort"));
+								addSubfield(itemField, '7', bibItemsRS.getString("notforloan"));
+								addSubfield(itemField, '8', bibItemsRS.getString("ccode"));
+								addSubfield(itemField, '9', bibItemsRS.getString("itemnumber"));
+								addSubfield(itemField, 'a', bibItemsRS.getString("homebranch"));
+								addSubfield(itemField, 'b', bibItemsRS.getString("holdingbranch"));
+								addSubfield(itemField, 'c', bibItemsRS.getString("location"));
+								addSubfield(itemField, 'd', bibItemsRS.getString("dateaccessioned"));
+								addSubfield(itemField, 'e', bibItemsRS.getString("booksellerid"));
+								addSubfield(itemField, 'f', bibItemsRS.getString("coded_location_qualifier"));
+								addSubfield(itemField, 'g', bibItemsRS.getString("price"));
+								addSubfield(itemField, 'h', bibItemsRS.getString("enumchron"));
+								addSubfield(itemField, 'i', bibItemsRS.getString("stocknumber"));
+								addSubfield(itemField, 'j', bibItemsRS.getString("stack"));
+								addSubfield(itemField, 'k', bibItemsRS.getString("date_due")); //This is non-standard added by Aspen
+								addSubfield(itemField, 'l', bibItemsRS.getString("issues"));
+								addSubfield(itemField, 'm', bibItemsRS.getString("renewals"));
+								addSubfield(itemField, 'n', bibItemsRS.getString("renewals"));
+								addSubfield(itemField, 'o', bibItemsRS.getString("itemcallnumber"));
+								addSubfield(itemField, 'p', bibItemsRS.getString("barcode"));
+								addSubfield(itemField, 'q', bibItemsRS.getString("onloan")); //TODO: If the item is checked out this is the due date.  If it is checked in, it's null. We can replace the date_due above
+								addSubfield(itemField, 'r', bibItemsRS.getString("datelastseen"));
+								addSubfield(itemField, 's', bibItemsRS.getString("datelastborrowed"));
+								addSubfield(itemField, 't', bibItemsRS.getString("copynumber"));
+								addSubfield(itemField, 'u', bibItemsRS.getString("uri"));
+								addSubfield(itemField, 'v', bibItemsRS.getString("replacementprice"));
+								addSubfield(itemField, 'w', bibItemsRS.getString("replacementpricedate"));
+								addSubfield(itemField, 'y', bibItemsRS.getString("itype"));
+								addSubfield(itemField, 'z', bibItemsRS.getString("itemnotes"));
+
+								marcRecord.addVariableField(itemField);
+							}
+
+							GroupedWorkIndexer.MarcStatus saveMarcResult = getThreadGroupedWorkIndexer().saveMarcRecordToDatabase(indexingProfile, curBibId, marcRecord);
+							if (saveMarcResult == GroupedWorkIndexer.MarcStatus.NEW) {
+								synchronized (dbLock) {
+									logEntry.incAdded();
+								}
+							} else {
+								synchronized (dbLock) {
+									logEntry.incUpdated();
+								}
+							}
+
+							String groupedWorkId = getThreadRecordGrouper().processMarcRecord(marcRecord, true, null, getThreadGroupedWorkIndexer());
+							if (groupedWorkId != null && (!groupedWorkId.isEmpty())) {
+								getThreadGroupedWorkIndexer().processGroupedWork(groupedWorkId);
+							}
+						} catch (SQLException sqe) {
+							synchronized (dbLock) {
+								logEntry.incErrors("Error getting items for bib " + curBibId, sqe);
+								logEntry.incSkipped();
+							}
+						}
+					}
+				} else {
+					RemoveRecordFromWorkResult result = getThreadRecordGrouper().removeRecordFromGroupedWork(indexingProfile.getName(), curBibId);
+					if (result.reindexWork){
+						getThreadGroupedWorkIndexer().processGroupedWork(result.permanentId);
+					}else if (result.deleteWork){
+						getThreadGroupedWorkIndexer().deleteRecord(result.permanentId, result.groupedWorkId);
+					}
+					synchronized (dbLock) {
+						logEntry.incDeleted();
+					}
+				}
+			} catch (Exception e) {
+				if (e instanceof com.mysql.cj.jdbc.exceptions.CommunicationsException) {
+					throw e;
+				} else if (e instanceof com.mysql.cj.exceptions.StatementIsClosedException) {
+					throw e;
+				} else if (e instanceof SQLException && ((SQLException) e).getSQLState().equals("S1009")) {
+					throw e;
+				} else {
+					synchronized (dbLock) {
+						logEntry.incInvalidRecords(curBibId);
+					}
+				}
+			}
+		}
 	}
 }

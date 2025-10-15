@@ -5,4 +5,5 @@ import java.sql.Connection;
 class KohaInstanceInformation {
 	Connection kohaConnection;
 	String indexingProfileName;
+	String kohaConnectionJDBC;
 }
