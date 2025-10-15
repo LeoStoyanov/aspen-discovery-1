@@ -449,9 +449,6 @@ class Library extends DataObject {
 	//2FA settings ID
 	public $twoFactorAuthSettingId;
 
-	//SSO
-	public $ssoSettingId;
-
 	//Messaging
 	public $twilioSettingId;
 
@@ -519,6 +516,8 @@ class Library extends DataObject {
 	private $_interLibraryLoanItemTypes;
 	/** @var LibraryLink[] */
 	private $_libraryLinks;
+	/** @var LibrarySSOSetting[] */
+	private $_ssoSettings;
 	/** @var LibraryRecordToInclude[] */
 	private $_recordsToInclude;
 
@@ -4651,15 +4650,23 @@ class Library extends DataObject {
 	}
 
 	public function getSSORestrictionStatus(): int {
-		if ($this->ssoSettingId > 0) {
+		// Check if any SSO setting has IP restrictions
+		$ssoSettings = $this->getSSOSettings();
+		if (!empty($ssoSettings)) {
 			require_once ROOT_DIR . '/sys/Authentication/SSOSetting.php';
-			$ssoSettings = new SSOSetting();
-			$ssoSettings->id = $this->ssoSettingId;
-			if ($ssoSettings->find(true)) {
-				try {
-					return empty($ssoSettings->restrictByIP) ? 0 : 1;
-				} catch (Exception $e) {
-					// not setup yet
+			foreach ($ssoSettings as $librarySSOSetting) {
+				if ($librarySSOSetting->enabled) {
+					$ssoSetting = new SSOSetting();
+					$ssoSetting->id = $librarySSOSetting->ssoSettingId;
+					if ($ssoSetting->find(true)) {
+						try {
+							if (!empty($ssoSetting->restrictByIP)) {
+								return 1;
+							}
+						} catch (Exception $e) {
+							// not setup yet
+						}
+					}
 				}
 			}
 		}
@@ -4811,6 +4818,8 @@ class Library extends DataObject {
 			return $this->getCloudLibraryScope();
 		} elseif ($name == 'interLibraryLoanItemTypes') {
 			return $this->getILLItemTypes();
+		} elseif ($name == 'ssoSettings') {
+			return $this->getSSOSettings();
 		} else {
 			return parent::__get($name);
 		}
@@ -4843,6 +4852,8 @@ class Library extends DataObject {
 			$this->_cloudLibraryScope = $value;
 		} elseif ($name == 'interLibraryLoanItemTypes') {
 			$this->_interLibraryLoanItemTypes = $value;
+		} elseif ($name == 'ssoSettings') {
+			$this->_ssoSettings = $value;
 		} else {
 			parent::__set($name, $value);
 		}
@@ -4887,6 +4898,7 @@ class Library extends DataObject {
 			$this->saveSideLoadScopes();
 			$this->saveOverDriveScopes();
 			$this->saveOverDriveSettings();
+			$this->saveSSOSettings();
 			$this->saveMaterialsRequestFieldsToDisplay();
 			$this->saveMaterialsRequestFormFields();
 			$this->saveLibraryLinks();
@@ -4960,6 +4972,7 @@ class Library extends DataObject {
 			$this->saveSideLoadScopes();
 			$this->saveOverDriveScopes();
 			$this->saveOverDriveSettings();
+			$this->saveSSOSettings();
 			$this->saveMaterialsRequestFieldsToDisplay();
 			$this->saveMaterialsRequestFormats();
 			$this->saveMaterialsRequestFormFields();
@@ -5781,6 +5794,34 @@ class Library extends DataObject {
 		if (isset ($this->_libraryOverDriveSettings) && is_array($this->_libraryOverDriveSettings)) {
 			$this->saveOneToManyOptions($this->_libraryOverDriveSettings, 'libraryId');
 			unset($this->_libraryOverDriveSettings);
+		}
+	}
+
+	/**
+	 * @return LibrarySSOSetting[]
+	 */
+	public function getSSOSettings() : array {
+		if ($this->_ssoSettings == null) {
+			$this->_ssoSettings = [];
+			if ($this->libraryId > 0) {
+				try {
+					require_once ROOT_DIR . '/sys/LibraryLocation/LibrarySSOSetting.php';
+					$librarySSOSetting = new LibrarySSOSetting();
+					$librarySSOSetting->libraryId = $this->libraryId;
+					$librarySSOSetting->orderBy('weight');
+					$this->_ssoSettings = $librarySSOSetting->fetchAll(null, null, false, true);
+				} catch (Exception) {
+					// This happens before the table exists
+				}
+			}
+		}
+		return $this->_ssoSettings;
+	}
+
+	public function saveSSOSettings() : void {
+		if (isset($this->_ssoSettings) && is_array($this->_ssoSettings)) {
+			$this->saveOneToManyOptions($this->_ssoSettings, 'libraryId');
+			unset($this->_ssoSettings);
 		}
 	}
 

@@ -19,14 +19,13 @@ class IPAddress extends DataObject {
 	public $endIpVal;                //	varchar(255) - Numeric for IPv4, string with 'ipv6:' prefix for IPv6
 	public $authenticatedForEBSCOhost;
 	public $masqueradeMode;
-	public $ssoLogin;
+	private $_ssoSettings;
 
 	function getNumericColumnNames(): array {
 		return [
 			'isOpac',
 			'blockAccess',
-			'allowAPIAccess',
-			'ssoLogin'
+			'allowAPIAccess'
 		];
 	}
 
@@ -150,12 +149,21 @@ class IPAddress extends DataObject {
 				'description' => 'Traffic from this IP will be allowed to use Masquerade Mode.',
 				'default' => false,
 			],
-			'ssoLogin' => [
-				'property' => 'ssoLogin',
-				'type' => 'checkbox',
-				'label' => 'Allow Single Sign-on (SSO)',
-				'description' => 'Traffic from this IP will be allowed to use single sign-on.',
-				'default' => false,
+			'ssoSettings' => [
+				'property' => 'ssoSettings',
+				'type' => 'oneToMany',
+				'label' => 'Allowed Single Sign-on (SSO) Settings',
+				'description' => 'SSO settings that are allowed from this IP address. Leave empty to allow all SSO settings.',
+				'keyThis' => 'id',
+				'keyOther' => 'ipAddressId',
+				'subObjectType' => 'IPAddressSSOSetting',
+				'structure' => IPAddressSSOSetting::getObjectStructure(),
+				'sortable' => false,
+				'storeDb' => true,
+				'allowEdit' => false,
+				'canEdit' => false,
+				'canAddNew' => true,
+				'canDelete' => true,
 			]
 		];
 
@@ -172,6 +180,49 @@ class IPAddress extends DataObject {
 		return $this->location;
 	}
 
+	public function __get($name) {
+		if ($name == 'ssoSettings') {
+			return $this->getSSOSettings();
+		} else {
+			return parent::__get($name);
+		}
+	}
+
+	public function __set($name, $value) {
+		if ($name == 'ssoSettings') {
+			$this->_ssoSettings = $value;
+		} else {
+			parent::__set($name, $value);
+		}
+	}
+
+	/**
+	 * @return IPAddressSSOSetting[]
+	 */
+	public function getSSOSettings(): array {
+		if ($this->_ssoSettings == null) {
+			$this->_ssoSettings = [];
+			if ($this->id > 0) {
+				try {
+					require_once ROOT_DIR . '/sys/IP/IPAddressSSOSetting.php';
+					$ipSSOSetting = new IPAddressSSOSetting();
+					$ipSSOSetting->ipAddressId = $this->id;
+					$this->_ssoSettings = $ipSSOSetting->fetchAll(null, null, false, true);
+				} catch (Exception) {
+					// This happens before the table exists
+				}
+			}
+		}
+		return $this->_ssoSettings;
+	}
+
+	public function saveSSOSettings(): void {
+		if (isset($this->_ssoSettings) && is_array($this->_ssoSettings)) {
+			$this->saveOneToManyOptions($this->_ssoSettings, 'ipAddressId');
+			unset($this->_ssoSettings);
+		}
+	}
+
 	public function insert(string $context = '') : int|bool {
 		$this->calcIpRange();
 		/** @var $memCache Memcache */
@@ -179,7 +230,11 @@ class IPAddress extends DataObject {
 		$memCache->deleteStartingWith('ipId_for_ip_');
 		$memCache->deleteStartingWith('location_for_ip_');
 		IPAddress::$ipAddressesForIP = [];
-		return parent::insert();
+		$ret = parent::insert();
+		if ($ret !== FALSE) {
+			$this->saveSSOSettings();
+		}
+		return $ret;
 	}
 
 	public function update(string $context = '') : int|bool {
@@ -189,7 +244,11 @@ class IPAddress extends DataObject {
 		$memCache->deleteStartingWith('ipId_for_ip_');
 		$memCache->deleteStartingWith('location_for_ip_');
 		IPAddress::$ipAddressesForIP = [];
-		return parent::update();
+		$ret = parent::update();
+		if ($ret !== FALSE) {
+			$this->saveSSOSettings();
+		}
+		return $ret;
 	}
 
 	public function delete(bool $useWhere = false, bool $hardDelete = false) : bool|int {
@@ -579,7 +638,7 @@ class IPAddress extends DataObject {
 		}
 	}
 
-	public static function allowSSOAccessForClientIP() : bool {
+	public static function allowSSOAccessForClientIP($ssoSettingId = null) : bool {
 		global $library;
 		$isSSORestricted = $library->getSSORestrictionStatus();
 		if(!$isSSORestricted) {
@@ -588,7 +647,26 @@ class IPAddress extends DataObject {
 			$clientIP = IPAddress::getClientIP();
 			$ipInfo = IPAddress::getIPAddressForIP($clientIP);
 			if (!empty($ipInfo)) {
-				return $ipInfo->ssoLogin;
+				// Get allowed SSO settings for this IP
+				require_once ROOT_DIR . '/sys/IP/IPAddressSSOSetting.php';
+				$ipSSOSetting = new IPAddressSSOSetting();
+				$ipSSOSetting->ipAddressId = $ipInfo->id;
+				$numIPSettings = $ipSSOSetting->count();
+
+				// If no specific SSO settings configured, allow all
+				if ($numIPSettings == 0) {
+					return true;
+				}
+
+				// If checking specific SSO setting, verify it's in the list
+				if ($ssoSettingId !== null) {
+					$ipSSOSetting = new IPAddressSSOSetting();
+					$ipSSOSetting->ipAddressId = $ipInfo->id;
+					$ipSSOSetting->ssoSettingId = $ssoSettingId;
+					return $ipSSOSetting->find(true);
+				}
+
+				return true;
 			} else {
 				return false;
 			}

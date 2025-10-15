@@ -952,11 +952,12 @@ class SSOSetting extends DataObject {
 		if ($name == "libraries") {
 			if (!isset($this->_libraries) && $this->id) {
 				$this->_libraries = [];
-				$obj = new Library();
-				$obj->ssoSettingId = $this->id;
-				$obj->find();
-				while ($obj->fetch()) {
-					$this->_libraries[$obj->libraryId] = $obj->libraryId;
+				require_once ROOT_DIR . '/sys/LibraryLocation/LibrarySSOSetting.php';
+				$librarySSOSetting = new LibrarySSOSetting();
+				$librarySSOSetting->ssoSettingId = $this->id;
+				$librarySSOSetting->find();
+				while ($librarySSOSetting->fetch()) {
+					$this->_libraries[$librarySSOSetting->libraryId] = $librarySSOSetting->libraryId;
 				}
 			}
 			return $this->_libraries;
@@ -1027,23 +1028,27 @@ class SSOSetting extends DataObject {
 	}
 
 	public function saveLibraries() : void {
-		if (isset ($this->_libraries) && is_array($this->_libraries)) {
+		if (isset($this->_libraries) && is_array($this->_libraries)) {
+			require_once ROOT_DIR . '/sys/LibraryLocation/LibrarySSOSetting.php';
 			$libraryList = Library::getLibraryList(!UserAccount::userHasPermission('Administer All Libraries'));
+
 			foreach ($libraryList as $libraryId => $displayName) {
-				$library = new Library();
-				$library->libraryId = $libraryId;
-				$library->find(true);
+				$librarySSOSetting = new LibrarySSOSetting();
+				$librarySSOSetting->libraryId = $libraryId;
+				$librarySSOSetting->ssoSettingId = $this->id;
+
 				if (in_array($libraryId, $this->_libraries)) {
-					//We want to apply the scope to this library
-					if ($library->ssoSettingId != $this->id) {
-						$library->ssoSettingId = $this->id;
-						$library->update();
+					// We want to apply this SSO setting to this library
+					if (!$librarySSOSetting->find(true)) {
+						// Create new junction table entry
+						$librarySSOSetting->weight = 0;
+						$librarySSOSetting->enabled = 1;
+						$librarySSOSetting->insert();
 					}
 				} else {
-					//It should not be applied to this scope. Only change if it was applied to the scope
-					if ($library->ssoSettingId == $this->id) {
-						$library->ssoSettingId = -1;
-						$library->update();
+					// Remove this SSO setting from this library if it exists
+					if ($librarySSOSetting->find(true)) {
+						$librarySSOSetting->delete();
 					}
 				}
 			}
