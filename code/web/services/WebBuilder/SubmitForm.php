@@ -93,25 +93,20 @@ class WebBuilder_SubmitForm extends Action {
 				$submission->submission = $htmlData;
 				$submission->dateSubmitted = time();
 				$submission->insert();
-
-				//Save form fields content to the database
 				$this->saveFieldsContent($data,$submission->id);
 
-				//Get the default emailResultsTo
-				$emailResultsTo = $this->form->emailResultsTo;
-				//Get per library emailResultsTo
+				// Aggregate configured recipient lists from the form and the active library.
+				$emailRecipients = [];
+				$this->addEmailRecipients($this->form->emailResultsTo, $emailRecipients);
 				$libraryList = $this->form->getLibraries();
 				foreach ($libraryList as $librarySelected) {
 					if ($librarySelected->libraryId == $library->libraryId) {
-						//Don't use the library setting if it is blank
-						if (!empty($librarySelected->emailResultsTo)) {
-							$emailResultsTo = $librarySelected->emailResultsTo;
-						}
+						$this->addEmailRecipients($librarySelected->emailResultsTo, $emailRecipients);
 						break;
 					}
 				}
 
-				if (!empty($emailResultsTo)) {
+				if (!empty($emailRecipients)) {
 					global $interface;
 					require_once ROOT_DIR . '/sys/Email/Mailer.php';
 					if (UserAccount::isLoggedIn()) {
@@ -125,6 +120,7 @@ class WebBuilder_SubmitForm extends Action {
 					$interface->assign('introductoryText', $introText);
 
 					$emailBody = $interface->fetch('WebBuilder/customFormSubmissionEmail.tpl');
+					$emailResultsTo = implode(';', $emailRecipients);
 					$emailResult = $mail->send($emailResultsTo, $this->form->title . ' Submission', null, null, $emailBody);
 					global $logger;
 					if ($emailResult === false) {
@@ -152,13 +148,26 @@ class WebBuilder_SubmitForm extends Action {
 		$this->display('customFormResults.tpl', $this->form->title, '', false);
 	}
 
-	function saveFieldsContent($data,$formSubmissionId): void {
+	function saveFieldsContent($data, $formSubmissionId): void {
 		foreach ($data as $fieldId => $formFieldContent) {
 			$submissionSelection = new CustomFormSubmissionSelection();
 			$submissionSelection->formSubmissionId = $formSubmissionId;
 			$submissionSelection->submissionFieldId = $fieldId;
 			$submissionSelection->formFieldContent = $formFieldContent;
 			$submissionSelection->insert();
+		}
+	}
+
+	private function addEmailRecipients(?string $emails, array &$emailRecipients): void {
+		if (empty($emails)) {
+			return;
+		}
+		$addresses = array_filter(array_map('trim', explode(';', $emails)));
+		foreach ($addresses as $address) {
+			$lowerAddress = strtolower($address);
+			if (!array_key_exists($lowerAddress, $emailRecipients)) {
+				$emailRecipients[$lowerAddress] = $address;
+			}
 		}
 	}
 
