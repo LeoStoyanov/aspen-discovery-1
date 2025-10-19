@@ -187,6 +187,39 @@
 							</div>
 						{/if}
 
+						{* Saved Search Notifications *}
+						<div class="panel" id="savedSearchNotificationsPanel">
+							<a data-toggle="collapse" href="#savedSearchNotificationsPanelBody" class="active">
+								<div class="panel-heading">
+									<div class="panel-title">
+										<h2>{translate text="Saved Search Notifications" isPublicFacing=true}</h2>
+									</div>
+								</div>
+							</a>
+							<div id="savedSearchNotificationsPanelBody" class="panel-collapse collapse in">
+								<div class="panel-body">
+									<div class="form-group propertyRow">
+										<label for="notifySavedSearchViaEmail" class="control-label">
+											{translate text="Email me when my saved searches have new results" isPublicFacing=true}
+											{if empty($profile->email)}
+												<span class="text-muted"> ({translate text="requires email address" isPublicFacing=true})</span>
+											{/if}
+										</label>&nbsp;
+										<input type="checkbox" class="form-control" name="notifySavedSearchViaEmail" id="notifySavedSearchViaEmail" {if $profile->notifySavedSearchViaEmail==1}checked='checked'{/if} {if empty($profile->email)}disabled{/if} data-switch="">
+									</div>
+									<div class="form-group propertyRow">
+										<label for="notifySavedSearchViaSMS" class="control-label">
+											{translate text="Text me when my saved searches have new results" isPublicFacing=true}
+											{if empty($profile->phone)}
+												<span class="text-muted"> ({translate text="requires phone number" isPublicFacing=true})</span>
+											{/if}
+										</label>&nbsp;
+										<input type="checkbox" class="form-control" name="notifySavedSearchViaSMS" id="notifySavedSearchViaSMS" {if $profile->notifySavedSearchViaSMS==1}checked='checked'{/if} {if empty($profile->phone)}disabled{/if} data-switch="">
+									</div>
+								</div>
+							</div>
+						</div>
+
 						{if count($allActiveThemes) > 1 || count($validLanguages) > 1}
 							<div class="panel" id="displayPreferencesPanel">
 								<a data-toggle="collapse" href="#displayPreferencesPanelBody" class="active">

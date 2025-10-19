@@ -61,6 +61,9 @@ class User extends DataObject {
 	public $onboardAppNotifications;
 	public $shouldAskBrightness;
 
+	public $notifySavedSearchViaEmail;
+	public $notifySavedSearchViaSMS;
+
 	/** @var Role[] */
 	private $_roles;
 	private $_permissions;
@@ -201,7 +204,9 @@ class User extends DataObject {
 			'rememberHoldPickupLocation',
 			'materialsRequestSendEmailOnAssign',
 			'isLocalTestUser',
-			'rememberHoldPromptForEdition'
+			'rememberHoldPromptForEdition',
+			'notifySavedSearchViaEmail',
+			'notifySavedSearchViaSMS'
 		];
 	}
 
@@ -1657,6 +1662,9 @@ class User extends DataObject {
 
 		$this->__set('optInToAllCampaignLeaderboards', (isset($_POST['optInToAllCampaignLeaderboards']) && $_POST['optInToAllCampaignLeaderboards'] == 'on') ? 1 : 0);
 		$this->__set('campaignNotificationsByEmail', (isset($_POST['campaignNotificationsByEmail']) && $_POST['campaignNotificationsByEmail'] == 'on') ? 1 : 0);
+
+		$this->__set('notifySavedSearchViaEmail', (isset($_POST['notifySavedSearchViaEmail']) && $_POST['notifySavedSearchViaEmail'] == 'on') ? 1 : 0);
+		$this->__set('notifySavedSearchViaSMS', (isset($_POST['notifySavedSearchViaSMS']) && $_POST['notifySavedSearchViaSMS'] == 'on') ? 1 : 0);
 
 		if ($library->holdPromptForEditions > 0) {
 			if (isset($_POST['rememberHoldPromptForEdition'])) {

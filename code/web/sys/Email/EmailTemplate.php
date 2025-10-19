@@ -31,7 +31,8 @@ class EmailTemplate extends DataObject {
 			$availableTemplates = [
 				'welcome' => 'Welcome',
 				'duplicateNameDOB' => 'Duplicate Name and Birthdate',
-				'duplicateEmail' => 'Duplicate Email'
+				'duplicateEmail' => 'Duplicate Email',
+				'savedSearchUpdate' => 'Saved Search Update',
 			];
 		} else {
 			$availableTemplates = [
@@ -42,6 +43,7 @@ class EmailTemplate extends DataObject {
 				'campaignComplete' => 'Campaign Complete',
 				'milestoneComplete' => 'Milestone Complete',
 				'staffCampaignComplete' => 'Campaign Complete Staff Alert',
+				'savedSearchUpdate' => 'Saved Search Update',
 			];
 		}
 		require_once ROOT_DIR . '/sys/Translation/Language.php';

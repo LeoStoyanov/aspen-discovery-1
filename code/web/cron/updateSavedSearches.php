@@ -114,6 +114,72 @@ if ($search->getNumResults() > 0) {
 						}
 						$notificationToken->__destruct();
 						$notificationToken = null;
+
+						if ($userForSearch->notifySavedSearchViaEmail == 1 && !empty($userForSearch->email)) {
+							require_once ROOT_DIR . '/sys/Email/Mailer.php';
+							require_once ROOT_DIR . '/sys/Email/EmailTemplate.php';
+
+							$emailTemplate = new EmailTemplate();
+							$emailTemplate->templateType = 'savedSearchUpdate';
+							$emailTemplate->languageCode = $userForSearch->interfaceLanguage ?? 'en';
+							if (!$emailTemplate->find(true)) {
+								// Fall back to default language.
+								$emailTemplate->languageCode = 'en';
+								if (!$emailTemplate->find(true)) {
+									$logger->log("No email template found for saved search notifications.", Logger::LOG_ERROR);
+									$emailTemplate = null;
+								}
+							}
+
+							if ($emailTemplate != null) {
+								$searchUrl = $configArray['Site']['url'] . '/Search/Results?saved=' . $searchEntry->id;
+								$libraryName = $homeLibrary->displayName ?? 'Library';
+								$variables = [
+									'{searchTitle}' => $searchEntry->title,
+									'{numNewResults}' => $numResults,
+									'{searchUrl}' => $searchUrl,
+									'{libraryName}' => $libraryName
+								];
+
+								$subject = str_replace(array_keys($variables), array_values($variables), $emailTemplate->subject);
+								$body = str_replace(array_keys($variables), array_values($variables), $emailTemplate->plainTextBody);
+
+								$mailer = new Mailer();
+								$result = $mailer->send($userForSearch->email, $subject, $body);
+								if ($result) {
+									$logger->log("Sent saved search email notification to user " . $userForSearch->id, Logger::LOG_DEBUG);
+								} else {
+									$logger->log("Failed to send saved search email notification to user " . $userForSearch->id, Logger::LOG_ERROR);
+								}
+							}
+						}
+
+						if ($userForSearch->notifySavedSearchViaSMS == 1 && !empty($userForSearch->phone)) {
+							require_once ROOT_DIR . '/sys/SMS/TwilioSetting.php';
+
+							$twilioSettings = new TwilioSetting();
+							if (isset($homeLibrary->twilioSettingId) && $homeLibrary->twilioSettingId > 0) {
+								$twilioSettings->id = $homeLibrary->twilioSettingId;
+								if ($twilioSettings->find(true)) {
+									$searchUrl = $configArray['Site']['url'] . '/Search/Results?saved=' . $searchEntry->id;
+									$libraryName = $homeLibrary->displayName ?? 'Library';
+									$message = "{$libraryName}: {$numResults} new title(s) in \"{$searchEntry->title}\". View: {$searchUrl}";
+
+									// Truncate if needed (SMS limit ~160 chars).
+									if (strlen($message) > 160) {
+										$message = substr($message, 0, 157) . '...';
+									}
+
+									$result = $twilioSettings->sendMessage($message, $userForSearch->phone);
+									if (isset($result['success']) && $result['success']) {
+										$logger->log("Sent saved search SMS notification to user " . $userForSearch->id, Logger::LOG_DEBUG);
+									} else {
+										$errorMsg = $result['message'] ?? 'Unknown error';
+										$logger->log("Failed to send saved search SMS notification to user " . $userForSearch->id . ": " . $errorMsg, Logger::LOG_ERROR);
+									}
+								}
+							}
+						}
 					}
 				}
 			} else {
