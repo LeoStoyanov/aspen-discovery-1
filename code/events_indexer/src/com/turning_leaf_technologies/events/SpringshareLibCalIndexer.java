@@ -1,5 +1,7 @@
 package com.turning_leaf_technologies.events;
 
+import com.turning_leaf_technologies.indexing.EventSuggestionPublisher;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
@@ -61,11 +63,12 @@ class SpringshareLibCalIndexer {
 	private PreparedStatement deleteRegistrantStmt;
 
 	private final ConcurrentUpdateHttp2SolrClient solrUpdateServer;
+	private final EventSuggestionPublisher suggestionPublisher;
 
 	private String oAuthTokenType;
 	private String oAuthAccessToken;
 
-	SpringshareLibCalIndexer(long settingsId, String name, String baseUrl, String calId, String clientId, String clientSecret, int numberOfDaysToIndex, ConcurrentUpdateHttp2SolrClient solrUpdateServer, Connection aspenConn, Logger logger) {
+	SpringshareLibCalIndexer(long settingsId, String name, String baseUrl, String calId, String clientId, String clientSecret, int numberOfDaysToIndex, ConcurrentUpdateHttp2SolrClient solrUpdateServer, SuggestionUpdateManager suggestionManager, Connection aspenConn, Logger logger) {
 		this.settingsId = settingsId;
 		this.name = name;
 		this.baseUrl = baseUrl;
@@ -77,6 +80,7 @@ class SpringshareLibCalIndexer {
 		this.clientSecret = clientSecret;
 		this.aspenConn = aspenConn;
 		this.solrUpdateServer = solrUpdateServer;
+		this.suggestionPublisher = new EventSuggestionPublisher(suggestionManager, "source:springshare:" + settingsId, logger);
 		this.numberOfDaysToIndex = numberOfDaysToIndex;
 
 		logEntry = new EventsIndexerLogEntry("Springshare LibCal " + name, aspenConn, logger);
@@ -316,6 +320,7 @@ class SpringshareLibCalIndexer {
 					}
 					solrDocument.addField("boost", boost);
 
+					suggestionPublisher.submit(sourceId, solrDocument, librariesToShowFor, boost);
 					solrUpdateServer.add(solrDocument);
 				} catch (SolrServerException | IOException e) {
 					logEntry.incErrors("Error adding event to solr ", e);
@@ -415,7 +420,9 @@ class SpringshareLibCalIndexer {
 					deleteEventStmt.executeUpdate();
 
 					try {
-						solrUpdateServer.deleteById("libcal_" + settingsId + "_" + eventInfo.getExternalId());
+						String solrDocumentId = "libcal_" + settingsId + "_" + eventInfo.getExternalId();
+						solrUpdateServer.deleteById(solrDocumentId);
+						suggestionPublisher.deleteById(solrDocumentId);
 					} catch (Exception e) {
 						logEntry.incErrors("Error deleting event by id ", e);
 					}
@@ -428,6 +435,7 @@ class SpringshareLibCalIndexer {
 
 		try {
 			solrUpdateServer.commit(false, false, true);
+			suggestionPublisher.commit();
 		} catch (Exception e) {
 			logEntry.incErrors("Error in final commit while finishing extract, shutting down", e);
 			logEntry.setFinished();
@@ -660,7 +668,7 @@ class SpringshareLibCalIndexer {
 		return values;
 	}
 
-	public static void cleanOrphanEvents(ConcurrentUpdateHttp2SolrClient solrUpdateServer, Connection aspenConn, Logger logger)
+	public static void cleanOrphanEvents(ConcurrentUpdateHttp2SolrClient solrUpdateServer, SuggestionUpdateManager suggestionManager, Connection aspenConn, Logger logger)
 	{
 		EventsIndexerLogEntry logEntry = new EventsIndexerLogEntry("Springshare LibCal Orphan Events", aspenConn, logger);
 		//get settingsIds with orphans
@@ -678,6 +686,9 @@ class SpringshareLibCalIndexer {
 				logEntry.incDeletedByNum(deletedEvents);
 				solrUpdateServer.deleteByQuery("type:event_libcal AND source:" + settingsId);
 				solrUpdateServer.commit(false, false, true);
+				EventSuggestionPublisher publisher = new EventSuggestionPublisher(suggestionManager, "source:springshare:" + settingsId, logger);
+				publisher.deleteBySource();
+				publisher.commit();
 				logEntry.addNote("Deleted orphans for settingsId: " + settingsId);
 			}
 		} catch (SQLException e) {

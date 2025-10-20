@@ -3,6 +3,7 @@ package com.turning_leaf_technologies.reindexer;
 import com.turning_leaf_technologies.encryption.EncryptionUtils;
 import com.turning_leaf_technologies.indexing.IndexingUtils;
 import com.turning_leaf_technologies.indexing.Scope;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.logging.log4j.Logger;
 import org.apache.solr.client.solrj.SolrQuery;
@@ -33,6 +34,7 @@ class UserListIndexer {
 	private ConcurrentUpdateHttp2SolrClient updateServer;
 	private Http2SolrClient groupedWorkServer;
 	private TreeSet<Scope> scopes;
+ 	private SuggestionUpdateManager suggestionManager;
 	private HashMap<Long, Long> librariesByHomeLocation = new HashMap<>();
 	private HashMap<Long, String> locationCodesByHomeLocation = new HashMap<>();
 	private HashSet<Long> usersThatCanShareLists = new HashSet<>();
@@ -124,6 +126,7 @@ class UserListIndexer {
 
 		Http2SolrClient.Builder openArchivesHttpBuilder = new Http2SolrClient.Builder("http://" + solrHost + ":" + solrPort + "/solr/open_archives");
 		openArchivesServer = openArchivesHttpBuilder.build();
+		suggestionManager = SuggestionUpdateManager.create(solrHost, solrPort, logger);
 
 		scopes = IndexingUtils.loadScopes(dbConn, logger);
 	}
@@ -155,10 +158,35 @@ class UserListIndexer {
 			System.exit(-5);
 		}
 
+		if (suggestionManager != null) {
+			suggestionManager.blockUntilFinished();
+			suggestionManager.close();
+			suggestionManager = null;
+		}
+
 		scopes = null;
 		librariesByHomeLocation = null;
 		locationCodesByHomeLocation = null;
 		usersThatCanShareLists = null;
+	}
+
+	private void submitSuggestion(UserListSolr listSolr) {
+		if (suggestionManager == null || !suggestionManager.isActive()) {
+			return;
+		}
+		suggestionManager.submit(listSolr.buildSuggestionDocument().build());
+	}
+
+	private void deleteSuggestion(long listId) {
+		if (suggestionManager != null && suggestionManager.isActive()) {
+			suggestionManager.deleteById("list|" + listId);
+		}
+	}
+
+	private void commitSuggestions() {
+		if (suggestionManager != null && suggestionManager.isActive()) {
+			suggestionManager.commit();
+		}
 	}
 
 	Long processPublicUserLists(boolean fullReindex, long lastReindexTime, ListIndexingLogEntry logEntry) {
@@ -170,6 +198,9 @@ class UserListIndexer {
 			PreparedStatement numListsStmt;
 			if (fullReindex){
 				updateServer.deleteByQuery("recordtype:list");
+				if (suggestionManager != null && suggestionManager.isActive()) {
+					suggestionManager.deleteByQuery("record_type:list");
+				}
 				clearDeletedListsTrackingTable(logEntry);
 				// Get a list of all public lists.
 				numListsStmt = dbConn.prepareStatement("SELECT COUNT(id) AS numLists FROM user_list WHERE public = 1 AND searchable = 1");
@@ -216,6 +247,7 @@ class UserListIndexer {
 				if (numListsIndexed % 500 == 0) {
 					if (!fullReindex) {
 						updateServer.commit(false, false, true);
+						commitSuggestions();
 					}
 					logEntry.saveResults();
 				}
@@ -228,6 +260,7 @@ class UserListIndexer {
 				}
 				logEntry.saveResults();
 				updateServer.commit(false, false, true);
+				commitSuggestions();
 			}
 
 		} catch (IOException e) {
@@ -394,6 +427,7 @@ class UserListIndexer {
 					SolrInputDocument document = userListSolr.getSolrDocument();
 					if (document != null) {
 						updateServer.add(document);
+						submitSuggestion(userListSolr);
 						if (created > lastReindexTime) {
 							logEntry.incAdded();
 						} else {
@@ -402,15 +436,18 @@ class UserListIndexer {
 						indexed = 1;
 					} else {
 						updateServer.deleteByQuery("id:" + listId);
+						deleteSuggestion(listId);
 						logEntry.incSkipped();
 					}
 				} else {
 					updateServer.deleteByQuery("id:" + listId);
+					deleteSuggestion(listId);
 					logEntry.incSkipped();
 					skippedForFewTitles = 1;
 				}
 			} catch (Exception e) {
 				updateServer.deleteByQuery("id:" + listId);
+				deleteSuggestion(listId);
 				logEntry.addNote("Could not decrypt user information for " + listId + " - " + e);
 				logEntry.incSkipped();
 			}
@@ -435,6 +472,7 @@ class UserListIndexer {
 				long listId = deletedListsRS.getLong("id");
 				try {
 					updateServer.deleteByQuery("id:" + listId);
+					deleteSuggestion(listId);
 					cleanedUpCount++;
 					logEntry.incDeleted();
 
@@ -455,6 +493,7 @@ class UserListIndexer {
 			if (cleanedUpCount > 0) {
 				logEntry.addNote("Cleaned up " + cleanedUpCount + " permanently deleted list(s) from Solr index and database.");
 				updateServer.commit(false, false, true);
+				commitSuggestions();
 			}
 			
 		} catch (Exception e) {

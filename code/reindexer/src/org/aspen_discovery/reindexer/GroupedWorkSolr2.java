@@ -612,6 +612,8 @@ public class GroupedWorkSolr2 extends AbstractGroupedWorkSolr implements Cloneab
 				logEntry.incErrors("Error setting up scope information for " + id + " scope " + scopeName, e);
 			}
 		} //End scope loop
+		editionInfoForSuggestions.clear();
+		editionInfoForSuggestions.addAll(editionInfo);
 		doc.addField("edition_info", editionInfo);
 		doc.addField("format", formats);
 		doc.addField("format_category", formatCategories);

@@ -1,5 +1,7 @@
 package com.turning_leaf_technologies.events;
 
+import com.turning_leaf_technologies.indexing.EventSuggestionPublisher;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpEntity;
@@ -67,11 +69,10 @@ class CommunicoIndexer {
 	private PreparedStatement deleteRegistrantStmt;
 
 	private final Long startTimeForLogging;
-
-
 	private final ConcurrentUpdateHttp2SolrClient solrUpdateServer;
+	private final EventSuggestionPublisher suggestionPublisher;
 
-	CommunicoIndexer(long settingsId, String name, String baseUrl, String clientId, String clientSecret, int numberOfDaysToIndex , long lastUpdateOfAllEvents, ConcurrentUpdateHttp2SolrClient solrUpdateServer, Connection aspenConn, Logger logger) {
+	CommunicoIndexer(long settingsId, String name, String baseUrl, String clientId, String clientSecret, int numberOfDaysToIndex , long lastUpdateOfAllEvents, ConcurrentUpdateHttp2SolrClient solrUpdateServer, SuggestionUpdateManager suggestionManager, Connection aspenConn, Logger logger) {
 		this.settingsId = settingsId;
 		this.name = name;
 		this.baseUrl = baseUrl;
@@ -86,6 +87,7 @@ class CommunicoIndexer {
 		this.clientSecret = clientSecret;
 		this.aspenConn = aspenConn;
 		this.solrUpdateServer = solrUpdateServer;
+		this.suggestionPublisher = new EventSuggestionPublisher(suggestionManager, "source:communico:" + settingsId, logger);
 		this.numberOfDaysToIndex = numberOfDaysToIndex;
 		this.lastUpdateOfAllEvents = lastUpdateOfAllEvents;
 
@@ -168,6 +170,7 @@ class CommunicoIndexer {
 		if (runFullIndexCommunico){
 			try {
 				solrUpdateServer.deleteByQuery("type:event_communico AND source:" + this.settingsId);
+				suggestionPublisher.deleteBySource();
 				//3-19-2019 Don't commit so the index does not get cleared during run (but will clear at the end).
 			} catch (BaseHttpSolrClient.RemoteSolrException rse) {
 				logEntry.incErrors("Solr is not running properly, try restarting " + rse);
@@ -305,6 +308,7 @@ class CommunicoIndexer {
 					}
 					solrDocument.addField("boost", boost);
 
+					suggestionPublisher.submit(sourceId, solrDocument, librariesToShowFor, boost);
 					solrUpdateServer.add(solrDocument);
 				} catch (SolrServerException | IOException e) {
 					logEntry.incErrors("Error adding event to solr ", e);
@@ -395,11 +399,13 @@ class CommunicoIndexer {
 				} catch (SQLException e) {
 					logEntry.incErrors("Error deleting event ", e);
 				}
+				String solrDocumentId = "communico_" + settingsId + "_" + eventInfo.getExternalId();
 				try {
-					solrUpdateServer.deleteById("communico_" + settingsId + "_" + eventInfo.getExternalId());
+					solrUpdateServer.deleteById(solrDocumentId);
 				} catch (Exception e) {
 					logEntry.incErrors("Error deleting event by id ", e);
 				}
+				suggestionPublisher.deleteById(solrDocumentId);
 				logEntry.incDeleted();
 			}
 		}
@@ -407,6 +413,7 @@ class CommunicoIndexer {
 		logger.warn("Updating solr");
 		try {
 			solrUpdateServer.commit(false, false, true);
+			suggestionPublisher.commit();
 		} catch (Exception e) {
 			logEntry.incErrors("Error in final commit while finishing extract, shutting down", e);
 			logEntry.setFinished();

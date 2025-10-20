@@ -2,6 +2,7 @@ package com.turning_leaf_technologies.reindexer;
 
 import com.turning_leaf_technologies.dates.DateUtils;
 import com.turning_leaf_technologies.indexing.Scope;
+import com.turning_leaf_technologies.indexing.SuggestionDocumentBuilder;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.solr.common.SolrInputDocument;
 
@@ -140,7 +141,32 @@ class UserListSolr {
 		this.dateUpdated = dateUpdated;
 	}
 
-	public long getDateUpdated() {
-		return dateUpdated;
+	SuggestionDocumentBuilder buildSuggestionDocument() {
+		HashSet<String> titleSuggestions = new HashSet<>();
+		if (title != null && !title.isEmpty()) {
+			titleSuggestions.add(title);
+		}
+
+		HashSet<String> authorSuggestions = new HashSet<>();
+		if (author != null && !author.isEmpty()) {
+			authorSuggestions.add(author);
+		}
+
+        HashSet<String> keywordSuggestions = new HashSet<>(contents);
+		HashSet<String> contextFilters = new HashSet<>();
+		contextFilters.add("record_type#list");
+		if (owningLibrary != -1) {
+			contextFilters.add("library#" + owningLibrary);
+		}
+		if (owningLocation != null && !owningLocation.isEmpty()) {
+			contextFilters.add("location#" + owningLocation);
+		}
+
+        return new SuggestionDocumentBuilder("list|" + id, "list", "lists")
+            .addTitleSuggestions(titleSuggestions)
+            .addAuthorSuggestions(authorSuggestions)
+            .addKeywordSuggestions(keywordSuggestions)
+            .addContextFilters(contextFilters)
+            .setPopularity(numTitles);
 	}
 }

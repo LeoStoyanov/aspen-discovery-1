@@ -2,6 +2,7 @@ package com.turning_leaf_technologies.reindexer;
 
 import com.turning_leaf_technologies.dates.DateUtils;
 import com.turning_leaf_technologies.indexing.Scope;
+import com.turning_leaf_technologies.indexing.SuggestionDocumentBuilder;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.solr.common.SolrInputDocument;
 
@@ -115,5 +116,43 @@ class CourseReserveSolr {
 
 	public void setDisplayLibrary(String displayLibrary) {
 		this.displayLibrary = displayLibrary;
+	}
+
+	SuggestionDocumentBuilder buildSuggestionDocument() {
+		HashSet<String> titleSuggestions = new HashSet<>();
+		if (title != null && !title.isEmpty()) {
+			titleSuggestions.add(title);
+		}
+		if (courseTitle != null && !courseTitle.isEmpty()) {
+			titleSuggestions.add(courseTitle);
+		}
+
+		HashSet<String> keywordSuggestions = new HashSet<>();
+		if (courseNumber != null && !courseNumber.isEmpty()) {
+			keywordSuggestions.add(courseNumber);
+		}
+		if (displayLibrary != null && !displayLibrary.isEmpty()) {
+			keywordSuggestions.add(displayLibrary);
+		}
+
+		HashSet<String> contextFilters = new HashSet<>();
+		contextFilters.add("record_type#course_reserve");
+		if (courseLibrary != null && !courseLibrary.isEmpty()) {
+			contextFilters.add(courseLibrary);
+		}
+		if (displayLibrary != null && !displayLibrary.isEmpty()) {
+			contextFilters.add(displayLibrary);
+		}
+
+		SuggestionDocumentBuilder builder = new SuggestionDocumentBuilder("course_reserve|" + id, "course_reserve", "course_reserves")
+			.addTitleSuggestions(titleSuggestions)
+			.addInstructorSuggestions(instructor)
+			.addKeywordSuggestions(keywordSuggestions)
+			.addContextFilters(contextFilters)
+			.setPopularity(numTitles);
+		if (!contents.isEmpty()) {
+			builder.addKeywordSuggestions(contents);
+		}
+		return builder;
 	}
 }

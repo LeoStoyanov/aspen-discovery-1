@@ -1,6 +1,8 @@
 package com.turning_leaf_technologies.events;
 
 import com.turning_leaf_technologies.config.ConfigUtil;
+import com.turning_leaf_technologies.indexing.EventSuggestionPublisher;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.BaseHttpSolrClient;
@@ -31,12 +33,13 @@ public class AspenEventsIndexer {
 	private final HashSet<String> librariesToShowFor = new HashSet<>();
 	private final static CRC32 checksumCalculator = new CRC32();
 	private final String coverPath;
+	private final EventSuggestionPublisher suggestionPublisher;
 
 	private final List<String> idsToDelete = new ArrayList<>();
 
 	private final ConcurrentUpdateHttp2SolrClient solrUpdateServer;
 
-	AspenEventsIndexer(long settingsId, String name, int numberOfDaysToIndex, boolean runFullUpdate, long lastUpdateOfAllEvents, long lastUpdateOfChangedEvents, ConcurrentUpdateHttp2SolrClient solrUpdateServer, Connection aspenConn, Logger logger, String serverName) {
+	AspenEventsIndexer(long settingsId, String name, int numberOfDaysToIndex, boolean runFullUpdate, long lastUpdateOfAllEvents, long lastUpdateOfChangedEvents, ConcurrentUpdateHttp2SolrClient solrUpdateServer, SuggestionUpdateManager suggestionManager, Connection aspenConn, Logger logger, String serverName) {
 		this.settingsId = settingsId;
 		this.name = name;
 		this.aspenConn = aspenConn;
@@ -45,6 +48,7 @@ public class AspenEventsIndexer {
 		this.runFullUpdate = runFullUpdate;
 		this.lastUpdateOfAllEvents = lastUpdateOfAllEvents;
 		this.lastUpdateOfChangedEvents = lastUpdateOfChangedEvents;
+		this.suggestionPublisher = new EventSuggestionPublisher(suggestionManager, "source:aspen_events:" + settingsId, logger);
 
 		logEntry = new EventsIndexerLogEntry("Aspen Events " + name, aspenConn, logger);
 
@@ -132,6 +136,7 @@ public class AspenEventsIndexer {
 		// Delete everything and start fresh for full index
 		if (runFullUpdate) {
 			try {
+				suggestionPublisher.deleteBySource();
 				solrUpdateServer.deleteByQuery("type:event_aspenEvent AND source:" + this.settingsId);
 			} catch (BaseHttpSolrClient.RemoteSolrException rse) {
 				logEntry.incErrors("Solr is not running properly, try restarting " + rse);
@@ -143,6 +148,8 @@ public class AspenEventsIndexer {
 			try {
 				for (String id : idsToDelete) {
 					solrUpdateServer.deleteByQuery("type:event_aspenEvent AND id:" + id);
+					String eventId = id.substring(id.lastIndexOf('_') + 1);
+					suggestionPublisher.deleteById(eventId);
 					logEntry.incDeleted();
 				}
 			} catch (Exception e) {
@@ -246,6 +253,9 @@ public class AspenEventsIndexer {
 				solrDocument.addField("library_scopes", librariesToShowFor);
 
 				solrDocument.addField("boost", boost);
+
+				String solrDocumentId = "aspenEvent_" + settingsId + "_" + eventInfo.getId();
+				suggestionPublisher.submit(solrDocumentId, solrDocument, librariesToShowFor, boost);
 				solrUpdateServer.add(solrDocument);
 
 				logEntry.incUpdated(); // Need to add a way to distinguish between added/updated
@@ -274,6 +284,7 @@ public class AspenEventsIndexer {
 		}
 
 		try {
+			suggestionPublisher.commit();
 			solrUpdateServer.commit(false, false, true);
 		} catch (Exception e) {
 			logEntry.incErrors("Error in final commit while finishing extract, shutting down", e);

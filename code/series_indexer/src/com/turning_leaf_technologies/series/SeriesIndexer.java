@@ -2,6 +2,7 @@ package com.turning_leaf_technologies.series;
 
 import com.turning_leaf_technologies.indexing.IndexingUtils;
 import com.turning_leaf_technologies.indexing.Scope;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -26,6 +27,7 @@ class SeriesIndexer {
 	private ConcurrentUpdateHttp2SolrClient updateServer;
 	private Http2SolrClient groupedWorkServer;
 	private TreeSet<Scope> scopes;
+	private final SuggestionUpdateManager suggestionManager;
 
 	SeriesIndexer(Ini configIni, Connection dbConn, Logger logger){
 		this.dbConn = dbConn;
@@ -77,6 +79,8 @@ class SeriesIndexer {
 		groupedWorkServer = groupedWorkHttpBuilder.build();
 
 		scopes = IndexingUtils.loadScopes(dbConn, logger);
+
+		suggestionManager = SuggestionUpdateManager.create(solrHost, solrPort, logger);
 	}
 
 	void close() {
@@ -109,6 +113,7 @@ class SeriesIndexer {
 			PreparedStatement numSeriesStmt;
 			if (fullReindex) {
 				//Delete all series from the index
+				suggestionManager.deleteByQuery("record_type:series");
 				updateServer.deleteByQuery("recordtype:series");
 				//Get a list of all series
 				numSeriesStmt = dbConn.prepareStatement("select count(id) as numSeries from series WHERE isIndexed = 1;");
@@ -134,6 +139,9 @@ class SeriesIndexer {
 				}
 				if (numSeriesIndexed % 500 == 0) {
 					if (!fullReindex) {
+						if (suggestionManager != null) {
+							suggestionManager.commit();
+						}
 						updateServer.commit(false, false, true);
 					}
 					logEntry.saveResults();
@@ -144,6 +152,9 @@ class SeriesIndexer {
 				allSeriesRS.close();
 				logEntry.addNote("Calling final commit");
 				logEntry.saveResults();
+				if (suggestionManager != null) {
+					suggestionManager.commit();
+				}
 				updateServer.commit(false, false, true);
 			}
 
@@ -165,6 +176,7 @@ class SeriesIndexer {
 			int isIndexed = allSeriesRS.getInt("isIndexed");
 			boolean indexed = false;
 			if (!fullReindex && (deleted == 1 || isIndexed == 0)) {
+				suggestionManager.deleteById("series|" + seriesId);
 				updateServer.deleteByQuery("id:" + seriesId);
 				logEntry.incDeleted();
 			} else {
@@ -221,6 +233,7 @@ class SeriesIndexer {
 					// is valid for one or more scopes.
 					SolrInputDocument document = seriesSolr.getSolrDocument();
 					if (numTitles > 0 && document != null) {
+						suggestionManager.submit(seriesSolr.buildSuggestionDocument().build());
 						updateServer.add(document);
 						if (created > lastReindexTime) {
 							logEntry.incAdded();
@@ -229,10 +242,12 @@ class SeriesIndexer {
 						}
 						indexed = true;
 					} else {
+						suggestionManager.deleteById("series|" + seriesId);
 						updateServer.deleteByQuery("id:" + seriesId);
 						logEntry.incSkipped();
 					}
 				} catch (Exception e) {
+					suggestionManager.deleteById("series|" + seriesId);
 					updateServer.deleteByQuery("id:" + seriesId);
 					logEntry.addNote("Could not get title information for " + seriesId + " - " + e);
 					logEntry.incSkipped();

@@ -2,6 +2,7 @@ package com.turning_leaf_technologies.series;
 
 import com.turning_leaf_technologies.dates.DateUtils;
 import com.turning_leaf_technologies.indexing.Scope;
+import com.turning_leaf_technologies.indexing.SuggestionDocumentBuilder;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrInputDocument;
@@ -172,5 +173,22 @@ class SeriesSolr {
 
 	public void setDateUpdated(long dateUpdated) {
 		this.dateUpdated = dateUpdated;
+	}
+
+	SuggestionDocumentBuilder buildSuggestionDocument() {
+		HashSet<String> contextFilters = new HashSet<>();
+		contextFilters.add("record_type#series");
+		for (Scope scope: seriesIndexer.getScopes()) {
+			contextFilters.add("scope#" + scope.getScopeName());
+		}
+
+		int popularity = (int) Math.min(numTitles, 100); // Cap at 100 for reasonable weighting.
+		return new SuggestionDocumentBuilder("series|" + id, "series", "series")
+			.addTitleSuggestions(title != null ? Collections.singleton(title) : Collections.emptySet())
+			.addAuthorSuggestions(authors)
+			.addSubjectSuggestions(subjects)
+			.addKeywordSuggestions(contents)
+			.addContextFilters(contextFilters)
+			.setPopularity(Math.max(popularity, 1));
 	}
 }

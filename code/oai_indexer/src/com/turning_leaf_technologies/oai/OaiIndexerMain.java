@@ -2,6 +2,7 @@ package com.turning_leaf_technologies.oai;
 
 import com.turning_leaf_technologies.config.ConfigUtil;
 import com.turning_leaf_technologies.indexing.IndexingUtils;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import com.turning_leaf_technologies.logging.LoggingUtil;
 import com.turning_leaf_technologies.net.NetworkUtils;
 import com.turning_leaf_technologies.net.WebServiceResponse;
@@ -34,6 +35,7 @@ public class OaiIndexerMain {
 
 	private static Ini configIni;
 	private static ConcurrentUpdateHttp2SolrClient updateServer;
+	private static SuggestionUpdateManager suggestionManager;
 
 	private static Connection aspenConn;
 
@@ -138,9 +140,11 @@ public class OaiIndexerMain {
 		}
 
 		setupSolrClient(solrHost, solrPort);
+		suggestionManager = SuggestionUpdateManager.create(solrHost, solrPort, logger);
 
 		if (fullReload) {
 			try {
+				suggestionManager.deleteByQuery("record_type:open_archives");
 				updateServer.deleteByQuery("*:*");
 				//3-19-2019 Don't commit so the index does not get cleared during run (but will clear at the end).
 			} catch (BaseHttpSolrClient.RemoteSolrException rse) {
@@ -369,6 +373,7 @@ public class OaiIndexerMain {
 														numRecordsLoaded++;
 														if (numRecordsLoaded % commitBatchSize == 0) {
 															try {
+																suggestionManager.commit();
 																updateServer.commit(false, false, true);
 															} catch (SolrServerException | IOException e) {
 																logEntry.incErrors("Error posting periodic commit to Solr: ", e);
@@ -413,6 +418,7 @@ public class OaiIndexerMain {
 						}
 						if (!fullReload) {
 							try {
+								suggestionManager.commit();
 								updateServer.commit(false, false, true);
 							} catch (SolrServerException | IOException e) {
 								logEntry.incErrors("Error posting documents to Solr", e);
@@ -444,6 +450,7 @@ public class OaiIndexerMain {
 						//Delete from solr
 						long idToDelete = recordsToDeleteRS.getLong("id");
 						try {
+							suggestionManager.deleteById("open_archives|" + idToDelete);
 							updateServer.deleteByQuery("id:\"" + idToDelete + "\"");
 						} catch (BaseHttpSolrClient.RemoteSolrException rse) {
 							logger.error("Solr is not running properly, try restarting", rse);
@@ -471,6 +478,7 @@ public class OaiIndexerMain {
 			//Now that we are done with all changes, commit them.
 			logEntry.addNote("Starting final Solr commit to save all changes to the search index.");
 			try {
+				suggestionManager.commit();
 				updateServer.commit(false, false, true);
 			} catch (Exception e) {
 				logEntry.incErrors("Error in final commit while finishing extract, shutting down", e);
@@ -494,7 +502,9 @@ public class OaiIndexerMain {
 			//Clean up to be sure the index is cleared of old data
 			try {
 				//Use the ID rather than name in case the name changes.
+				suggestionManager.deleteByQuery("source:open_archives:" + collectionId);
 				updateServer.deleteByQuery("collection_id:\"" + collectionId + "\"");
+				suggestionManager.commit();
 				updateServer.commit(false, false, true);
 				//3-19-2019 Don't commit so the index does not get cleared during run (but will clear at the end).
 			} catch (BaseHttpSolrClient.RemoteSolrException rse) {
@@ -798,6 +808,7 @@ public class OaiIndexerMain {
 								logEntry.incSkipped();
 							} else {
 								solrRecord.setId(existingRecordRS.getString("id"));
+								suggestionManager.submit(solrRecord.buildSuggestionDocument().build());
 								updateServer.add(solrRecord.getSolrDocument());
 								updateLastSeenForRecord.setLong(1, new Date().getTime() / 1000);
 								updateLastSeenForRecord.setLong(2, existingRecordRS.getLong("id"));
@@ -813,6 +824,7 @@ public class OaiIndexerMain {
 							ResultSet rs = addOpenArchivesRecord.getGeneratedKeys();
 							if (rs.next()) {
 								solrRecord.setId(rs.getString(1));
+								suggestionManager.submit(solrRecord.buildSuggestionDocument().build());
 								updateServer.add(solrRecord.getSolrDocument());
 								addedToIndex = true;
 							}

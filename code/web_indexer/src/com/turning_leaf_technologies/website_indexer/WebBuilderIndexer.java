@@ -1,5 +1,7 @@
 package com.turning_leaf_technologies.website_indexer;
 
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
+import com.turning_leaf_technologies.indexing.WebsiteSuggestionPublisher;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.ConcurrentUpdateHttp2SolrClient;
@@ -23,16 +25,18 @@ class WebBuilderIndexer {
 	private final Ini configIni;
 
 	private final ConcurrentUpdateHttp2SolrClient solrUpdateServer;
+	private final WebsiteSuggestionPublisher suggestionPublisher;
 	private final HashMap<Long, String> audiences = new HashMap<>();
 	private final HashMap<Long, String> categories = new HashMap<>();
 	private final HashMap<Long, String> librarySubdomains = new HashMap<>();
 	private final HashMap<Long, String> libraryBaseUrls = new HashMap<>();
 
-	WebBuilderIndexer(Ini configIni, WebsiteIndexLogEntry logEntry, Connection aspenConn, ConcurrentUpdateHttp2SolrClient solrUpdateServer){
+	WebBuilderIndexer(Ini configIni, WebsiteIndexLogEntry logEntry, Connection aspenConn, ConcurrentUpdateHttp2SolrClient solrUpdateServer, SuggestionUpdateManager suggestionManager){
 		this.configIni = configIni;
 		this.logEntry = logEntry;
 		this.aspenConn = aspenConn;
 		this.solrUpdateServer = solrUpdateServer;
+		this.suggestionPublisher = new WebsiteSuggestionPublisher(suggestionManager, -1);
 	}
 
 	void indexContent() {
@@ -41,6 +45,7 @@ class WebBuilderIndexer {
 		loadLibrarySubdomains();
 
 		try {
+			suggestionPublisher.deleteBySource();
 			solrUpdateServer.deleteByQuery("recordtype:\"WebResource\"");
 			solrUpdateServer.deleteByQuery("recordtype:\"BasicPage\"");
 			solrUpdateServer.deleteByQuery("recordtype:\"PortalPage\"");
@@ -61,6 +66,7 @@ class WebBuilderIndexer {
 		indexWebResourcePages();
 
 		try {
+			suggestionPublisher.commit();
 			solrUpdateServer.commit(false, false, true);
 		} catch (Exception e) {
 			logEntry.incErrors("Error in final commit while finishing extract, shutting down", e);
@@ -143,6 +149,7 @@ class WebBuilderIndexer {
 				solrDocument.addField("title_sort", AspenStringUtils.makeValueSortable(title));
 
 				//Load libraries to scope to
+				List<String> scopesToInclude = new java.util.ArrayList<>();
 				getLibrariesForResourceStmt.setString(1, id);
 				ResultSet getLibrariesForResourceRS = getLibrariesForResourceStmt.executeQuery();
 				long firstLibraryId = -1;
@@ -153,7 +160,9 @@ class WebBuilderIndexer {
 							firstLibraryId = tmpFirstLibraryId;
 						}
 					}
-					solrDocument.addField("scope_has_related_records", librarySubdomains.get(getLibrariesForResourceRS.getLong("libraryId")));
+					String scopeName = librarySubdomains.get(getLibrariesForResourceRS.getLong("libraryId"));
+					solrDocument.addField("scope_has_related_records", scopeName);
+					scopesToInclude.add(scopeName);
 				}
 
 				if (firstLibraryId == -1) {
@@ -186,6 +195,7 @@ class WebBuilderIndexer {
 
 				logEntry.incNumPages();
 				try {
+					suggestionPublisher.submit(id, solrDocument, scopesToInclude);
 					solrUpdateServer.add(solrDocument);
 					logEntry.incUpdated();
 				} catch (SolrServerException | IOException e) {
@@ -246,14 +256,18 @@ class WebBuilderIndexer {
 				}
 
 				//Load libraries to scope to
+				List<String> scopesToInclude = new java.util.ArrayList<>();
 				getLibrariesForBasicPageStmt.setString(1, id);
 				ResultSet getLibrariesForBasicPageRS = getLibrariesForBasicPageStmt.executeQuery();
 				while (getLibrariesForBasicPageRS.next()){
-					solrDocument.addField("scope_has_related_records", librarySubdomains.get(getLibrariesForBasicPageRS.getLong("libraryId")));
+					String scopeName = librarySubdomains.get(getLibrariesForBasicPageRS.getLong("libraryId"));
+					solrDocument.addField("scope_has_related_records", scopeName);
+					scopesToInclude.add(scopeName);
 				}
 
 				logEntry.incNumPages();
 				try {
+					suggestionPublisher.submit(id, solrDocument, scopesToInclude);
 					solrUpdateServer.add(solrDocument);
 					logEntry.incUpdated();
 				} catch (SolrServerException | IOException e) {
@@ -294,6 +308,7 @@ class WebBuilderIndexer {
 				solrDocument.addField("title_sort", AspenStringUtils.makeValueSortable(title));
 
 				//Load libraries to scope to
+				List<String> scopesToInclude = new java.util.ArrayList<>();
 				getLibrariesForPortalPageStmt.setString(1, id);
 				ResultSet getLibrariesForPortalPageRS = getLibrariesForPortalPageStmt.executeQuery();
 				long firstLibraryId = -1;
@@ -306,7 +321,9 @@ class WebBuilderIndexer {
 							firstLibraryId = tmpFirstLibraryId;
 						}
 					}
-					solrDocument.addField("scope_has_related_records", librarySubdomains.get(getLibrariesForPortalPageRS.getLong("libraryId")));
+					String scopeName = librarySubdomains.get(getLibrariesForPortalPageRS.getLong("libraryId"));
+					solrDocument.addField("scope_has_related_records", scopeName);
+					scopesToInclude.add(scopeName);
 				}
 
 				if (firstLibraryId == -1){
@@ -347,6 +364,7 @@ class WebBuilderIndexer {
 
 					logEntry.incNumPages();
 					try {
+						suggestionPublisher.submit(id, solrDocument, scopesToInclude);
 						solrUpdateServer.add(solrDocument);
 						logEntry.incUpdated();
 					} catch (SolrServerException | IOException e) {
@@ -393,6 +411,7 @@ class WebBuilderIndexer {
 				solrDocument.addField("title_sort", AspenStringUtils.makeValueSortable(title));
 
 				//Load libraries
+				List<String> scopesToInclude = new java.util.ArrayList<>();
 				getLibrariesForGrapesPageStmt.setString(1, id);
 				ResultSet getLibrariesForGrapesPageRS = getLibrariesForGrapesPageStmt.executeQuery();
 				long firstLibraryId = -1;
@@ -403,7 +422,9 @@ class WebBuilderIndexer {
 							firstLibraryId = tmpFirstLibraryId;
 						}
 					}
-					solrDocument.addField("scope_has_related_records", librarySubdomains.get(getLibrariesForGrapesPageRS.getLong("libraryId")));
+					String scopeName = librarySubdomains.get(getLibrariesForGrapesPageRS.getLong("libraryId"));
+					solrDocument.addField("scope_has_related_records", scopeName);
+					scopesToInclude.add(scopeName);
 				}
 				if (firstLibraryId == -1) {
 					continue;
@@ -428,6 +449,7 @@ class WebBuilderIndexer {
 
 					logEntry.incNumPages();
 					try {
+						suggestionPublisher.submit(id, solrDocument, scopesToInclude);
 						solrUpdateServer.add(solrDocument);
 						logEntry.incUpdated();
 					} catch (SolrServerException | IOException e) {
@@ -461,6 +483,7 @@ class WebBuilderIndexer {
 				String type = getWebResourcePagesToIndexRS.getString("webResourcePageType");
 				String settingId = getWebResourcePagesToIndexRS.getString("webResourcesSettingId");
 				
+				List<String> scopesToInclude = new java.util.ArrayList<>();
 				getLibrariesForPageStmt.setString(1, settingId);
 				ResultSet getLibrariesForPageRS = getLibrariesForPageStmt.executeQuery();
 				boolean hasEnabledLibrary = false;
@@ -474,16 +497,22 @@ class WebBuilderIndexer {
 							firstLibraryId = tmpFirstLibraryId;
 						}
 					}
-					solrDocument.addField("scope_has_related_records", librarySubdomains.get(getLibrariesForPageRS.getLong("libraryId")));
+					String scopeName = librarySubdomains.get(getLibrariesForPageRS.getLong("libraryId"));
+					solrDocument.addField("scope_has_related_records", scopeName);
+					scopesToInclude.add(scopeName);
 				}
 
 				if (!hasEnabledLibrary || firstLibraryId == -1) {
 					continue;
 				}
+				String documentId;
+				String simpleId = null;
 				//handle custom resource pages
 				if (type.equals("custom")) {
 					String id = getWebResourcePagesToIndexRS.getString("customWebResourcePageId");
-					solrDocument.addField("id", "CustomResourcePage:" + id);
+					documentId = "CustomResourcePage:" + id;
+					simpleId = "CustomResourcePage_" + id;
+					solrDocument.addField("id", documentId);
 					solrDocument.addField("recordtype", "CustomResourcePage");
 
 					getTitleOfCustomPageStmt.setString(1, id);
@@ -520,7 +549,9 @@ class WebBuilderIndexer {
 				//handle audience pages
 				if (type.equals("audience")) {
 					String id = getWebResourcePagesToIndexRS.getString("webResourceAudienceId");
-					solrDocument.addField("id", "ResourceAudiencePage:" + id);
+					documentId = "ResourceAudiencePage:" + id;
+					simpleId = "ResourceAudiencePage_" + id;
+					solrDocument.addField("id", documentId);
 					solrDocument.addField("recordtype", "ResourceAudiencePage");
 					String title = "Resources For " + audiences.get(getWebResourcePagesToIndexRS.getLong("webResourceAudienceId")); //there is only one audience for an audience resource page
 					solrDocument.addField("title", title);
@@ -538,7 +569,9 @@ class WebBuilderIndexer {
 				//handle category pages
 				if (type.equals("category")) {
 					String id = getWebResourcePagesToIndexRS.getString("webResourceCategoryId");
-					solrDocument.addField("id", "ResourceCategoryPage:" + id);
+					documentId = "ResourceCategoryPage:" + id;
+					simpleId = "ResourceCategoryPage_" + id;
+					solrDocument.addField("id", documentId);
 					solrDocument.addField("recordtype", "ResourceCategoryPage");
 					String title = categories.get(getWebResourcePagesToIndexRS.getLong("webResourceCategoryId")); //there is only one category for a category resource page
 					solrDocument.addField("title", title);
@@ -555,7 +588,9 @@ class WebBuilderIndexer {
 				}
 				//handle A to Z page
 				if (type.equals("AtoZ")) {
-					solrDocument.addField("id", "WebResourcesAtoZ");
+					documentId = "WebResourcesAtoZ";
+					simpleId = "WebResourcesAtoZ";
+					solrDocument.addField("id", documentId);
 					solrDocument.addField("recordtype", "WebResourcesAtoZ");
 					solrDocument.addField("title", "Resources A to Z");
 					solrDocument.addField("title_display", "Resources A to Z");
@@ -576,6 +611,9 @@ class WebBuilderIndexer {
 
 				logEntry.incNumPages();
 				try {
+					if (simpleId != null) {
+						suggestionPublisher.submit(simpleId, solrDocument, scopesToInclude);
+					}
 					solrUpdateServer.add(solrDocument);
 					logEntry.incUpdated();
 				} catch (SolrServerException | IOException e) {

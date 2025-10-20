@@ -1,5 +1,7 @@
 package com.turning_leaf_technologies.website_indexer;
 
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
+import com.turning_leaf_technologies.indexing.WebsiteSuggestionPublisher;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.commons.text.StringEscapeUtils;
 import org.apache.http.client.ClientProtocolException;
@@ -47,8 +49,9 @@ class WebsiteIndexer {
 	private final HashSet<String> scopesToInclude;
 
 	private final ConcurrentUpdateHttp2SolrClient solrUpdateServer;
+	private final WebsiteSuggestionPublisher suggestionPublisher;
 
-	WebsiteIndexer(Long websiteId, String websiteName, String searchCategory, String initialUrl, String pageTitleExpression, String descriptionExpression, String pathsToExclude, long maxPagesToIndex, long crawlDelay, HashSet<String> scopesToInclude, boolean fullReload, WebsiteIndexLogEntry logEntry, Connection aspenConn, ConcurrentUpdateHttp2SolrClient solrUpdateServer, Logger logger) {
+	WebsiteIndexer(Long websiteId, String websiteName, String searchCategory, String initialUrl, String pageTitleExpression, String descriptionExpression, String pathsToExclude, long maxPagesToIndex, long crawlDelay, HashSet<String> scopesToInclude, boolean fullReload, WebsiteIndexLogEntry logEntry, Connection aspenConn, ConcurrentUpdateHttp2SolrClient solrUpdateServer, SuggestionUpdateManager suggestionManager, Logger logger) {
 		this.websiteId = websiteId;
 		this.websiteName = websiteName;
 		this.searchCategory = searchCategory;
@@ -67,6 +70,7 @@ class WebsiteIndexer {
 		this.aspenConn = aspenConn;
 		this.fullReload = fullReload;
 		this.solrUpdateServer = solrUpdateServer;
+		this.suggestionPublisher = new WebsiteSuggestionPublisher(suggestionManager, websiteId);
 
 		if (!pageTitleExpression.isEmpty()){
 			try{
@@ -127,6 +131,7 @@ class WebsiteIndexer {
 	void spiderWebsite() {
 		if (fullReload) {
 			try {
+				suggestionPublisher.deleteBySource();
 				solrUpdateServer.deleteByQuery("settingId:" + websiteId);
 				//3-19-2019 Don't commit so the index does not get cleared during run (but will clear at the end).
 			} catch (BaseHttpSolrClient.RemoteSolrException rse) {
@@ -229,6 +234,7 @@ class WebsiteIndexer {
 						deletePageStmt.setLong(2, curPage.getId());
 						deletePageStmt.executeUpdate();
 						logEntry.incDeleted();
+						suggestionPublisher.deleteById(String.valueOf(curPage.getId()));
 						solrUpdateServer.deleteByQuery("id:\"WebPage:" + curPage.getId() + "\" AND settingId:" + websiteId );
 					}
 				} catch (Exception e) {
@@ -238,6 +244,7 @@ class WebsiteIndexer {
 		}
 
 		try {
+			suggestionPublisher.commit();
 			solrUpdateServer.commit(false, false, true);
 		} catch (Exception e) {
 			logEntry.incErrors("Error in final commit ", e);
@@ -428,6 +435,7 @@ class WebsiteIndexer {
 							solrDocument.addField("scope_has_related_records", scopesToInclude);
 
 							//TODO: Add popularity
+							suggestionPublisher.submit(String.valueOf(page.getId()), solrDocument, scopesToInclude);
 							solrUpdateServer.add(solrDocument);
 						}
 					} else {
@@ -441,6 +449,7 @@ class WebsiteIndexer {
 						deletePageStmt.setString(1, "Received " + connection.response().statusCode() + " error code");
 						deletePageStmt.setLong(2, existingPage.getId());
 						deletePageStmt.executeUpdate();
+						suggestionPublisher.deleteById(String.valueOf(existingPage.getId()));
 						solrUpdateServer.deleteByQuery("id:\"WebPage:" + existingPage.getId() + "\" AND settingId:" + websiteId);
 						existingPages.remove(pageToProcess);
 					}

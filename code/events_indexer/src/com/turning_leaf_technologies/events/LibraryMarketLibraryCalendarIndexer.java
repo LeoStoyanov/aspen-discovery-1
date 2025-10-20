@@ -1,5 +1,7 @@
 package com.turning_leaf_technologies.events;
 
+import com.turning_leaf_technologies.indexing.EventSuggestionPublisher;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
@@ -50,8 +52,9 @@ class LibraryMarketLibraryCalendarIndexer {
 	private PreparedStatement deleteEventStmt;
 
 	private final ConcurrentUpdateHttp2SolrClient solrUpdateServer;
+	private final EventSuggestionPublisher suggestionPublisher;
 
-	LibraryMarketLibraryCalendarIndexer(long settingsId, String name, String baseUrl, String clientId, String clientSecret, String username, String password, int numberOfDaysToIndex, ConcurrentUpdateHttp2SolrClient solrUpdateServer, Connection aspenConn, Logger logger) {
+	LibraryMarketLibraryCalendarIndexer(long settingsId, String name, String baseUrl, String clientId, String clientSecret, String username, String password, int numberOfDaysToIndex, ConcurrentUpdateHttp2SolrClient solrUpdateServer, SuggestionUpdateManager suggestionManager, Connection aspenConn, Logger logger) {
 		this.settingsId = settingsId;
 		this.name = name;
 		this.baseUrl = baseUrl;
@@ -61,6 +64,7 @@ class LibraryMarketLibraryCalendarIndexer {
 		this.password = password;
 		this.aspenConn = aspenConn;
 		this.solrUpdateServer = solrUpdateServer;
+		this.suggestionPublisher = new EventSuggestionPublisher(suggestionManager, "source:library_market:" + settingsId, logger);
 		this.numberOfDaysToIndex = numberOfDaysToIndex;
 
 		logEntry = new EventsIndexerLogEntry("LibraryMarket LibraryCalendar " + name, aspenConn, logger);
@@ -112,6 +116,7 @@ class LibraryMarketLibraryCalendarIndexer {
 
 			try {
 				solrUpdateServer.deleteByQuery("type:event AND source:" + this.settingsId);
+				suggestionPublisher.deleteBySource();
 				//3-19-2019 Don't commit so the index does not get cleared during run (but will clear at the end).
 			} catch (BaseHttpSolrClient.RemoteSolrException rse) {
 				logEntry.incErrors("Solr is not running properly, try restarting " + rse);
@@ -144,7 +149,8 @@ class LibraryMarketLibraryCalendarIndexer {
 							}
 						}
 						SolrInputDocument solrDocument = new SolrInputDocument();
-						solrDocument.addField("id", "lc_" + settingsId + "_" + eventId);
+						String solrDocumentId = "lc_" + settingsId + "_" + eventId;
+						solrDocument.addField("id", solrDocumentId);
 						solrDocument.addField("identifier", eventId);
 						solrDocument.addField("type", "event");
 						solrDocument.addField("source", settingsId);
@@ -260,6 +266,7 @@ class LibraryMarketLibraryCalendarIndexer {
 						}
 						solrDocument.addField("boost", boost);
 
+						suggestionPublisher.submit(solrDocumentId, solrDocument, librariesToShowFor, boost);
 						solrUpdateServer.add(solrDocument);
 					} catch (SolrServerException | IOException e) {
 						logEntry.incErrors("Error adding event to solr ", e);
@@ -297,7 +304,9 @@ class LibraryMarketLibraryCalendarIndexer {
 					logEntry.incErrors("Error deleting event ", e);
 				}
 				try {
-					solrUpdateServer.deleteById("lc_" + settingsId + "_" + eventInfo.getExternalId());
+					String solrDocumentId = "lc_" + settingsId + "_" + eventInfo.getExternalId();
+					solrUpdateServer.deleteById(solrDocumentId);
+					suggestionPublisher.deleteById(solrDocumentId);
 				} catch (Exception e) {
 					logEntry.incErrors("Error deleting event by id ", e);
 				}
@@ -306,6 +315,7 @@ class LibraryMarketLibraryCalendarIndexer {
 
 			try {
 				solrUpdateServer.commit(false, false, true);
+				suggestionPublisher.commit();
 			} catch (Exception e) {
 				logEntry.incErrors("Error in final commit while finishing extract, shutting down", e);
 				logEntry.setFinished();

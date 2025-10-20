@@ -2,6 +2,7 @@ package com.turning_leaf_technologies.reindexer;
 
 import com.turning_leaf_technologies.indexing.IndexingUtils;
 import com.turning_leaf_technologies.indexing.Scope;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -26,6 +27,7 @@ class CourseReservesIndexer {
 	private final Logger logger;
 	private ConcurrentUpdateHttp2SolrClient updateServer;
 	private Http2SolrClient groupedWorkServer;
+	private final SuggestionUpdateManager suggestionManager;
 	private final TreeSet<Scope> scopes;
 	private final HashMap<String, String> libraryTranslations = new HashMap<>();
 
@@ -51,15 +53,16 @@ class CourseReservesIndexer {
 		Http2SolrClient http2Client = new Http2SolrClient.Builder().build();
 		try {
 			updateServer = new ConcurrentUpdateHttp2SolrClient.Builder("http://" + solrHost + ":" + solrPort + "/solr/course_reserves", http2Client)
-					.withThreadCount(1)
-					.withQueueSize(25)
-					.build();
+				.withThreadCount(1)
+				.withQueueSize(25)
+				.build();
 		}catch (OutOfMemoryError e) {
 			logger.error("Unable to create solr client, out of memory", e);
 			System.exit(-7);
 		}
 
 		groupedWorkServer = new Http2SolrClient.Builder("http://" + solrHost + ":" + solrPort + "/solr/grouped_works_v2").build();
+ 		suggestionManager = SuggestionUpdateManager.create(solrHost, solrPort, logger);
 
 		scopes = IndexingUtils.loadScopes(dbConn, logger);
 	}
@@ -80,6 +83,11 @@ class CourseReservesIndexer {
 			logger.error("Error closing update server ", e);
 			System.exit(-5);
 		}
+
+		if (suggestionManager != null) {
+			suggestionManager.blockUntilFinished();
+			suggestionManager.close();
+		}
 	}
 
 	public long processCourseReserves(boolean fullReindex, long lastReindexTime, CourseReservesIndexingLogEntry logEntry) {
@@ -91,6 +99,9 @@ class CourseReservesIndexer {
 			if (fullReindex){
 				//Delete all lists from the index
 				updateServer.deleteByQuery("recordtype:course_reserve");
+				if (suggestionManager != null && suggestionManager.isActive()) {
+					suggestionManager.deleteByQuery("record_type:course_reserve");
+				}
 				//Get a list of all public lists
 				numCourseReservesStmt = dbConn.prepareStatement("select count(id) as numReserves from course_reserve WHERE deleted = 0");
 				courseReservesStmt = dbConn.prepareStatement("SELECT id, deleted, created, dateUpdated, courseInstructor, courseNumber, courseTitle, courseLibrary from course_reserve WHERE deleted = 0");
@@ -116,6 +127,9 @@ class CourseReservesIndexer {
 			}
 			if (numCourseReservesProcessed > 0){
 				updateServer.commit(false, false, true);
+				if (suggestionManager != null && suggestionManager.isActive()) {
+					suggestionManager.commit();
+				}
 			}
 
 		}catch (Exception e){
@@ -133,6 +147,7 @@ class CourseReservesIndexer {
 		boolean indexed = false;
 		if (!fullReindex && (deleted == 1)){
 			updateServer.deleteByQuery("id:" + courseReserveId);
+			deleteSuggestion(courseReserveId);
 			logEntry.incDeleted();
 		}else{
 			logger.info("Processing course reserve " + courseReserveId);
@@ -204,6 +219,7 @@ class CourseReservesIndexer {
 				SolrInputDocument document = courseReserveSolr.getSolrDocument();
 				if (document != null){
 					updateServer.add(document);
+					submitSuggestion(courseReserveSolr);
 					if (created > lastReindexTime){
 						logEntry.incAdded();
 					}else{
@@ -212,10 +228,12 @@ class CourseReservesIndexer {
 					indexed = true;
 				}else{
 					updateServer.deleteByQuery("id:" + courseReserveId);
+					deleteSuggestion(courseReserveId);
 					logEntry.incDeleted();
 				}
 			} else {
 				updateServer.deleteByQuery("id:" + courseReserveId);
+				deleteSuggestion(courseReserveId);
 				logEntry.incDeleted();
 			}
 		}
@@ -229,5 +247,18 @@ class CourseReservesIndexer {
 
 	public void addLibraryMap(String value, String translation){
 		this.libraryTranslations.put(value, translation);
+	}
+
+	private void deleteSuggestion(long courseReserveId) {
+		if (suggestionManager != null && suggestionManager.isActive()) {
+			suggestionManager.deleteById("course_reserve|" + courseReserveId);
+		}
+	}
+
+	private void submitSuggestion(CourseReserveSolr courseReserveSolr) {
+		if (suggestionManager == null || !suggestionManager.isActive()) {
+			return;
+		}
+		suggestionManager.submit(courseReserveSolr.buildSuggestionDocument().build());
 	}
 }

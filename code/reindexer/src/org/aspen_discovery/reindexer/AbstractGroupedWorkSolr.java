@@ -98,6 +98,7 @@ public abstract class AbstractGroupedWorkSolr implements DebugLogger {
 	protected HashSet<String> topicFacets = new HashSet<>();
 	protected HashSet<String> subjects = new HashSet<>();
 	protected HashMap<String, Long> upcs = new HashMap<>();
+	protected final HashSet<String> editionInfoForSuggestions = new HashSet<>();
 
 	protected final Logger logger;
 	protected final GroupedWorkIndexer groupedWorkIndexer;
@@ -228,6 +229,7 @@ public abstract class AbstractGroupedWorkSolr implements DebugLogger {
 		clonedWork.systemLists = (HashSet<String>) systemLists.clone();
 		// noinspection unchecked
 		clonedWork.relatedScopes = (HashMap<String, ArrayList<ScopingInfo>>) relatedScopes.clone();
+		clonedWork.editionInfoForSuggestions.addAll(editionInfoForSuggestions);
 	}
 
 	abstract SolrInputDocument getSolrDocument(BaseIndexingLogEntry logEntry);
@@ -591,6 +593,56 @@ public abstract class AbstractGroupedWorkSolr implements DebugLogger {
 			}
 		}
 		return mostUsedAuthor;
+	}
+
+	public Set<String> getTitleSuggestionValues() {
+		HashSet<String> values = new HashSet<>();
+		if (displayTitle != null && !displayTitle.isEmpty()) {
+			values.add(displayTitle);
+		}
+		if (title != null && !title.isEmpty()) {
+			values.add(title);
+		}
+		values.addAll(titleAlt);
+		values.addAll(titleNew);
+		values.addAll(titleOld);
+		values.addAll(series.values());
+		return values;
+	}
+
+	public Set<String> getAuthorSuggestionValues() {
+		HashSet<String> values = new HashSet<>();
+		String primaryAuthor = getPrimaryAuthor();
+		if (primaryAuthor != null && !primaryAuthor.isEmpty()) {
+			values.add(primaryAuthor);
+		}
+		if (authorDisplay != null && !authorDisplay.isEmpty()) {
+			values.add(authorDisplay);
+		}
+		values.addAll(author2);
+		return values;
+	}
+
+	public Set<String> getSubjectSuggestionValues() {
+		HashSet<String> values = new HashSet<>(subjects);
+		values.addAll(topicFacets);
+		values.addAll(personalNameSubjects);
+		values.addAll(corporateNameSubjects);
+		return values;
+	}
+
+	public Set<String> getSuggestionContextValues() {
+		HashSet<String> contextValues = new HashSet<>(editionInfoForSuggestions);
+		contextValues.addAll(languages);
+		return contextValues;
+	}
+
+	public Set<String> getSuggestionLanguages() {
+		return new HashSet<>(languages);
+	}
+
+	public long getSuggestionPopularity() {
+		return Math.round(popularity);
 	}
 
 	void setAuthorDisplay(String newAuthor, String formatCategory) {

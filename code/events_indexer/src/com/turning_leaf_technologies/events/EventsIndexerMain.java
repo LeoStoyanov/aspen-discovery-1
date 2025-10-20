@@ -2,6 +2,7 @@ package com.turning_leaf_technologies.events;
 
 import com.turning_leaf_technologies.config.ConfigUtil;
 import com.turning_leaf_technologies.file.JarUtil;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import com.turning_leaf_technologies.logging.LoggingUtil;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.logging.log4j.Logger;
@@ -68,6 +69,7 @@ public class EventsIndexerMain {
 				}
 
 				ConcurrentUpdateHttp2SolrClient solrUpdateServer = setupSolrClient(solrHost, solrPort);
+				SuggestionUpdateManager suggestionManager = SuggestionUpdateManager.create(solrHost, solrPort, logger);
 
 				// LibraryMarket LibraryCalendar
 				PreparedStatement getEventsSitesToIndexStmt = aspenConn.prepareStatement("SELECT * from lm_library_calendar_settings");
@@ -82,7 +84,7 @@ public class EventsIndexerMain {
 							eventsSitesRS.getString("username"),
 							eventsSitesRS.getString("password"),
 							eventsSitesRS.getInt("numberOfDaysToIndex"),
-							solrUpdateServer, aspenConn, logger);
+							solrUpdateServer, suggestionManager, aspenConn, logger);
 					indexer.indexEvents();
 				}
 
@@ -98,10 +100,10 @@ public class EventsIndexerMain {
 							eventsSitesRS.getString("clientId"),
 							eventsSitesRS.getString("clientSecret"),
 							eventsSitesRS.getInt("numberOfDaysToIndex"),
-							solrUpdateServer, aspenConn, logger);
+							solrUpdateServer, suggestionManager, aspenConn, logger);
 					indexer.indexEvents();
 				}
-				SpringshareLibCalIndexer.cleanOrphanEvents(solrUpdateServer, aspenConn, logger);
+				SpringshareLibCalIndexer.cleanOrphanEvents(solrUpdateServer, suggestionManager, aspenConn, logger);
 
 				// Communico
 				getEventsSitesToIndexStmt = aspenConn.prepareStatement("SELECT * from communico_settings");
@@ -115,7 +117,7 @@ public class EventsIndexerMain {
 							eventsSitesRS.getString("clientSecret"),
 							eventsSitesRS.getInt("numberOfDaysToIndex"),
 							eventsSitesRS.getLong("lastUpdateOfAllEvents"),
-							solrUpdateServer, aspenConn, logger);
+							solrUpdateServer, suggestionManager, aspenConn, logger);
 					indexer.indexEvents();
 				}
 
@@ -128,7 +130,7 @@ public class EventsIndexerMain {
 							eventsSitesRS.getString("name"),
 							eventsSitesRS.getString("baseUrl"),
 							eventsSitesRS.getInt("numberOfDaysToIndex"),
-							solrUpdateServer, aspenConn, logger);
+							solrUpdateServer, suggestionManager, aspenConn, logger);
 					indexer.indexEvents();
 				}
 
@@ -143,11 +145,18 @@ public class EventsIndexerMain {
 						eventsSitesRS.getBoolean("runFullUpdate"),
 						eventsSitesRS.getLong("lastUpdateOfAllEvents"),
 						eventsSitesRS.getLong("lastUpdateOfChangedEvents"),
-						solrUpdateServer, aspenConn, logger, serverName);
+						solrUpdateServer, suggestionManager, aspenConn, logger, serverName);
 					indexer.indexEvents();
 				}
 
-				//Index events from other source here
+				if (suggestionManager != null) {
+					try {
+						suggestionManager.blockUntilFinished();
+						suggestionManager.close();
+					} catch (Exception e) {
+						logger.error("Error closing suggestion update manager ", e);
+					}
+				}
 				try {
 					solrUpdateServer.close();
 				}catch (Exception e) {

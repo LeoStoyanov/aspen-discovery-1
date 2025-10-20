@@ -2,6 +2,7 @@ package com.turning_leaf_technologies.website_indexer;
 
 import com.turning_leaf_technologies.config.ConfigUtil;
 import com.turning_leaf_technologies.file.JarUtil;
+import com.turning_leaf_technologies.indexing.SuggestionUpdateManager;
 import com.turning_leaf_technologies.logging.LoggingUtil;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import com.turning_leaf_technologies.util.SystemUtils;
@@ -65,6 +66,7 @@ public class WebsiteIndexerMain {
 					}
 				}
 				ConcurrentUpdateHttp2SolrClient solrUpdateServer = setupSolrClient(solrHost, solrPort);
+				SuggestionUpdateManager suggestionManager = SuggestionUpdateManager.create(solrHost, solrPort, logger);
 
 				PreparedStatement getSitesToIndexStmt = aspenConn.prepareStatement("SELECT * from website_indexing_settings where deleted = 0");
 				PreparedStatement getLibrariesForSettingsStmt = aspenConn.prepareStatement("SELECT library.subdomain From library_website_indexing inner join library on library.libraryId = library_website_indexing.libraryId where settingId = ?");
@@ -139,7 +141,7 @@ public class WebsiteIndexerMain {
 						}
 
 						WebsiteIndexLogEntry logEntry = createDbLogEntry(websiteName, startTime, aspenConn);
-						WebsiteIndexer indexer = new WebsiteIndexer(websiteId, websiteName, searchCategory, siteUrl, pageTitleExpression, descriptionExpression, pathsToExclude, maxPagesToIndex, crawlDelay, scopesToInclude, fullReload, logEntry, aspenConn, solrUpdateServer, logger);
+						WebsiteIndexer indexer = new WebsiteIndexer(websiteId, websiteName, searchCategory, siteUrl, pageTitleExpression, descriptionExpression, pathsToExclude, maxPagesToIndex, crawlDelay, scopesToInclude, fullReload, logEntry, aspenConn, solrUpdateServer, suggestionManager, logger);
 						indexer.spiderWebsite();
 
 						updateLastIndexedStmt.setLong(1, currentTime);
@@ -236,7 +238,7 @@ public class WebsiteIndexerMain {
 				getGrapesPagesStmt.close();
 				if ((numBasicPages > 0) || (numResources > 0) || (numPortalPages > 0) || (numGrapesPages > 0)){
 					WebsiteIndexLogEntry logEntry = createDbLogEntry("Web Builder Content", startTime, aspenConn);
-					WebBuilderIndexer indexer = new WebBuilderIndexer(configIni, logEntry, aspenConn, solrUpdateServer);
+					WebBuilderIndexer indexer = new WebBuilderIndexer(configIni, logEntry, aspenConn, solrUpdateServer, suggestionManager);
 					indexer.indexContent();
 					logEntry.setFinished();
 				}

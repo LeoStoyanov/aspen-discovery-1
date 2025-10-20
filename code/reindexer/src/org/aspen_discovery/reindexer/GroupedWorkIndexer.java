@@ -40,6 +40,7 @@ public class GroupedWorkIndexer {
 	private boolean removeTheWordSeriesFromEndOfSeries;
 	private int totalRecordsHandled = 0;
 	private ConcurrentUpdateHttp2SolrClient updateServer;
+	private SuggestionUpdateManager suggestionUpdateManager;
 	private RecordGroupingProcessor recordGroupingProcessor;
 	private final HashMap<String, MarcRecordProcessor> ilsRecordProcessors = new HashMap<>();
 	private final HashMap<String, SideLoadedEContentProcessor> sideLoadProcessors = new HashMap<>();
@@ -176,6 +177,7 @@ public class GroupedWorkIndexer {
 
 	private boolean storeRecordDetailsInSolr = false;
 	private boolean storeRecordDetailsInDatabase = true;
+	private String groupedWorkCoreName = "grouped_works_v2";
 
 	private boolean hideUnknownLiteraryForm;
 	private boolean hideNotCodedLiteraryForm;
@@ -375,6 +377,7 @@ public class GroupedWorkIndexer {
 		//Initialize the updateServer and solr server
 		logEntry.addNote("Setting up update server and solr server");
 
+		groupedWorkCoreName = indexVersion == 1 ? "grouped_works" : "grouped_works_v2";
 		String solrUrl;
 		if (indexVersion == 1) {
 			solrUrl = "http://" + solrHost + ":" + solrPort + "/solr/grouped_works";
@@ -391,6 +394,7 @@ public class GroupedWorkIndexer {
 			logger.error("Unable to create solr client, out of memory", e);
 			System.exit(-7);
 		}
+		suggestionUpdateManager = SuggestionUpdateManager.create(solrHost, solrPort, logger);
 
 		try {
 			scopes = IndexingUtils.loadScopes(dbConn, logger);
@@ -640,6 +644,9 @@ public class GroupedWorkIndexer {
 		logger.info("Clearing existing marc records from index");
 		try {
 			updateServer.deleteByQuery("recordtype:grouped_work");
+			if (suggestionUpdateManager != null && suggestionUpdateManager.isActive()) {
+				suggestionUpdateManager.deleteByQuery("record_type:grouped_work");
+			}
 			//3-19-2019 Don't commit so the index does not get cleared during run (but will clear at the end).
 		} catch (BaseHttpSolrClient.RemoteSolrException rse) {
 			logEntry.incErrors("Solr is not running properly, try restarting", rse);
@@ -650,6 +657,7 @@ public class GroupedWorkIndexer {
 	}
 
 	public synchronized void deleteRecord(String permanentId, Long groupedWorkId) {
+		String originalPermanentId = permanentId;
 		logger.info("Clearing existing work " + permanentId + " from index");
 		//noinspection CommentedOutCode
 		try {
@@ -667,6 +675,9 @@ public class GroupedWorkIndexer {
 				permanentId = permanentIdBuilder.toString();
 			}
 			updateServer.deleteById(permanentId);
+			if (suggestionUpdateManager != null && suggestionUpdateManager.isActive()) {
+				suggestionUpdateManager.deleteById("grouped_work|" + originalPermanentId.trim().toLowerCase(Locale.ROOT));
+			}
 			//With this commit, we get errors in the log "Previous SolrRequestInfo was not closed!"
 			//Allow auto commit functionality to handle this
 			totalRecordsHandled++;
@@ -725,6 +736,7 @@ public class GroupedWorkIndexer {
 			logEntry.saveResults();
 			System.exit(-3);
 		}
+		commitSuggestionUpdates(logEntry);
 		try {
 			logEntry.addNote("Shutting down the update server");
 			updateServer.blockUntilFinished();
@@ -742,6 +754,7 @@ public class GroupedWorkIndexer {
 			logEntry.saveResults();
 			System.exit(-5);
 		}
+		shutdownSuggestionServer(logEntry);
 	}
 
 	public void commitChanges(){
@@ -750,6 +763,7 @@ public class GroupedWorkIndexer {
 		}catch (Exception e) {
 			logEntry.incErrors("Error committing changes ", e);
 		}
+		commitSuggestionUpdates(logEntry);
 	}
 
 	public void commitChangesWithWait(){
@@ -757,6 +771,10 @@ public class GroupedWorkIndexer {
 			updateServer.commit(false, false, true);
 		}catch (Exception e) {
 			logEntry.incErrors("Error committing changes ", e);
+		}
+		commitSuggestionUpdates(logEntry);
+		if (suggestionUpdateManager != null && suggestionUpdateManager.isActive()) {
+			suggestionUpdateManager.blockUntilFinished();
 		}
 	}
 
@@ -849,6 +867,7 @@ public class GroupedWorkIndexer {
 			} catch (Exception e) {
 				logEntry.incErrors("Error calling final commit", e);
 			}
+			commitSuggestionUpdates(logEntry);
 			if (indexVersion == 2 && searchVersion == 1){
 				//Update the search version to version 2
 				try {
@@ -880,6 +899,7 @@ public class GroupedWorkIndexer {
 			try {
 				logEntry.addNote("Doing a soft commit to make sure changes are saved");
 				updateServer.commit(false, false, true);
+				commitSuggestionUpdates(logEntry);
 				logEntry.addNote("Shutting down the update server");
 				updateServer.blockUntilFinished();
 				updateServer.close();
@@ -887,6 +907,7 @@ public class GroupedWorkIndexer {
 				logEntry.incErrors("Error shutting down update server", e);
 			}
 		}
+		shutdownSuggestionServer(logEntry);
 	}
 
 	private void updateLastReindexTime() {
@@ -907,6 +928,30 @@ public class GroupedWorkIndexer {
 		}catch (Exception e){
 			logEntry.incErrors("Error setting last grouping time", e);
 		}
+	}
+
+	private void commitSuggestionUpdates(BaseIndexingLogEntry logEntry) {
+		if (suggestionUpdateManager == null || !suggestionUpdateManager.isActive()) {
+			return;
+		}
+		try {
+			suggestionUpdateManager.commit();
+		} catch (Exception e) {
+			logEntry.incErrors("Error committing suggestion updates", e);
+		}
+	}
+
+	private void shutdownSuggestionServer(BaseIndexingLogEntry logEntry) {
+		if (suggestionUpdateManager == null || !suggestionUpdateManager.isActive()) {
+			return;
+		}
+		suggestionUpdateManager.blockUntilFinished();
+		try {
+			suggestionUpdateManager.close();
+		} catch (Exception e) {
+			logEntry.incErrors("Error closing suggestion update server", e);
+		}
+		suggestionUpdateManager = null;
 	}
 
 	void processGroupedWorks() {
@@ -956,6 +1001,7 @@ public class GroupedWorkIndexer {
 						try {
 							logger.info("Doing a regular commit during full indexing");
 							updateServer.commit(false, false, true);
+							commitSuggestionUpdates(logEntry);
 						} catch (Exception e) {
 							logger.warn("Error committing changes", e);
 						}
@@ -1021,6 +1067,7 @@ public class GroupedWorkIndexer {
 				if (numDeleted % 10000 == 0) {
 					try {
 						updateServer.commit(false, false, true);
+						commitSuggestionUpdates(logEntry);
 					} catch (Exception e) {
 						logger.warn("Error committing changes", e);
 					}
@@ -1233,6 +1280,25 @@ public class GroupedWorkIndexer {
 						logEntry.incErrors("Error adding Solr record for " + groupedWork.getId() + ", the response was null");
 					} else if (response.getException() != null) {
 						logEntry.incErrors("Error adding Solr record for " + groupedWork.getId() + " response: " + response);
+					}
+					if (suggestionUpdateManager != null && suggestionUpdateManager.isActive()) {
+						SuggestionDocumentBuilder suggestionBuilder = new SuggestionDocumentBuilder("grouped_work|" + groupedWork.getId(), "grouped_work", groupedWorkCoreName)
+							.addTitleSuggestions(groupedWork.getTitleSuggestionValues())
+							.addAuthorSuggestions(groupedWork.getAuthorSuggestionValues())
+							.addSubjectSuggestions(groupedWork.getSubjectSuggestionValues())
+							.addContextFilters(groupedWork.getSuggestionContextValues())
+							.addLanguages(groupedWork.getSuggestionLanguages())
+							.setPopularity(groupedWork.getSuggestionPopularity());
+						SolrInputDocument suggestionDocument = suggestionBuilder.build();
+						boolean hasSuggestionValues = suggestionDocument.getField("title_suggestions") != null
+							|| suggestionDocument.getField("author_suggestions") != null
+							|| suggestionDocument.getField("subject_suggestions") != null
+							|| suggestionDocument.getField("keyword_suggestions") != null
+							|| suggestionDocument.getField("name_suggestions") != null
+							|| suggestionDocument.getField("instructor_suggestions") != null;
+						if (hasSuggestionValues) {
+							suggestionUpdateManager.submit(suggestionDocument);
+						}
 					}
 
 					//Check to see if we need to automatically reindex this record in the future.

@@ -1,6 +1,7 @@
 package com.turning_leaf_technologies.oai;
 
 import com.turning_leaf_technologies.dates.DateInfo;
+import com.turning_leaf_technologies.indexing.SuggestionDocumentBuilder;
 import com.turning_leaf_technologies.strings.AspenStringUtils;
 import org.apache.logging.log4j.Logger;
 import org.apache.solr.common.SolrInputDocument;
@@ -165,5 +166,30 @@ class OAISolrRecord {
 
 	HashSet<String> getSubjects() {
 		return subjects;
+	}
+
+	SuggestionDocumentBuilder buildSuggestionDocument() {
+		HashSet<String> contextFilters = new HashSet<>();
+		contextFilters.add("record_type#open_archives");
+		contextFilters.add("source#open_archives#" + collection_id);
+
+		if (scopesToInclude != null) {
+			for (String scope : scopesToInclude) {
+				contextFilters.add("scope#" + scope);
+			}
+		}
+
+		HashSet<String> titleSuggestions = new HashSet<>();
+		if (title != null && !title.isEmpty()) {
+			titleSuggestions.add(title);
+		}
+
+		HashSet<String> keywordSuggestions = new HashSet<>();
+		return new SuggestionDocumentBuilder("open_archives|" + id, "open_archives", "open_archives")
+			.addTitleSuggestions(titleSuggestions)
+			.addSubjectSuggestions(subjects)
+			.addKeywordSuggestions(keywordSuggestions)
+			.addContextFilters(contextFilters)
+			.setPopularity(1);
 	}
 }
