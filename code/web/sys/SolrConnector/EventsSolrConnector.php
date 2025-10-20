@@ -80,4 +80,10 @@ class EventsSolrConnector extends Solr {
 
 		return $boostFactors;
 	}
+
+	protected function getScopingFiltersForCFQ(?Library $searchLibrary, ?Location $searchLocation): array {
+		$cfqParts = parent::getScopingFiltersForCFQ($searchLibrary, $searchLocation);
+		$cfqParts[] = 'record_type#event';
+		return $cfqParts;
+	}
 }

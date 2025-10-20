@@ -816,40 +816,55 @@ abstract class SearchObject_SolrSearcher extends SearchObject_BaseSearcher {
 		return $this->indexEngine;
 	}
 
-	protected function processSearchSuggestions(string $searchTerm, string $suggestionHandler) {
+	protected function processSearchSuggestions(string $searchTerm, string $suggestionHandler): array {
 		$suggestions = $this->indexEngine->getSearchSuggestions($searchTerm, $suggestionHandler);
 		$allSuggestions = [];
+		$seenTerms = [];
+
 		if (isset($suggestions['suggest'])) {
-			foreach ($suggestions['suggest'] as $suggestionType => $suggestedSearchesByType) {
-				foreach ($suggestedSearchesByType as $term => $suggestionsForTerm) {
+			foreach ($suggestions['suggest'] as $suggestedSearchesByType) {
+				foreach ($suggestedSearchesByType as $suggestionsForTerm) {
+					$totalSuggestionsForTerm = count($suggestionsForTerm['suggestions']);
 					foreach ($suggestionsForTerm['suggestions'] as $index => $suggestion) {
 						$nonHighlightedTerm = preg_replace('~</?b>~', '', $suggestion['term']);
-						if (strcasecmp($nonHighlightedTerm, $searchTerm) === 0) {
+						$lowerTerm = strtolower($nonHighlightedTerm);
+
+						// Skip if same as search term.
+						if ($lowerTerm === strtolower($searchTerm)) {
 							continue;
 						}
-						//Remove the old value if this is a duplicate (after incrementing the weight)
-						foreach ($allSuggestions as $key => $value) {
-							if ($value['nonHighlightedTerm'] == $nonHighlightedTerm) {
-								$suggestion['weight'] += $value['numSearches'];
-								unset($allSuggestions[$key]);
-								break;
-							}
+
+						// Handle duplicates and update weight of existing suggestion.
+						if (isset($seenTerms[$lowerTerm])) {
+							$existingIndex = $seenTerms[$lowerTerm];
+							$allSuggestions[$existingIndex]['numSearches'] += $suggestion['weight'];
+							$allSuggestions[$existingIndex]['numResults'] += $suggestion['weight'];
+							continue;
 						}
-						$allSuggestions[str_pad(($suggestion['weight'] + count($suggestionsForTerm['suggestions']) - $index), 10, '0', STR_PAD_LEFT) . $nonHighlightedTerm] = [
+
+						$weight = $suggestion['weight'] + $totalSuggestionsForTerm - $index;
+						$allSuggestions[] = [
 							'phrase' => $suggestion['term'],
 							'numSearches' => $suggestion['weight'],
 							'numResults' => $suggestion['weight'],
 							'nonHighlightedTerm' => $nonHighlightedTerm,
+							'sortWeight' => $weight,
 						];
+						$seenTerms[$lowerTerm] = count($allSuggestions) - 1;
 					}
 				}
 			}
 		}
 
-		krsort($allSuggestions);
-		if (count($allSuggestions) > 8) {
-			$allSuggestions = array_slice($allSuggestions, 0, 8);
+		// Sort by weight and limit to eight suggestions.
+		usort($allSuggestions, function($a, $b) {
+			return $b['sortWeight'] - $a['sortWeight'];
+		});
+		$allSuggestions = array_slice($allSuggestions, 0, 8);
+		foreach ($allSuggestions as &$suggestion) {
+			unset($suggestion['sortWeight']);
 		}
+
 		return $allSuggestions;
 	}
 

@@ -40,4 +40,16 @@ class ListsSolrConnector extends Solr {
 		}
 		return $filter;
 	}
+
+	protected function getScopingFiltersForCFQ(?Library $searchLibrary, ?Location $searchLocation): array {
+		$cfqParts = [];
+		$cfqParts[] = 'record_type#list';
+		// Scoping: library#{libraryId} and location#{locationCode} format.
+		if ($searchLocation != null) {
+			$cfqParts[] = 'location#' . $searchLocation->code;
+		} elseif ($searchLibrary != null) {
+			$cfqParts[] = 'library#' . $searchLibrary->libraryId;
+		}
+		return $cfqParts;
+	}
 }

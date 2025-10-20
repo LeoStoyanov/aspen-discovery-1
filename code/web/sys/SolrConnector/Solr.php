@@ -118,6 +118,7 @@ abstract class Solr {
 	 * @var string
 	 */
 	public $fullSearchUrl;
+	protected ?string $suggestHost = null;
 
 	/** return string */
 	abstract public function getSearchesFile();
@@ -152,6 +153,7 @@ abstract class Solr {
 		$timer->logTime("Load search specs");
 
 		$this->host = $host . '/' . $index;
+		$this->suggestHost = rtrim($host, '/') . '/suggest';
 
 		// If we're still processing then solr is online
 		$this->client = new CurlWrapper();
@@ -471,7 +473,7 @@ abstract class Solr {
 	 * Get search suggestions based on input phrase.
 	 *
 	 * @param string $phrase The input phrase.
-	 * @param string $suggestionHandler
+	 * @param string $suggestionHandler The Solr handler for search suggestions.
 	 * @return array|AspenError An array of search suggestions.
 	 */
 	function getSearchSuggestions(string $phrase, string $suggestionHandler = 'suggest'): array|AspenError {
@@ -487,34 +489,20 @@ abstract class Solr {
 		$searchLocation = Location::getSearchLocation($this->searchSource);
 		$cfqFilters = $this->getScopingFiltersForCFQ($searchLibrary, $searchLocation);
 		if (!empty($cfqFilters)) {
-			$options['suggest.cfq'] = implode(' AND ', $cfqFilters);
-		}
-
-		$result = $this->_select('GET', $options, false, $suggestionHandler);
-		if ($result instanceof AspenError) {
-			AspenError::raiseError($result);
-		}
-
-		// Add highlighting because suggestion highlighting still does not
-		// work in Solr (https://issues.apache.org/jira/browse/SOLR-7964).
-		if (isset($result['suggest']) && !empty($phrase)) {
-			$searchTerms = preg_split('/\s+/', strtolower(trim($phrase)));
-			$searchTerms = array_filter($searchTerms, function($term) { return strlen($term) > 1; });
-
-			foreach ($result['suggest'] as &$dictionary) {
-				foreach ($dictionary as &$queryData) {
-					if (isset($queryData['suggestions'])) {
-						foreach ($queryData['suggestions'] as &$suggestion) {
-							if (isset($suggestion['term'])) {
-								foreach ($searchTerms as $term) {
-									$pattern = '/(' . preg_quote($term, '/') . ')/i';
-									$suggestion['term'] = preg_replace($pattern, '<b>$1</b>', $suggestion['term']);
-								}
-							}
-						}
-					}
+			// Add wildcard to each filter for Solr's context filtering wildcard matching.
+			$cfqFiltersWithWildcards = array_map(function($filter) {
+				if (!str_ends_with($filter, '*')) {
+					return $filter . '*';
 				}
-			}
+				return $filter;
+			}, $cfqFilters);
+			$options['suggest.cfq'] = implode(' AND ', $cfqFiltersWithWildcards);
+		}
+
+		$suggestHost = $this->suggestHost ?? $this->host;
+		$result = $this->_select('GET', $options, true, $suggestionHandler, $suggestHost);
+		if (!is_array($result) || isset($result['error']) || !isset($result['suggest'])) {
+			return [];
 		}
 
 		return $result;
@@ -1395,12 +1383,14 @@ abstract class Solr {
 
 	/**
 	 * Get scoping filters specifically formatted for Context Filter Query (CFQ) in search suggestions.
-	 * This method extracts and formats only the language and edition_info filters from the full
-	 * scoping filters, stripping the field prefixes for use in suggest.cfq parameter.
+	 * This method extracts and formats scoping filters from the full scoping filters,
+	 * converting them to the format expected by the centralized suggest core.
+	 *
+	 * Subclasses should override this method to add their specific record_type filter.
 	 *
 	 * @param ?Library $searchLibrary
 	 * @param ?Location $searchLocation
-	 * @return array Array of CFQ filter strings without field prefixes.
+	 * @return array Array of CFQ filter strings in suggest core format.
 	 */
 	protected function getScopingFiltersForCFQ(?Library $searchLibrary, ?Location $searchLocation): array {
 		$scopingFilters = $this->getScopingFilters($searchLibrary, $searchLocation);
@@ -1410,7 +1400,11 @@ abstract class Solr {
 
 		$cfqParts = [];
 		foreach ($scopingFilters as $filter) {
-			if (str_starts_with($filter, 'edition_info:')) {
+			// Convert scope_has_related_records: to scope# for the centralized suggest core.
+			if (str_starts_with($filter, 'scope_has_related_records:')) {
+				$scopeValue = substr($filter, strlen('scope_has_related_records:'));
+				$cfqParts[] = 'scope#' . $scopeValue;
+			} elseif (str_starts_with($filter, 'edition_info:')) {
 				$cfqParts[] = substr($filter, strlen('edition_info:'));
 			} elseif (str_starts_with($filter, 'language:')) {
 				$cfqParts[] = substr($filter, strlen('language:'));
@@ -1623,7 +1617,7 @@ abstract class Solr {
 	 * @return    array|AspenError                                                     The Solr response (or an AspenError)
 	 * @access    protected
 	 */
-	protected function _select($method = 'GET', $params = [], $returnSolrError = false, $queryHandler = 'select') {
+	protected function _select($method = 'GET', $params = [], $returnSolrError = false, $queryHandler = 'select', $overrideHost = null) {
 		global $timer;
 		global $memoryWatcher;
 
@@ -1664,14 +1658,15 @@ abstract class Solr {
 		}
 		$queryString = implode('&', $query);
 
-		$this->fullSearchUrl = $this->host . "/select/?" . $queryString;
+		$baseHost = $overrideHost ?? $this->host;
+		$this->fullSearchUrl = $baseHost . "/$queryHandler/?" . $queryString;
 		if ($this->debug || $this->debugSolrQuery) {
 			$solrQueryDebug = "";
 			if ($this->debugSolrQuery) {
 				$solrQueryDebug .= "$method: ";
 			}
 			//Add debug parameter so we can see the explain section at the bottom.
-			$this->debugSearchUrl = $this->host . "/select/?debugQuery=on&" . $queryString;
+			$this->debugSearchUrl = $baseHost . "/$queryHandler/?debugQuery=on&" . $queryString;
 
 			if ($this->debugSolrQuery) {
 				$solrQueryDebug .= "<a href='" . $this->debugSearchUrl . "' target='_blank'>$this->fullSearchUrl</a>";
@@ -1690,7 +1685,7 @@ abstract class Solr {
 		$memoryWatcher->logMemory('Prepare to send request to solr');
 		$result = false;
 		if ($method == 'GET') {
-			$result = $this->client->curlGetPage($this->host . "/$queryHandler/?$queryString");
+			$result = $this->client->curlGetPage($baseHost . "/$queryHandler/?$queryString");
 		} elseif ($method == 'POST') {
 			require_once ROOT_DIR . '/sys/SystemVariables.php';
 			$systemVariables = SystemVariables::getSystemVariables();
@@ -1700,7 +1695,20 @@ abstract class Solr {
 			if ($systemVariables && $systemVariables->solrQueryTimeout > 0) {
 				$this->client->setTimeout($systemVariables->solrQueryTimeout);
 			}
-			$result = $this->client->curlPostPage($this->host . "/$queryHandler/", $queryString);
+			$result = $this->client->curlPostPage($baseHost . "/$queryHandler/", $queryString);
+		}
+
+		if ($result === false || $result === null) {
+			if ($returnSolrError) {
+				return [
+					'response' => [
+						'numFound' => 0,
+						'docs' => [],
+					],
+					'error' => 'Unable to reach Solr request handler.',
+				];
+			}
+			AspenError::raiseError(new AspenError('Unable to reach Solr request handler.'));
 		}
 
 		$timer->logTime("Send data to solr for select $queryString");

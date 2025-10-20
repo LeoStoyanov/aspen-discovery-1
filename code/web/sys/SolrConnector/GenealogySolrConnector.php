@@ -18,4 +18,10 @@ class GenealogySolrConnector extends Solr {
 	public function getSearchesFile() {
 		return 'genealogySearches';
 	}
+
+	protected function getScopingFiltersForCFQ(?Library $searchLibrary, ?Location $searchLocation): array {
+		$cfqParts = parent::getScopingFiltersForCFQ($searchLibrary, $searchLocation);
+		$cfqParts[] = 'record_type#person';
+		return $cfqParts;
+	}
 }

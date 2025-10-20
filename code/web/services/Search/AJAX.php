@@ -70,17 +70,17 @@ class AJAX extends Action {
 	}
 
 	/** @noinspection PhpUnused */
-	function getAutoSuggestList() {
-		require_once ROOT_DIR . '/sys/SearchSuggestions.php';
+	function getAutoSuggestList(): array {
 		global $timer;
 		global $configArray;
 		global $memCache;
-		$searchTerm = isset($_REQUEST['searchTerm']) ? $_REQUEST['searchTerm'] : $_REQUEST['q'];
-		$searchIndex = isset($_REQUEST['searchIndex']) ? $_REQUEST['searchIndex'] : '';
-		$searchSource = !empty($_REQUEST['searchSource']) ? $_REQUEST['searchSource'] : '';
+		$searchTerm = $_REQUEST['searchTerm'] ?? $_REQUEST['q'];
+		$searchIndex = $_REQUEST['searchIndex'] ?? '';
+		$searchSource = $_REQUEST['searchSource'] ?? '';
 		$cacheKey = 'auto_suggest_list_' . urlencode($searchSource) . '_' . urlencode($searchIndex) . '_' . urlencode($searchTerm);
 		$searchSuggestions = $memCache->get($cacheKey);
-		if ($searchSuggestions == false || isset($_REQUEST['reload'])) {
+		if (!$searchSuggestions || isset($_REQUEST['reload'])) {
+			require_once ROOT_DIR . '/sys/SearchSuggestions.php';
 			$suggestions = new SearchSuggestions();
 			$commonSearches = $suggestions->getAllSuggestions($searchTerm, $searchIndex, $searchSource);
 			$commonSearchTerms = [];

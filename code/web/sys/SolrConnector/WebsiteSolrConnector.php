@@ -41,4 +41,10 @@ class WebsiteSolrConnector extends Solr {
 		$filter[] = "scope_has_related_records:" . strtolower($searchLibrary->subdomain);
 		return $filter;
 	}
+
+	protected function getScopingFiltersForCFQ(?Library $searchLibrary, ?Location $searchLocation): array {
+		$cfqParts = parent::getScopingFiltersForCFQ($searchLibrary, $searchLocation);
+		$cfqParts[] = 'record_type#website';
+		return $cfqParts;
+	}
 }

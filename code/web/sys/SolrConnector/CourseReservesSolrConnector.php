@@ -40,4 +40,10 @@ class CourseReservesSolrConnector extends Solr {
 		}
 		return $filter;
 	}
+
+	protected function getScopingFiltersForCFQ(?Library $searchLibrary, ?Location $searchLocation): array {
+		$cfqParts = parent::getScopingFiltersForCFQ($searchLibrary, $searchLocation);
+		$cfqParts[] = 'record_type#course_reserve';
+		return $cfqParts;
+	}
 }
