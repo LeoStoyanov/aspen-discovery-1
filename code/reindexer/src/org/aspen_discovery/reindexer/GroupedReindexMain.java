@@ -114,6 +114,9 @@ public class GroupedReindexMain {
 
 			GroupedWorkIndexer groupedWorkIndexer = new GroupedWorkIndexer(serverName, dbConn, configIni, fullReindex, clearIndex, regroupAllRecords, logEntry, logger);
 			if (groupedWorkIndexer.isOkToIndex()) {
+				// TODO: Remove this cleanup code in version 26.00.00 or later (added in 25.11.00 to clean up deprecated field).
+				removeSuggestionsContextFilterField(configIni, logger, logEntry);
+
 				if (individualWorkToProcess != null) {
 					//Get more information about the work
 					try {
@@ -409,6 +412,106 @@ public class GroupedReindexMain {
 			saxParser.parse(arTitles, handler);
 		} catch (Exception e) {
 			logEntry.incErrors("Error parsing Accelerated Reader Title data ", e);
+		}
+	}
+
+	/**
+	 * Removes the deprecated suggestions_context_filter field from grouped works documents.
+	 * This field was moved to the centralized suggest core in version 25.11.00.
+	 *
+	 * TODO: Remove this method in version 26.00.00 or later once all instances have been upgraded.
+	 */
+	private static void removeSuggestionsContextFilterField(Ini configIni, Logger logger, BaseIndexingLogEntry logEntry) {
+		try {
+			String solrPort = configIni.get("Index", "solrPort");
+			if (solrPort == null || solrPort.isEmpty()) {
+				solrPort = configIni.get("Reindex", "solrPort");
+				if (solrPort == null || solrPort.isEmpty()) {
+					solrPort = "8080";
+				}
+			}
+			String solrHost = configIni.get("Index", "solrHost");
+			if (solrHost == null || solrHost.isEmpty()) {
+				solrHost = configIni.get("Reindex", "solrHost");
+				if (solrHost == null || solrHost.isEmpty()) {
+					solrHost = "localhost";
+				}
+			}
+
+			String solrBaseUrl = "http://" + solrHost + ":" + solrPort + "/solr";
+			org.apache.http.impl.client.CloseableHttpClient httpClient = org.apache.http.impl.client.HttpClients.createDefault();
+
+			// Check if any documents still have this field.
+			String checkUrl = solrBaseUrl + "/grouped_works_v2/select?q=suggestions_context_filter:[*%20TO%20*]&rows=0&wt=json";
+			org.apache.http.client.methods.HttpGet checkRequest = new org.apache.http.client.methods.HttpGet(checkUrl);
+			org.apache.http.HttpResponse checkResponse = httpClient.execute(checkRequest);
+
+			if (checkResponse.getStatusLine().getStatusCode() == 200) {
+				String responseBody = org.apache.http.util.EntityUtils.toString(checkResponse.getEntity());
+				org.json.JSONObject jsonResponse = new org.json.JSONObject(responseBody);
+				int numFound = jsonResponse.getJSONObject("response").getInt("numFound");
+
+				if (numFound == 0) {
+					logger.info("No documents found with suggestions_context_filter field, cleanup already complete.");
+					httpClient.close();
+					return;
+				}
+
+				logger.info("Found {} documents with deprecated suggestions_context_filter field - removing field", numFound);
+				logEntry.addNote("Removing suggestions_context_filter field from " + numFound + " documents");
+
+				int batchSize = 1000;
+				int start = 0;
+				int totalProcessed = 0;
+				while (start < numFound) {
+					// Get batch of document IDs.
+					String idsUrl = solrBaseUrl + "/grouped_works_v2/select?q=suggestions_context_filter:[*%20TO%20*]&fl=id&rows=" + batchSize + "&start=" + start + "&wt=json";
+					org.apache.http.client.methods.HttpGet idsRequest = new org.apache.http.client.methods.HttpGet(idsUrl);
+					org.apache.http.HttpResponse idsResponse = httpClient.execute(idsRequest);
+
+					if (idsResponse.getStatusLine().getStatusCode() == 200) {
+						String idsResponseBody = org.apache.http.util.EntityUtils.toString(idsResponse.getEntity());
+						org.json.JSONObject idsJson = new org.json.JSONObject(idsResponseBody);
+						org.json.JSONArray docs = idsJson.getJSONObject("response").getJSONArray("docs");
+
+						// Build atomic update JSON to remove the field.
+						StringBuilder updateJson = new StringBuilder("[");
+						for (int i = 0; i < docs.length(); i++) {
+							if (i > 0) updateJson.append(",");
+							String docId = docs.getJSONObject(i).getString("id");
+							updateJson.append("{\"id\":\"").append(docId).append("\",\"suggestions_context_filter\":{\"set\":null}}");
+						}
+						updateJson.append("]");
+
+						String updateUrl = solrBaseUrl + "/grouped_works_v2/update?commit=false";
+						org.apache.http.client.methods.HttpPost updateRequest = new org.apache.http.client.methods.HttpPost(updateUrl);
+						updateRequest.setHeader("Content-Type", "application/json");
+						updateRequest.setEntity(new org.apache.http.entity.StringEntity(updateJson.toString()));
+
+						org.apache.http.HttpResponse updateResponse = httpClient.execute(updateRequest);
+						if (updateResponse.getStatusLine().getStatusCode() == 200) {
+							totalProcessed += docs.length();
+							logger.info("Processed batch {}/{} documents", totalProcessed, numFound);
+						} else {
+							logger.warn("Failed to update batch: HTTP {}", updateResponse.getStatusLine().getStatusCode());
+						}
+					}
+
+					start += batchSize;
+				}
+
+				String commitUrl = solrBaseUrl + "/grouped_works_v2/update?commit=true";
+				org.apache.http.client.methods.HttpGet commitRequest = new org.apache.http.client.methods.HttpGet(commitUrl);
+				httpClient.execute(commitRequest);
+
+				logger.info("Successfully removed suggestions_context_filter field from {} documents", totalProcessed);
+				logEntry.addNote("Successfully removed deprecated field from " + totalProcessed + " documents");
+			}
+
+			httpClient.close();
+		} catch (Exception e) {
+			logger.error("Error removing suggestions_context_filter field", e);
+			// Non-fatal error, continue with indexing.
 		}
 	}
 }
