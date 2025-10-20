@@ -139,89 +139,167 @@ AspenDiscovery.Searches = (function(){
 			return false;
 		},
 
-	/**
-	 * Initialize autocomplete functionality for search inputs.
-	 *
-	 * @param {Object} parameters - Configuration parameters.
-	 * @param {string} [parameters.searchTermSelector] - CSS selector for the search input (without #).
-	 * @param {string} [parameters.searchIndex] - Search index to use.
-	 * @param {string} [parameters.searchSource] - Search source to use.
-	 */
-	initAutoComplete(parameters = {}) {
-		const urlParams = new URLSearchParams(window.location.search);
-		const searchTermSelector = parameters.searchTermSelector ? `#${parameters.searchTermSelector}` : "#lookfor";
+		/**
+		 * Initialize autocomplete functionality for search inputs.
+		 *
+		 * @param {Object} parameters - Configuration parameters.
+		 * @param {string} [parameters.searchTermSelector] - CSS selector for the search input (without #).
+		 * @param {string} [parameters.searchIndex] - Search index to use.
+		 * @param {string} [parameters.searchSource] - Search source to use.
+		 */
+		initAutoComplete(parameters = {}) {
+			const urlParams = new URLSearchParams(window.location.search);
+			const searchTermSelector = parameters.searchTermSelector ? `#${parameters.searchTermSelector}` : "#lookfor";
 
-		try {
-			const $searchInput = $(searchTermSelector);
-			if (!$searchInput.length) return;
+			try {
+				const $searchInput = $(searchTermSelector);
+				if (!$searchInput.length) return;
 
-			$searchInput.autocomplete({
-				source: (request, response) => {
-					const $form = $searchInput.closest('form');
-					const searchIndexSelected = $form.find('select#searchIndex option:selected').val();
-					const searchSourceSelected = $form.find('select#searchSource option:selected').val();
+				$searchInput.autocomplete({
+					source: (request, response) => {
+						const $form = $searchInput.closest('form');
+						const searchIndexSelected = $form.find('select#searchIndex option:selected').val();
+						const searchSourceSelected = $form.find('select#searchSource option:selected').val();
 
-					const searchIndex = parameters.searchIndex || searchIndexSelected || urlParams.get('searchIndex') || '';
-					const searchSource = parameters.searchSource || searchSourceSelected || urlParams.get('searchSource') || '';
-					const searchTerm = $searchInput.val();
+						const searchIndex = parameters.searchIndex || searchIndexSelected || urlParams.get('searchIndex') || '';
+						const searchSource = parameters.searchSource || searchSourceSelected || urlParams.get('searchSource') || '';
+						const searchTerm = $searchInput.val();
 
-					const url = `${Globals.path}/Search/AJAX?method=getAutoSuggestList&searchTerm=${searchTerm}&searchIndex=${searchIndex}&searchSource=${searchSource}`;
+						const url = `${Globals.path}/Search/AJAX?method=getAutoSuggestList&searchTerm=${searchTerm}&searchIndex=${searchIndex}&searchSource=${searchSource}`;
 
-					$.ajax({
-						url,
-						dataType: "json",
-						success: (data) => {
-							// Add client-side highlighting for better performance
-							const searchTerms = searchTerm.toLowerCase().trim()
-								.split(/\s+/)
-								.filter(term => term.length > 1);
+						$.ajax({
+							url,
+							dataType: "json",
+							success: (data) => {
+								// Add client-side highlighting for better performance
+								const searchTerms = searchTerm.toLowerCase().trim()
+									.split(/\s+/)
+									.filter(term => term.length > 1);
 
-							if (searchTerms.length > 0) {
-								data.forEach(item => {
-									if (item.label) {
-										let highlightedLabel = item.label;
-										searchTerms.forEach(term => {
-											const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-											const regex = new RegExp(`(${escapedTerm})`, 'gi');
-											highlightedLabel = highlightedLabel.replace(regex, '<b>$1</b>');
-										});
-										item.label = highlightedLabel;
-									}
-								});
+								if (searchTerms.length > 0) {
+									data.forEach(item => {
+										if (item.label) {
+											let highlightedLabel = item.label;
+											searchTerms.forEach(term => {
+												const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+												const regex = new RegExp(`(${escapedTerm})`, 'gi');
+												highlightedLabel = highlightedLabel.replace(regex, '<b>$1</b>');
+											});
+											item.label = highlightedLabel;
+										}
+									});
+								}
+								response(data);
 							}
-							response(data);
+						});
+					},
+					position: {
+						my: "left top",
+						at: "left bottom",
+						of: $searchInput,
+						collision: "none"
+					},
+					minLength: 4,
+					delay: 600,
+					select: (event, ui) => {
+						const $form = $searchInput.closest('form');
+						$searchInput.val(ui.item.value);
+						if ($form.attr('id') === 'searchForm') {
+							$form.trigger('submit');
 						}
-					});
-				},
-				position: {
-					my: "left top",
-					at: "left bottom",
-					of: $searchInput,
-					collision: "none"
-				},
-				minLength: 4,
-				delay: 600,
-				select: (event, ui) => {
-					const $form = $searchInput.closest('form');
-					$searchInput.val(ui.item.value);
-					if ($form.attr('id') === 'searchForm') {
-						$form.trigger('submit');
+						return false;
 					}
-					return false;
-				}
-			}).data('ui-autocomplete')._renderItem = (ul, item) => {
-				return $('<li></li>')
-					.data('ui-autocomplete-item', item.value)
-					.append(`<a>${item.label}</a>`)
-					.appendTo(ul);
-			};
-		} catch (e) {
-			console.error('Error during autocomplete setup:', e);
-			alert(`Error during autocomplete setup:\n${e}`);
-		}
-	},
+				}).data('ui-autocomplete')._renderItem = (ul, item) => {
+					return $('<li></li>')
+						.data('ui-autocomplete-item', item.value)
+						.append(`<a>${item.label}</a>`)
+						.appendTo(ul);
+				};
+			} catch (e) {
+				console.error('Error during autocomplete setup:', e);
+				alert(`Error during autocomplete setup:\n${e}`);
+			}
+		},
 
-	loadExploreMoreBar: function(section, searchTerm) {
+		sendEmail: function(){
+			if (Globals.loggedIn){
+				var from = $('#from').val();
+				var to = $('#to').val();
+				var message = $('#message').val();
+				var sourceUrl = window.location.href;
+
+				var url = Globals.path + "/Search/AJAX";
+				$.getJSON(url,
+						{ // pass parameters as data
+							method     : 'sendEmail'
+							,from      : from
+							,to        : to
+							,message   : message
+							,sourceUrl : sourceUrl
+						},
+						function(data) {
+							if (data.result) {
+								AspenDiscovery.showMessage("Success", data.message);
+							} else {
+								AspenDiscovery.showMessage("Error", data.message);
+							}
+						}
+				);
+			}
+			return false;
+		},
+
+		loadSearchTypes: function(){
+			var searchTypeElement = $("#searchSource");
+			var catalogType = "catalog";
+			var hasAdvancedSearch = false;
+			var advancedSearchLabel = "Advanced Search";
+			var advancedSearchUrl = "/Search/Advanced";
+			if (searchTypeElement){
+				var selectedSearchType = $(searchTypeElement.find(":selected"));
+				if (selectedSearchType){
+					catalogType = selectedSearchType.data("catalog_type");
+					hasAdvancedSearch = selectedSearchType.data("advanced_search");
+					advancedSearchLabel = selectedSearchType.data("advanced_search_label");
+
+					if(searchTypeElement.val() == 'talpa'){
+						var searchBox = $("#lookfor");
+					}
+				}
+			}
+			var url = "/Search/AJAX";
+			$.getJSON(url,
+				{ // pass parameters as data
+					method : 'getSearchIndexes',
+					searchSource : catalogType
+				},
+				function(data) {
+					if (data.success) {
+						var searchIndexElement = $("#searchIndex");
+						if (searchIndexElement) {
+							//Clear the existing options and load with the new ones
+							searchIndexElement.empty();
+							for(var searchIndex in data.searchIndexes) {
+								var selected = "";
+								if (searchIndex === data.selectedIndex){
+									selected = " selected"
+								}
+								var defaultSearch = "";
+								if (searchIndex === data.defaultSearchIndex){
+									defaultSearch = " id='default_search_type'";
+								}
+								searchIndexElement.append("<option value='" + searchIndex + "'" + selected + defaultSearch + ">" + data.searchIndexes[searchIndex] + "</option>")
+							}
+							if (hasAdvancedSearch){
+								searchIndexElement.append("<option value='advanced'>" + advancedSearchLabel + "</option>");
+							}
+						}
+					}
+				}
+			);
+		},
+
+		loadExploreMoreBar: function(section, searchTerm) {
 			var url = Globals.path + "/Search/AJAX";
 			var params = "method=loadExploreMoreBar&section=" + encodeURIComponent(section);
 			params += "&searchTerm=" + encodeURIComponent(searchTerm);
