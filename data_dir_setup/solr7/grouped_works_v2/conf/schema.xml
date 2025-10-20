@@ -159,13 +159,6 @@
 				<filter class="solr.RemoveDuplicatesTokenFilterFactory"/>
 			</analyzer>
 		</fieldType>
-		<fieldType name="textSuggest" class="solr.TextField" positionIncrementGap="100">
-			<analyzer>
-				<tokenizer class="solr.StandardTokenizerFactory"/>
-				<filter class="solr.LowerCaseFilterFactory"/>
-				<filter class="solr.TrimFilterFactory"/>
-			</analyzer>
-		</fieldType>
 		<fieldType name="callnumber-search" class="solr.TextField">
 			<analyzer>
 				<tokenizer class="solr.WhitespaceTokenizerFactory"/>
@@ -369,10 +362,6 @@
 
 		<!-- spelling -->
 		<field name="spelling" type="textSpelling" indexed="true" stored="false" multiValued="true"/>
-		<!-- suggestions (for type ahead) -->
-		<field name="title_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true"/>
-		<field name="author_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true"/>
-		<field name="subject_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true"/>
 
 		<!-- relations to users -->
 		<field name="user_rating_link" type="integer" indexed="true" stored="false" multiValued="true"/>
@@ -381,7 +370,6 @@
 
 		<!-- Edition -->
 		<field name="edition_info" type="unchanged_string" indexed="true" stored="false" multiValued="true" docValues="false"/>
-		<field name="suggestions_context_filter" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
 
 		<!-- Boosts -->
 		<dynamicField name="lib_boost_*" type="integer" indexed="true" stored="false"/>
@@ -391,15 +379,6 @@
 
 	<uniqueKey>id</uniqueKey>
 
-	<copyField source="title" dest="title_suggestions"/>
-	<copyField source="author" dest="author_suggestions"/>
-	<copyField source="author2" dest="author_suggestions"/>
-	<copyField source="series" dest="title_suggestions"/>
-	<copyField source="subject_facet" dest="subject_suggestions"/>
-	<copyField source="personal_name_facet" dest="subject_suggestions"/>
-	<copyField source="corporate_name_facet" dest="subject_suggestions"/>
-	<copyField source="edition_info" dest="suggestions_context_filter"/>
-	<copyField source="language" dest="suggestions_context_filter"/>
 
 	<copyField source="title" dest="spelling"/>
 	<copyField source="author" dest="spelling"/>

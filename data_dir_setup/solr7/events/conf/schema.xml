@@ -144,23 +144,10 @@
 		<!-- spelling -->
 		<field name="spelling" type="textSpelling" indexed="true" stored="false" multiValued="true"/>
 
-		<!-- suggestions (for type ahead) -->
-		<field name="title_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true"/>
-		<field name="keyword_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true"/>
-
 	</fields>
 
 	<uniqueKey>id</uniqueKey>
 	<copyField source="title" dest="title_sort"/>
-	<copyField source="title" dest="title_suggestions"/>
 	<copyField source="age_group" dest="age_group_facet"/>
 	<copyField source="program_type" dest="program_type_facet"/>
-
-	<copyField source="title" dest="keyword_suggestions"/>
-	<copyField source="teaser" dest="keyword_suggestions"/>
-	<copyField source="description" dest="keyword_suggestions"/>
-	<copyField source="age_group" dest="keyword_suggestions"/>
-	<copyField source="program_type" dest="keyword_suggestions"/>
-	<copyField source="branch" dest="keyword_suggestions"/>
-	<copyField source="room" dest="keyword_suggestions"/>
 </schema>

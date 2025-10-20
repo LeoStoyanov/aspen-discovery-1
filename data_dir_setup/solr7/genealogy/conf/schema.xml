@@ -63,13 +63,6 @@
 				<filter class="solr.RemoveDuplicatesTokenFilterFactory"/>
 			</analyzer>
 		</fieldType>
-		<fieldType name="textSuggest" class="solr.TextField" positionIncrementGap="100">
-			<analyzer>
-				<tokenizer class="solr.StandardTokenizerFactory"/>
-				<filter class="solr.LowerCaseFilterFactory"/>
-				<filter class="solr.TrimFilterFactory"/>
-			</analyzer>
-		</fieldType>
 	</types>
 
 	<fields>
@@ -111,31 +104,7 @@
 		<field name="marriageComments" type="searchable_text" indexed="true" stored="true" multiValued="true"/>
 		<!-- spelling -->
 		<field name="spelling" type="textSpelling" indexed="true" stored="false" multiValued="true"/>
-		<!-- suggestions (for type ahead) -->
-		<field name="name_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true"/>
-		<field name="keyword_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true"/>
 	</fields>
-
-	<copyField source="title" dest="name_suggestions"/>
-	<copyField source="firstName" dest="name_suggestions"/>
-	<copyField source="lastName" dest="name_suggestions"/>
-	<copyField source="middleName" dest="name_suggestions"/>
-	<copyField source="otherName" dest="name_suggestions"/>
-	<copyField source="nickName" dest="name_suggestions"/>
-	<copyField source="title" dest="keyword_suggestions"/>
-	<copyField source="firstName" dest="keyword_suggestions"/>
-	<copyField source="lastName" dest="keyword_suggestions"/>
-	<copyField source="middleName" dest="keyword_suggestions"/>
-	<copyField source="otherName" dest="keyword_suggestions"/>
-	<copyField source="nickName" dest="keyword_suggestions"/>
-	<copyField source="cemeteryName" dest="keyword_suggestions"/>
-	<copyField source="cemeteryLocation" dest="keyword_suggestions"/>
-	<copyField source="mortuaryName" dest="keyword_suggestions"/>
-	<copyField source="sex" dest="keyword_suggestions"/>
-	<copyField source="race" dest="keyword_suggestions"/>
-	<copyField source="causeOfDeath" dest="keyword_suggestions"/>
-	<copyField source="obituarySource" dest="keyword_suggestions"/>
-	<copyField source="spouseName" dest="keyword_suggestions"/>
 
 	<copyField source="keywords" dest="spelling"/>
 	<uniqueKey>id</uniqueKey>
