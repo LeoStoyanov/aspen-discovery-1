@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Schema for centralized suggestion core -->
+<schema name="suggest" version="1.6">
+	<types>
+		<fieldType name="string" class="solr.StrField" sortMissingLast="true" />
+		<fieldType name="lowercase" class="solr.TextField" positionIncrementGap="100">
+			<analyzer>
+				<tokenizer class="solr.KeywordTokenizerFactory" />
+				<filter class="solr.LowerCaseFilterFactory" />
+				<filter class="solr.TrimFilterFactory" />
+			</analyzer>
+		</fieldType>
+		<fieldType name="textSuggest" class="solr.TextField" positionIncrementGap="100">
+			<analyzer>
+				<tokenizer class="solr.StandardTokenizerFactory" />
+				<filter class="solr.LowerCaseFilterFactory" />
+				<filter class="solr.TrimFilterFactory" />
+			</analyzer>
+		</fieldType>
+		<fieldType name="integer" class="IntPointField" />
+	</types>
+
+	<fields>
+		<field name="id" type="string" indexed="true" stored="true" required="true" multiValued="false" />
+		<field name="record_type" type="string" indexed="true" stored="true" multiValued="false" />
+		<field name="source" type="string" indexed="true" stored="true" multiValued="false" />
+		<field name="language" type="lowercase" indexed="true" stored="true" multiValued="true" />
+		<field name="suggestions_context_filter" type="string" indexed="true" stored="true" multiValued="true" />
+		<field name="popularity" type="integer" indexed="true" stored="false" default="0" />
+		<field name="title_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true" />
+		<field name="author_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true" />
+		<field name="subject_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true" />
+		<field name="keyword_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true" />
+		<field name="name_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true" />
+		<field name="instructor_suggestions" type="textSuggest" indexed="true" stored="true" multiValued="true" />
+		<dynamicField name="*_txt" type="textSuggest" indexed="true" stored="true" multiValued="true" />
+		<field name="_version_" type="string" indexed="false" stored="false" multiValued="false" />
+	</fields>
+
+	<uniqueKey>id</uniqueKey>
+</schema>

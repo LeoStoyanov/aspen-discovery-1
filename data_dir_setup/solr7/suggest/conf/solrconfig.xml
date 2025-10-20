@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<config>
+	<luceneMatchVersion>8.11.2</luceneMatchVersion>
+
+	<dataDir>${solr.suggest.data.dir:}</dataDir>
+
+	<directoryFactory name="DirectoryFactory"
+	                  class="solr.StandardDirectoryFactory"/>
+
+	<schemaFactory class="ClassicIndexSchemaFactory"/>
+
+	<updateHandler class="solr.DirectUpdateHandler2">
+		<autoCommit>
+			<maxTime>${solr.autoCommit.maxTime:15000}</maxTime>
+		</autoCommit>
+		<autoSoftCommit>
+			<maxTime>${solr.autoSoftCommit.maxTime:-1}</maxTime>
+		</autoSoftCommit>
+	</updateHandler>
+
+	<requestHandler name="/select" class="solr.SearchHandler"/>
+
+	<updateRequestProcessorChain name="log">
+		<processor class="solr.LogUpdateProcessorFactory"/>
+		<processor class="solr.RunUpdateProcessorFactory"/>
+	</updateRequestProcessorChain>
+
+	<requestHandler name="/update" class="solr.UpdateRequestHandler">
+		<lst name="defaults">
+			<str name="update.chain">log</str>
+		</lst>
+	</requestHandler>
+
+	<searchComponent name="suggest" class="solr.SuggestComponent">
+		<lst name="suggester">
+			<str name="name">title_suggestions</str>
+			<str name="lookupImpl">BlendedInfixLookupFactory</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">title_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="blenderType">position_linear</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">infix_title_suggestions</str>
+			<str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+			<str name="indexPath">infix_title_suggestions</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">title_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">author_suggestions</str>
+			<str name="lookupImpl">BlendedInfixLookupFactory</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">author_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="blenderType">position_linear</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">infix_author_suggestions</str>
+			<str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+			<str name="indexPath">infix_author_suggestions</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">author_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">subject_suggestions</str>
+			<str name="lookupImpl">BlendedInfixLookupFactory</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">subject_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="blenderType">position_linear</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">infix_subject_suggestions</str>
+			<str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+			<str name="indexPath">infix_subject_suggestions</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">subject_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">keyword_suggestions</str>
+			<str name="lookupImpl">BlendedInfixLookupFactory</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">keyword_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="blenderType">position_linear</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">infix_keyword_suggestions</str>
+			<str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+			<str name="indexPath">infix_keyword_suggestions</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">keyword_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">name_suggestions</str>
+			<str name="lookupImpl">BlendedInfixLookupFactory</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">name_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="blenderType">position_linear</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">infix_name_suggestions</str>
+			<str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+			<str name="indexPath">infix_name_suggestions</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">name_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">instructor_suggestions</str>
+			<str name="lookupImpl">BlendedInfixLookupFactory</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">instructor_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="blenderType">position_linear</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+		<lst name="suggester">
+			<str name="name">infix_instructor_suggestions</str>
+			<str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+			<str name="indexPath">infix_instructor_suggestions</str>
+			<str name="dictionaryImpl">DocumentDictionaryFactory</str>
+			<str name="field">instructor_suggestions</str>
+			<str name="weightField">popularity</str>
+			<str name="contextField">suggestions_context_filter</str>
+			<str name="suggestAnalyzerFieldType">textSuggest</str>
+			<str name="buildOnStartup">false</str>
+		</lst>
+	</searchComponent>
+
+	<requestHandler name="/title_suggest" class="solr.SearchHandler" startup="lazy">
+		<lst name="defaults">
+			<str name="suggest.dictionary">title_suggestions</str>
+			<str name="suggest.dictionary">infix_title_suggestions</str>
+			<str name="suggest">true</str>
+			<str name="suggest.count">5</str>
+		</lst>
+		<arr name="components">
+			<str>suggest</str>
+		</arr>
+	</requestHandler>
+
+	<requestHandler name="/author_suggest" class="solr.SearchHandler" startup="lazy">
+		<lst name="defaults">
+			<str name="suggest.dictionary">author_suggestions</str>
+			<str name="suggest.dictionary">infix_author_suggestions</str>
+			<str name="suggest">true</str>
+			<str name="suggest.count">5</str>
+		</lst>
+		<arr name="components">
+			<str>suggest</str>
+		</arr>
+	</requestHandler>
+
+	<requestHandler name="/subject_suggest" class="solr.SearchHandler" startup="lazy">
+		<lst name="defaults">
+			<str name="suggest.dictionary">subject_suggestions</str>
+			<str name="suggest.dictionary">infix_subject_suggestions</str>
+			<str name="suggest">true</str>
+			<str name="suggest.count">5</str>
+		</lst>
+		<arr name="components">
+			<str>suggest</str>
+		</arr>
+	</requestHandler>
+
+	<requestHandler name="/keyword_suggest" class="solr.SearchHandler" startup="lazy">
+		<lst name="defaults">
+			<str name="suggest.dictionary">keyword_suggestions</str>
+			<str name="suggest.dictionary">infix_keyword_suggestions</str>
+			<str name="suggest">true</str>
+			<str name="suggest.count">5</str>
+		</lst>
+		<arr name="components">
+			<str>suggest</str>
+		</arr>
+	</requestHandler>
+
+	<requestHandler name="/name_suggest" class="solr.SearchHandler" startup="lazy">
+		<lst name="defaults">
+			<str name="suggest.dictionary">name_suggestions</str>
+			<str name="suggest.dictionary">infix_name_suggestions</str>
+			<str name="suggest">true</str>
+			<str name="suggest.count">5</str>
+		</lst>
+		<arr name="components">
+			<str>suggest</str>
+		</arr>
+	</requestHandler>
+
+	<requestHandler name="/instructor_suggest" class="solr.SearchHandler" startup="lazy">
+		<lst name="defaults">
+			<str name="suggest.dictionary">instructor_suggestions</str>
+			<str name="suggest.dictionary">infix_instructor_suggestions</str>
+			<str name="suggest">true</str>
+			<str name="suggest.count">5</str>
+		</lst>
+		<arr name="components">
+			<str>suggest</str>
+		</arr>
+	</requestHandler>
+
+	<requestHandler name="/suggest" class="solr.SearchHandler" startup="lazy">
+		<lst name="defaults">
+			<str name="suggest.dictionary">title_suggestions</str>
+			<str name="suggest.dictionary">infix_title_suggestions</str>
+			<str name="suggest.dictionary">author_suggestions</str>
+			<str name="suggest.dictionary">infix_author_suggestions</str>
+			<str name="suggest.dictionary">subject_suggestions</str>
+			<str name="suggest.dictionary">infix_subject_suggestions</str>
+			<str name="suggest.dictionary">keyword_suggestions</str>
+			<str name="suggest.dictionary">infix_keyword_suggestions</str>
+			<str name="suggest.dictionary">name_suggestions</str>
+			<str name="suggest.dictionary">infix_name_suggestions</str>
+			<str name="suggest.dictionary">instructor_suggestions</str>
+			<str name="suggest.dictionary">infix_instructor_suggestions</str>
+			<str name="suggest">true</str>
+			<str name="suggest.count">5</str>
+		</lst>
+		<arr name="components">
+			<str>suggest</str>
+		</arr>
+	</requestHandler>
+
+</config>
