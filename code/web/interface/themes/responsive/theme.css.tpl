@@ -1035,6 +1035,35 @@ pre a{ldelim}
 {rdelim}
 {/if}
 
+{* Search Autocomplete *}
+.ui-autocomplete{ldelim}
+	background-color: {$bodyBackgroundColor} !important;
+	border-color: {$bodyTextColor}20;
+{rdelim}
+
+.ui-autocomplete .ui-menu-item > a.ui-corner-all{ldelim}
+	color: {$bodyTextColor};
+{rdelim}
+
+.ui-autocomplete .ui-menu-item > a.ui-corner-all b{ldelim}
+	color: {$linkColor};
+{rdelim}
+
+.ui-autocomplete .ui-menu-item > a.ui-corner-all.ui-state-hover,
+.ui-autocomplete .ui-menu-item > a.ui-corner-all.ui-state-active{ldelim}
+	color: {$linkColor};
+	background-color: transparent;
+{rdelim}
+
+.ui-autocomplete .ui-menu-item > a.ui-corner-all.ui-state-hover b,
+.ui-autocomplete .ui-menu-item > a.ui-corner-all.ui-state-active b{ldelim}
+	color: {$linkColor};
+{rdelim}
+
+.ui-autocomplete .ui-menu-item > a.ui-corner-all.ui-state-focus{ldelim}
+	outline-color: {$linkColor};
+{rdelim}
+
 {$additionalCSS}
 </style>
 {/strip}

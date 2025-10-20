@@ -9160,38 +9160,58 @@ a.placard-link {
   z-index: 1000;
   float: left;
   display: none;
-  min-width: 160px;
-  _width: 160px;
-  padding: 4px 0;
-  margin: 2px 0 0 0;
+  min-width: 320px;
+  max-width: 500px;
+  padding: 12px 8px;
+  margin: 0;
   list-style: none;
-  background-color: #ffffff;
-  border-color: #ccc;
-  border-color: rgba(0, 0, 0, 0.2);
+  border-width: 0 1px 1px 1px;
   border-style: solid;
-  border-width: 1px;
-  border-radius: 5px;
-  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
   background-clip: padding-box;
-  *border-right-width: 2px;
-  *border-bottom-width: 2px;
+  overflow: hidden;
+}
+.ui-autocomplete .ui-menu-item {
+  margin: 2px 0;
 }
 .ui-autocomplete .ui-menu-item > a.ui-corner-all {
   display: block;
-  padding: 3px 15px;
+  padding: 14px 24px;
   clear: both;
-  font-weight: normal;
-  line-height: 18px;
-  color: #555555;
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.5;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background-image: none;
+  border-radius: 8px;
+  margin: 0 4px;
+}
+.ui-autocomplete .ui-menu-item > a.ui-corner-all b {
+  font-weight: 600;
 }
 .ui-autocomplete .ui-menu-item > a.ui-corner-all.ui-state-hover,
 .ui-autocomplete .ui-menu-item > a.ui-corner-all.ui-state-active {
-  color: #ffffff;
   text-decoration: none;
-  background-color: #0088cc;
-  border-radius: 0;
-  background-image: none;
+  background-color: transparent;
+}
+.ui-autocomplete .ui-menu-item > a.ui-corner-all.ui-state-focus {
+  outline-width: 2px;
+  outline-style: solid;
+  outline-offset: 2px;
+}
+.ui-autocomplete .ui-menu-item:first-child > a {
+  margin-top: 0;
+}
+.ui-autocomplete .ui-menu-item:last-child > a {
+  margin-bottom: 0;
+}
+.ui-autocomplete li a,
+.ui-autocomplete .ui-menu-item > a {
+  cursor: pointer !important;
 }
 .categoryValue {
   font-size: smaller;
