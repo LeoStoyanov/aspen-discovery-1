@@ -1275,6 +1275,13 @@ public class GroupedWorkIndexer {
 				if (inputDocument == null) {
 					logEntry.incErrors("Solr Input document was null for " + groupedWork.getId());
 				} else {
+					// TODO: Remove in version 26.00.00 or later (added in 25.11.00 to clean up deprecated suggester fields).
+					// Remove deprecated suggester fields that were moved to the centralized suggest core.
+					inputDocument.removeField("title_suggestions");
+					inputDocument.removeField("author_suggestions");
+					inputDocument.removeField("subject_suggestions");
+					inputDocument.removeField("suggestions_context_filter");
+
 					UpdateResponse response = updateServer.add(inputDocument);
 					if (response == null) {
 						logEntry.incErrors("Error adding Solr record for " + groupedWork.getId() + ", the response was null");

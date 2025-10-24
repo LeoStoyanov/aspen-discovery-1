@@ -267,6 +267,12 @@ class LibraryMarketLibraryCalendarIndexer {
 						solrDocument.addField("boost", boost);
 
 						suggestionPublisher.submit(solrDocumentId, solrDocument, librariesToShowFor, boost);
+
+						// TODO: Remove in version 26.00.00 or later (added in 25.11.00 to clean up deprecated suggester fields).
+						// Remove deprecated suggester fields that were moved to the centralized suggest core.
+						solrDocument.removeField("title_suggestions");
+						solrDocument.removeField("keyword_suggestions");
+
 						solrUpdateServer.add(solrDocument);
 					} catch (SolrServerException | IOException e) {
 						logEntry.incErrors("Error adding event to solr ", e);

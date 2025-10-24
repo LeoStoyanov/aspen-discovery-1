@@ -234,6 +234,13 @@ class SeriesIndexer {
 					SolrInputDocument document = seriesSolr.getSolrDocument();
 					if (numTitles > 0 && document != null) {
 						suggestionManager.submit(seriesSolr.buildSuggestionDocument().build());
+
+						// TODO: Remove in version 26.00.00 or later (added in 25.11.00 to clean up deprecated suggester fields).
+						// Remove deprecated suggester fields that were moved to the centralized suggest core.
+						document.removeField("title_suggestions");
+						document.removeField("author_suggestions");
+						document.removeField("keyword_suggestions");
+
 						updateServer.add(document);
 						if (created > lastReindexTime) {
 							logEntry.incAdded();

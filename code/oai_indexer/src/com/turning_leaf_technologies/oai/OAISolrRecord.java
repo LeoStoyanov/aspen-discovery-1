@@ -117,6 +117,13 @@ class OAISolrRecord {
 		doc.addField("date_text", dateUnchanged);
 		doc.addField("geographic", locations);
 		doc.addField("scope_has_related_records", scopesToInclude);
+
+		// TODO: Remove in version 26.00.00 or later (added in 25.11.00 to clean up deprecated suggester fields).
+		// Remove deprecated suggester fields that were moved to the centralized suggest core.
+		doc.removeField("title_suggestions");
+		doc.removeField("subject_suggestions");
+		doc.removeField("keyword_suggestions");
+
 		return doc;
 	}
 

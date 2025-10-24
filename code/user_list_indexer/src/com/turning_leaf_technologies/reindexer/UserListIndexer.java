@@ -426,6 +426,12 @@ class UserListIndexer {
 					// Index in the solr catalog
 					SolrInputDocument document = userListSolr.getSolrDocument();
 					if (document != null) {
+						// TODO: Remove in version 26.00.00 or later (added in 25.11.00 to clean up deprecated suggester fields).
+						// Remove deprecated suggester fields that were moved to the centralized suggest core.
+						document.removeField("title_suggestions");
+						document.removeField("author_suggestions");
+						document.removeField("keyword_suggestions");
+
 						updateServer.add(document);
 						submitSuggestion(userListSolr);
 						if (created > lastReindexTime) {
