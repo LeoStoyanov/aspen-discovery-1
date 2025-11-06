@@ -1267,7 +1267,7 @@ abstract class Solr {
 		if ($facet && !empty($facet['field']) && $configArray['Index']['enableFacets']) {
 			$options['facet'] = 'true';
 			$options['facet.mincount'] = 1;
-			$options['facet.method'] = 'fcs';
+			$options['facet.method'] = 'fc';
 			$options['facet.threads'] = 25;
 			$options['facet.limit'] = (isset($facet['limit'])) ? $facet['limit'] : null;
 

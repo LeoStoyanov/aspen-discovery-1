@@ -255,20 +255,20 @@
 
 		<!-- Format information -->
 		<field name="grouping_category" type="unchanged_string" indexed="true" stored="true" multiValued="false"/>
-		<field name="format" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
+		<field name="format" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
 		<field name="format_boost" type="integer" indexed="true" stored="false"/>
-		<field name="format_category" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
+		<field name="format_category" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
 
 		<!-- Fields to determine ownership and location based on location codes -->
-		<field name="owning_library" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
-		<field name="owning_location" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
-		<field name="collection" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
-		<field name="detailed_location" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
-		<field name="shelf_location" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
+		<field name="owning_library" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
+		<field name="owning_location" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
+		<field name="collection" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
+		<field name="detailed_location" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
+		<field name="shelf_location" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
 
 		<!-- Fields to determine availability -->
-		<field name="available_at" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
-		<field name="availability_toggle" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
+		<field name="available_at" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
+		<field name="availability_toggle" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
 
 		<!-- Language Related Fields -->
 		<field name="language" type="unchanged_string" indexed="true" stored="true" multiValued="true" omitNorms="true" docValues="true"/>
@@ -287,7 +287,7 @@
 		<field name="physical" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
 		<field name="edition" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
 		<field name="dateSpan" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
-		<field name="econtent_source" type="unchanged_string" indexed="true" stored="true" multiValued="true"/>
+		<field name="econtent_source" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true"/>
 		<field name="subject_facet" type="unchanged_string" indexed="true" stored="true" multiValued="true" docValues="true" termVectors="true"/>
 		<field name="subject" type="searchable_text_minimal_stem" indexed="true" stored="true" multiValued="true"/>
 		<field name="subject_proper" type="textProper" indexed="true" stored="false" multiValued="true"/>
