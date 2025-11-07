@@ -16,6 +16,7 @@ class UInterface extends Smarty {
 	private $isMobile;
 	private $url;
 	private $debug = false;
+	private bool $templateDebuggingEnabled = false;
 
 	function __construct() {
 		parent::__construct();
@@ -160,6 +161,7 @@ class UInterface extends Smarty {
 		if (IPAddress::showDebuggingInformation()) {
 			$this->assign('debug', true);
 		}
+		$this->templateDebuggingEnabled = $this->shouldEmitTemplateDebuggingComments();
 		if ($configArray['System']['debugJs']) {
 			$this->assign('debugJs', true);
 		}
@@ -291,6 +293,20 @@ class UInterface extends Smarty {
 	function setLanguage($lang) {
 		$this->lang = $lang->code;
 		$this->assign('userLang', $lang);
+	}
+
+	function createTemplate($template, $cache_id = null, $compile_id = null, $parent = null, $do_clone = true) {
+		$templateInstance = parent::createTemplate($template, $cache_id, $compile_id, $parent, $do_clone);
+		if ($this->templateDebuggingEnabled && $templateInstance instanceof Smarty_Internal_Template) {
+			if (!isset($templateInstance->startRenderCallbacks['templateDebugStart'])) {
+				$templateInstance->startRenderCallbacks['templateDebugStart'] = [$this, 'outputTemplateDebugStart'];
+			}
+
+			if (!isset($templateInstance->endRenderCallbacks['templateDebugEnd'])) {
+				$templateInstance->endRenderCallbacks['templateDebugEnd'] = [$this, 'outputTemplateDebugEnd'];
+			}
+		}
+		return $templateInstance;
 	}
 
 	/**
@@ -1150,6 +1166,51 @@ class UInterface extends Smarty {
 			$this->assign('bodyFont', $primaryTheme->bodyFont);
 			$this->assign('isDarkColorScheme', $primaryTheme->isDarkColorScheme);
 		}
+	}
+
+	private function shouldEmitTemplateDebuggingComments(): bool {
+		if (!IPAddress::showDebuggingInformation() || !isset($_REQUEST['debug'])) {
+			return false;
+		}
+
+		$rawValue = $_REQUEST['debug'];
+		if (is_array($rawValue)) {
+			$rawValue = reset($rawValue);
+		}
+		if ($rawValue === null) {
+			return false;
+		}
+		$filtered = filter_var($rawValue, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+		if ($filtered !== null) {
+			return $filtered;
+		}
+		return false;
+	}
+
+	public function outputTemplateDebugStart(Smarty_Internal_Template $tpl): void {
+		$this->emitTemplateComment('START', $tpl);
+	}
+
+	public function outputTemplateDebugEnd(Smarty_Internal_Template $tpl): void {
+		$this->emitTemplateComment('END', $tpl);
+	}
+
+	private function emitTemplateComment(string $position, Smarty_Internal_Template $tpl): void {
+		$templateName = $tpl->template_resource ?? '';
+		$fullPath = '';
+		if (!empty($tpl->source) && !empty($tpl->source->filepath)) {
+			$fullPath = $tpl->source->filepath;
+		}
+		$normalizedRoot = rtrim(str_replace('\\', '/', ROOT_DIR), '/') . '/';
+		$normalizedPath = str_replace('\\', '/', $fullPath);
+		if ($normalizedPath !== '' && str_starts_with($normalizedPath, $normalizedRoot)) {
+			$normalizedPath = substr($normalizedPath, strlen($normalizedRoot));
+		}
+		$descriptor = trim($templateName . ($normalizedPath !== '' ? ' (' . $normalizedPath . ')' : ''));
+		if ($descriptor === '') {
+			return;
+		}
+		echo sprintf('<!-- %s TEMPLATE %s -->%s', $position, $descriptor, PHP_EOL);
 	}
 }
 
