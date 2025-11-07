@@ -32,9 +32,12 @@ class Sublocation extends DataObject {
 			return self::$_objectStructure[$context];
 		}
 
-			//Load locations for lookup values
+		$canAdminAllSublocations = self::userCanAdminAllSublocations();
 		$allLocationsList = Location::getLocationList(false);
-		$locationList = Location::getLocationList(!UserAccount::userHasPermission('Administer All Libraries'));
+		$locationList = Location::getLocationList(!$canAdminAllSublocations);
+		if (!$canAdminAllSublocations) {
+			$allLocationsList = $locationList;
+		}
 
 		$uneditableForILS = false;
 		global $library;
@@ -118,8 +121,24 @@ class Sublocation extends DataObject {
 		return self::$_objectStructure[$context];
 	}
 
+	public function insert(string $context = '') : int|bool {
+		if (UserAccount::isLoggedIn() && !$this->currentUserCanManageSublocation()) {
+			$this->setLastError('You do not have permission to manage sublocations for that location.');
+			return false;
+		}
+		$ret = parent::insert($context);
+		if ($ret !== FALSE) {
+			$this->savePatronTypes();
+		}
+		return $ret;
+	}
+
 	public function update(string $context = '') : int|bool {
-		$ret = parent::update();
+		if (UserAccount::isLoggedIn() && !$this->currentUserCanManageSublocation()) {
+			$this->setLastError('You do not have permission to manage sublocations for that location.');
+			return false;
+		}
+		$ret = parent::update($context);
 		if ($ret !== FALSE) {
 			$this->savePatronTypes();
 		}
@@ -143,6 +162,10 @@ class Sublocation extends DataObject {
 	}
 
 	public function delete(bool $useWhere = false, bool $hardDelete = false) : bool|int {
+		if (UserAccount::isLoggedIn() && !$this->currentUserCanManageSublocation()) {
+			$this->setLastError('You do not have permission to manage sublocations for that location.');
+			return false;
+		}
 		$ret = parent::delete($useWhere, $hardDelete);
 		if ($ret !== FALSE) {
 			$this->clearPatronTypes();
@@ -187,6 +210,78 @@ class Sublocation extends DataObject {
 		$link = new SublocationPatronType();
 		$link->sublocationId = $this->id;
 		$link->delete(true);
+	}
+
+	public static function userCanAdminAllSublocations() : bool {
+		if (!UserAccount::isLoggedIn()) {
+			return true;
+		}
+		return UserAccount::userHasPermission('Administer Sublocations for All Libraries');
+	}
+
+	public static function userCanAdminHomeLibrarySublocations() : bool {
+		if (!UserAccount::isLoggedIn()) {
+			return true;
+		}
+		return UserAccount::userHasPermission('Administer Sublocations for Home Library');
+	}
+
+	public static function userCanAdminSublocations() : bool {
+		return self::userCanAdminAllSublocations() || self::userCanAdminHomeLibrarySublocations();
+	}
+
+	public static function getPermittedLocationIdsForCurrentUser() : ?array {
+		if (!UserAccount::isLoggedIn()) {
+			return null;
+		}
+		if (self::userCanAdminAllSublocations()) {
+			return null;
+		}
+		if (!self::userCanAdminSublocations()) {
+			return [];
+		}
+		$user = UserAccount::getLoggedInUser();
+		if (!$user) {
+			return [];
+		}
+		$allowedLocations = [];
+		if (self::userCanAdminHomeLibrarySublocations()) {
+			require_once ROOT_DIR . '/sys/LibraryLocation/Location.php';
+			$homeLocation = new Location();
+			$homeLocation->locationId = $user->homeLocationId;
+			$libraryId = null;
+			if ($homeLocation->find(true)) {
+				$libraryId = $homeLocation->libraryId;
+			}
+			if ($libraryId !== null) {
+				$libraryLocations = new Location();
+				$libraryLocations->libraryId = $libraryId;
+				$libraryLocations->find();
+				while ($libraryLocations->fetch()) {
+					$allowedLocations[$libraryLocations->locationId] = true;
+				}
+			}
+		} else {
+			$allowedLocations[$user->homeLocationId] = true;
+		}
+		$additionalAdministrationLocations = $user->getAdditionalAdministrationLocations();
+		if (!empty($additionalAdministrationLocations)) {
+			foreach ($additionalAdministrationLocations as $locationId => $unused) {
+				$allowedLocations[$locationId] = true;
+			}
+		}
+		return array_keys($allowedLocations);
+	}
+
+	private function currentUserCanManageSublocation() : bool {
+		if (!self::userCanAdminSublocations()) {
+			return false;
+		}
+		$allowedLocationIds = self::getPermittedLocationIdsForCurrentUser();
+		if ($allowedLocationIds === null) {
+			return true;
+		}
+		return in_array($this->locationId, $allowedLocationIds, true);
 	}
 
 	/** @noinspection PhpUnusedParameterInspection */

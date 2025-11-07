@@ -19,15 +19,16 @@ class Admin_Sublocations extends ObjectEditor {
 	}
 
 	function getAllObjects($page, $recordsPerPage): array {
-		//Look lookup information for display in the user interface
-		$user = UserAccount::getLoggedInUser();
-
 		$object = new Sublocation();
-		if (!UserAccount::userHasPermission('Administer All Libraries')) {
-			//Scope to just branches for the user based on home branch
-			$object->locationId = $user->homeLocationId;
+		$object->orderBy($this->getSort());
+		$allowedLocationIds = Sublocation::getPermittedLocationIdsForCurrentUser();
+		if (is_array($allowedLocationIds)) {
+			if (count($allowedLocationIds) > 0) {
+				$object->whereAddIn('locationId', $allowedLocationIds, false);
+			} else {
+				$object->whereAdd('1 = 0');
+			}
 		}
-
 		$object->orderBy($this->getSort());
 		$this->applyFilters($object);
 		$object->limit(($page - 1) * $recordsPerPage, $recordsPerPage);
@@ -72,14 +73,66 @@ class Admin_Sublocations extends ObjectEditor {
 		return 'primary_configuration';
 	}
 
+	function getNumObjects(): int {
+		if ($this->_numObjects == null) {
+			$object = new Sublocation();
+			$allowedLocationIds = Sublocation::getPermittedLocationIdsForCurrentUser();
+			if (is_array($allowedLocationIds)) {
+				if (count($allowedLocationIds) > 0) {
+					$object->whereAddIn('locationId', $allowedLocationIds, false);
+				} else {
+					$object->whereAdd('1 = 0');
+				}
+			}
+			$this->_numObjects = $object->count();
+		}
+		return $this->_numObjects;
+	}
+
 	function canView(): bool {
-		return UserAccount::userHasPermission([
-			'Administer All Libraries',
-			'Administer Home Library',
-		]);
+		return Sublocation::userCanAdminSublocations();
+	}
+
+	public function canAddNew(): bool {
+		return Sublocation::userCanAdminSublocations();
+	}
+
+	public function canDelete(): bool {
+		return Sublocation::userCanAdminSublocations();
+	}
+
+	public function canEdit(DataObject $object): bool {
+		/** @var Sublocation $object */
+		return $this->canManageLocationId($object->locationId);
+	}
+
+	public function canBatchEdit(): bool {
+		return Sublocation::userCanAdminSublocations() && parent::canBatchEdit();
+	}
+
+	public function canBatchDelete(): bool {
+		return Sublocation::userCanAdminSublocations() && parent::canBatchDelete();
+	}
+
+	public function canExportToCSV(): bool {
+		return Sublocation::userCanAdminSublocations() && parent::canExportToCSV();
 	}
 
 	function showReturnToList() : bool {
 		return false;
+	}
+
+	private function canManageLocationId(?int $locationId) : bool {
+		if (!Sublocation::userCanAdminSublocations()) {
+			return false;
+		}
+		if (Sublocation::userCanAdminAllSublocations()) {
+			return true;
+		}
+		$allowedLocationIds = Sublocation::getPermittedLocationIdsForCurrentUser();
+		if ($allowedLocationIds === null) {
+			return true;
+		}
+		return in_array($locationId, $allowedLocationIds, true);
 	}
 }
