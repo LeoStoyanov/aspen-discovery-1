@@ -116,7 +116,11 @@ class UserAPI extends AbstractAPI {
 				])) {
 					header("Cache-Control: max-age=10800");
 					require_once ROOT_DIR . '/sys/SystemLogging/APIUsage.php';
+					require_once ROOT_DIR . '/sys/SystemLogging/APIUsageLog.php';
 					APIUsage::incrementStat('UserAPI', $method);
+					$user = $this->getUserForApiCall();
+					APIUsageLog::logCall('UserAPI', $method, ($user instanceof User) ? $user : null);
+
 					$output = json_encode(['result' => $this->$method()]);
 				} else {
 					header('Cache-Control: no-cache, must-revalidate'); // HTTP/1.1
@@ -137,7 +141,10 @@ class UserAPI extends AbstractAPI {
 				];
 				$output = json_encode($result);
 				require_once ROOT_DIR . '/sys/SystemLogging/APIUsage.php';
+				require_once ROOT_DIR . '/sys/SystemLogging/APIUsageLog.php';
 				APIUsage::incrementStat('UserAPI', $method);
+				$user = $this->getUserForApiCall();
+				APIUsageLog::logCall('UserAPI', $method, ($user instanceof User) ? $user : null);
 			} else {
 				$output = json_encode(['error' => 'invalid_method']);
 			}

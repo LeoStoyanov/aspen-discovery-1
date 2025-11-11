@@ -3,7 +3,7 @@ require_once ROOT_DIR . '/services/Admin/Dashboard.php';
 require_once ROOT_DIR . '/sys/SystemLogging/APIUsage.php';
 
 class API_UsageDashboard extends Admin_Dashboard {
-	function launch() {
+	function launch(): void {
 		global $interface;
 
 		$instanceName = $this->loadInstanceInformation('APIUsage');
@@ -23,6 +23,7 @@ class API_UsageDashboard extends Admin_Dashboard {
 		$this->getStats($instanceName, null, null, $statsByModule, 'usageAllTime');
 
 		$interface->assign('statsByModule', $statsByModule);
+		$this->getUserAPILogs();
 
 		$this->display('dashboard.tpl', 'Aspen Usage Dashboard');
 	}
@@ -35,7 +36,7 @@ class API_UsageDashboard extends Admin_Dashboard {
 	 * @param string $statsPeriodName The period of stats being loaded
 	 * @return void
 	 */
-	function getStats($instanceName, $month, $year, &$statsByModule, $statsPeriodName) {
+	function getStats(?string $instanceName, ?string $month, ?string $year, array &$statsByModule, string $statsPeriodName): void {
 		$usage = new APIUsage();
 		if (!empty($instanceName)) {
 			$usage->instance = $instanceName;
@@ -88,5 +89,118 @@ class API_UsageDashboard extends Admin_Dashboard {
 			'View Dashboards',
 			'View System Reports',
 		]);
+	}
+
+	/**
+	 * Load detailed UserAPI logs with user information.
+	 *
+	 * @return void
+	 */
+	function getUserAPILogs(): void {
+		global $interface;
+
+		require_once ROOT_DIR . '/sys/SystemLogging/APIUsageLog.php';
+		require_once ROOT_DIR . '/sys/Account/User.php';
+
+		$method = $_REQUEST['logMethod'] ?? '';
+		$limit = isset($_REQUEST['logLimit']) ? (int)$_REQUEST['logLimit'] : 100;
+		$startDate = $_REQUEST['logStartDate'] ?? date('Y-m-d', strtotime('-7 days'));
+		$endDate = $_REQUEST['logEndDate'] ?? date('Y-m-d');
+		$startTimestamp = strtotime($startDate . ' 00:00:00');
+		$endTimestamp = strtotime($endDate . ' 23:59:59');
+
+		// Get recent API calls.
+		$apiUsageLog = new APIUsageLog();
+		$apiUsageLog->module = 'UserAPI';
+		if (!empty($method)) {
+			$apiUsageLog->method = $method;
+		}
+		$apiUsageLog->whereAdd("timestamp >= $startTimestamp AND timestamp <= $endTimestamp");
+		$apiUsageLog->orderBy('timestamp DESC');
+		$apiUsageLog->limit(0, $limit);
+
+		$logs = [];
+		$apiUsageLog->find();
+		while ($apiUsageLog->fetch()) {
+			$displayName = 'N/A';
+			$userBarcode = 'N/A';
+
+			if ($apiUsageLog->userId) {
+				$user = new User();
+				$user->id = $apiUsageLog->userId;
+				if ($user->find(true)) {
+					$displayName = $user->getDisplayName();
+					$userBarcode = $user->getBarcode();
+				}
+			}
+
+			$logs[] = [
+				'timestamp' => date('Y-m-d H:i:s', $apiUsageLog->timestamp),
+				'userId' => $apiUsageLog->userId,
+				'displayName' => $displayName,
+				'userBarcode' => $userBarcode,
+				'method' => $apiUsageLog->method,
+			];
+		}
+
+		// Get summary statistics by user.
+		$apiUsageLog = new APIUsageLog();
+		$apiUsageLog->module = 'UserAPI';
+		if (!empty($method)) {
+			$apiUsageLog->method = $method;
+		}
+		$apiUsageLog->whereAdd("timestamp >= $startTimestamp AND timestamp <= $endTimestamp");
+		$apiUsageLog->whereAdd("userId IS NOT NULL");
+		$apiUsageLog->selectAdd();
+		$apiUsageLog->selectAdd('userId, COUNT(*) as callCount');
+		$apiUsageLog->groupBy('userId');
+		$apiUsageLog->orderBy('callCount DESC');
+		$apiUsageLog->limit(0, 50);
+
+		$userStats = [];
+		$apiUsageLog->find();
+		while ($apiUsageLog->fetch()) {
+			$callCount = $apiUsageLog->__get('callCount');
+
+			$displayName = 'N/A';
+			$userBarcode = 'N/A';
+
+			if ($apiUsageLog->userId) {
+				$user = new User();
+				$user->id = $apiUsageLog->userId;
+				if ($user->find(true)) {
+					$displayName = $user->getDisplayName();
+					$userBarcode = $user->getBarcode();
+				}
+			}
+
+			$userStats[] = [
+				'userId' => $apiUsageLog->userId,
+				'displayName' => $displayName,
+				'userBarcode' => $userBarcode,
+				'callCount' => $callCount,
+			];
+		}
+
+		// Get list of all unique methods for the dropdown.
+		$apiUsageLogMethods = new APIUsageLog();
+		$apiUsageLogMethods->module = 'UserAPI';
+		$apiUsageLogMethods->selectAdd();
+		$apiUsageLogMethods->selectAdd('DISTINCT method');
+		$apiUsageLogMethods->orderBy('method');
+
+		$availableMethods = [];
+		$apiUsageLogMethods->find();
+		while ($apiUsageLogMethods->fetch()) {
+			$availableMethods[] = $apiUsageLogMethods->method;
+		}
+
+		$interface->assign('detailedLogs', $logs);
+		$interface->assign('userStats', $userStats);
+		$interface->assign('availableMethods', $availableMethods);
+		$interface->assign('logMethod', $method);
+		$interface->assign('logLimit', $limit);
+		$interface->assign('logStartDate', $startDate);
+		$interface->assign('logEndDate', $endDate);
 	}
 }

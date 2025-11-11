@@ -116,5 +116,23 @@ function getUpdates25_Q4_00(): array {
 				'ALTER TABLE grouped_work_facet ADD COLUMN IF NOT EXISTS numTotalEntriesToShowInMore INT(11) NOT NULL DEFAULT 30',
 			]
 		], // add_num_total_entries_to_show_in_more_to_grouped_work_facet
+		'api_usage_log_table' => [
+			'title' => 'API Usage Log - Create Detailed Log Table',
+			'description' => 'Create api_usage_log table to track individual API calls with user information and timestamp.',
+			'continueOnError' => false,
+			'sql' => [
+				"CREATE TABLE IF NOT EXISTS api_usage_log (
+					id INT(11) NOT NULL AUTO_INCREMENT,
+					timestamp INT(11) NOT NULL,
+					module VARCHAR(30) NOT NULL,
+					method VARCHAR(75) NOT NULL,
+					userId INT(11) DEFAULT NULL,
+					PRIMARY KEY (id),
+					INDEX idx_timestamp (timestamp),
+					INDEX idx_module_method (module, method),
+					INDEX idx_userId (userId)
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+			]
+		], // api_usage_log_table
 	];
 }
