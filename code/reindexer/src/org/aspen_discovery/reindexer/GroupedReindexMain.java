@@ -229,17 +229,25 @@ public class GroupedReindexMain {
 			if (!arDataReloaded) { //Force nightly update to run if AR data was reloaded
 				try {
 					logger.info("Checking to see if nightly index should run");
-					PreparedStatement getRunNightlyIndexStmt = dbConn.prepareStatement("SELECT runNightlyFullIndex FROM system_variables");
+					PreparedStatement getRunNightlyIndexStmt = dbConn.prepareStatement("SELECT runNightlyFullIndex, processEmptyGroupedWorks FROM system_variables");
 					ResultSet getRunNightlyIndexRS = getRunNightlyIndexStmt.executeQuery();
+					boolean runNightlyFullIndex = true;
+					boolean processEmptyGroupedWorks = false;
 					if (getRunNightlyIndexRS.next()){
-						boolean runNightlyFullIndex = getRunNightlyIndexRS.getBoolean("runNightlyFullIndex");
-						if (!runNightlyFullIndex){
-							logEntry.addNote("Nightly index does not need to be run");
-							logEntry.setFinished();
-							System.exit(0);
-						}
+						runNightlyFullIndex = getRunNightlyIndexRS.getBoolean("runNightlyFullIndex");
+						processEmptyGroupedWorks = getRunNightlyIndexRS.getBoolean("processEmptyGroupedWorks");
 					}
+					getRunNightlyIndexRS.close();
 					getRunNightlyIndexStmt.close();
+					if (!runNightlyFullIndex){
+						if (processEmptyGroupedWorks){
+							runProcessEmptyGroupedWorksOnly();
+						}else{
+							logEntry.addNote("Nightly index does not need to be run");
+						}
+						logEntry.setFinished();
+						System.exit(0);
+					}
 				}catch (SQLException e) {
 					logger.error("Unable to determine if the nightly index should run, running it", e);
 				}
@@ -251,6 +259,23 @@ public class GroupedReindexMain {
 			}catch (SQLException e) {
 				logger.error("Unable to determine if the nightly index should run, running it", e);
 			}
+		}
+	}
+
+	private static void runProcessEmptyGroupedWorksOnly() {
+		logEntry.addNote("Process Empty Grouped Works is enabled; running cleanup without a full nightly index.");
+		GroupedWorkIndexer groupedWorkIndexer = new GroupedWorkIndexer(serverName, dbConn, configIni, false, false, logEntry, logger);
+		try {
+			groupedWorkIndexer.processEmptyGroupedWorks();
+		} catch (SQLException e) {
+			logEntry.incErrors("Error processing empty grouped works", e);
+		}
+		groupedWorkIndexer.finishIndexing();
+		try (PreparedStatement clearProcessEmptyStmt = dbConn.prepareStatement("UPDATE system_variables set processEmptyGroupedWorks = 0")) {
+			clearProcessEmptyStmt.executeUpdate();
+			logEntry.addNote("Process Empty Grouped Works flag reset.");
+		} catch (SQLException e) {
+			logEntry.incErrors("Unable to reset processEmptyGroupedWorks flag", e);
 		}
 	}
 

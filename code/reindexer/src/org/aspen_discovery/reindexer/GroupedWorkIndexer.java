@@ -989,53 +989,48 @@ public class GroupedWorkIndexer {
 	}
 
 	protected void processEmptyGroupedWorks() throws SQLException {
-		PreparedStatement getEmptyGroupedWorksStmt = dbConn.prepareStatement("SELECT grouped_work.id as grouped_work_id, permanent_id, grouping_category, count(grouped_work_records.id) as numRecords FROM grouped_work LEFT JOIN grouped_work_records on grouped_work.id = groupedWorkId where length(permanent_id) > 36 GROUP BY permanent_id having numRecords = 0;", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
-		PreparedStatement getPrimaryIdentifiersForGroupedWorkStmt = dbConn.prepareStatement("SELECT count(*) as numIdentifiers from grouped_work_primary_identifiers where grouped_work_id = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
-		logEntry.addNote("Starting to process grouped works with no records attached to them.");
-
+		PreparedStatement getEmptyGroupedWorksStmt = dbConn.prepareStatement(
+			"SELECT gw.id as grouped_work_id, gw.permanent_id, gw.grouping_category, " +
+				"COUNT(DISTINCT gwr.id) AS numRecords, COUNT(DISTINCT gwpi.id) AS numIdentifiers " +
+			"FROM grouped_work gw " +
+				"LEFT JOIN grouped_work_records gwr ON gw.id = groupedWorkId " +
+				"LEFT JOIN grouped_work_primary_identifiers gwpi ON gw.id = gwpi.grouped_work_id " +
+			"WHERE length(gw.permanent_id) > 36 " +
+			"GROUP BY gw.id, gw.permanent_id, gw.grouping_category " +
+			"HAVING numRecords = 0;", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 		ResultSet emptyGroupedWorksRS = getEmptyGroupedWorksStmt.executeQuery();
+
 		int numDeleted = 0;
+		int numProcessed = 0;
 		boolean localRegroupAll = this.regroupAllRecords;
 		setRegroupAllRecords(true);
-		logEntry.addNote("Preparing to process empty grouped works");
+		logEntry.addNote("Starting to process grouped works with no records attached to them.");
 		logEntry.saveResults();
-
-		int numProcessed = 0;
 		while (emptyGroupedWorksRS.next()) {
 			long groupedWorkId = emptyGroupedWorksRS.getLong("grouped_work_id");
 			String permanentId = emptyGroupedWorksRS.getString("permanent_id");
 
-			getPrimaryIdentifiersForGroupedWorkStmt.setLong(1, groupedWorkId);
-			ResultSet numPrimaryIdentifiersRS = getPrimaryIdentifiersForGroupedWorkStmt.executeQuery();
-			boolean hasIdentifiersAttached = false;
-			if (numPrimaryIdentifiersRS.next()) {
-				if (numPrimaryIdentifiersRS.getLong("numIdentifiers") > 0) {
-					hasIdentifiersAttached = true;
-				}
-			}
-			numPrimaryIdentifiersRS.close();
-
-			if (hasIdentifiersAttached) {
+			long numIdentifiersAttached = emptyGroupedWorksRS.getLong("numIdentifiers");
+			if (numIdentifiersAttached > 0) {
 				processGroupedWork(groupedWorkId, permanentId, emptyGroupedWorksRS.getString("grouping_category"));
-			}else {
+			} else {
 				deleteRecord(permanentId, groupedWorkId);
 				numDeleted++;
 				if (numDeleted % 10000 == 0) {
 					try {
 						updateServer.commit(false, false, true);
 					} catch (Exception e) {
-						logger.warn("Error committing changes", e);
+						logger.warn("Error committing changes when processing empty grouped works: ", e);
 					}
 				}
 			}
 			numProcessed++;
-			if (numProcessed % 1000 == 0) {
-				logEntry.addNote("Processed " + numProcessed);
-			}
 		}
+
 		emptyGroupedWorksRS.close();
+		getEmptyGroupedWorksStmt.close();
 		setRegroupAllRecords(localRegroupAll);
-		logEntry.addNote("Finished processing empty grouped works, processed " + numProcessed + ".");
+		logEntry.addNote("Finished processing empty grouped works, processed " + numProcessed + " and deleted " + numDeleted + ".");
 		logEntry.saveResults();
 	}
 
