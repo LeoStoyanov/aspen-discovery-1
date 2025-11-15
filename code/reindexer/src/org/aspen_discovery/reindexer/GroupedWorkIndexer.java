@@ -31,6 +31,9 @@ import org.marc4j.marc.MarcFactory;
 import org.marc4j.marc.Record;
 
 public class GroupedWorkIndexer {
+	private static final long SECONDS_PER_MONTH = 30L * 24 * 60 * 60;
+	private static final int GROUPED_WORK_DELETION_INACTIVITY_MONTHS = 6;
+
 	private final String serverName;
 	private final BaseIndexingLogEntry logEntry;
 	private final Logger logger;
@@ -258,7 +261,6 @@ public class GroupedWorkIndexer {
 		try{
 			getGroupedWorkPrimaryIdentifiers = dbConn.prepareStatement("SELECT * FROM grouped_work_primary_identifiers where grouped_work_id = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			getOverriddenRecordsForWork = dbConn.prepareStatement("SELECT source, record_id FROM record_grouping_overrides where grouped_work_permanent_id = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
-			//deleteGroupedWorkStmt = dbConn.prepareStatement("DELETE from grouped_work where id = ?");
 			getGroupedWorkInfoStmt = dbConn.prepareStatement("SELECT id, grouping_category from grouped_work where permanent_id = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			getArBookIdForIsbnStmt = dbConn.prepareStatement("SELECT arBookId from accelerated_reading_isbn where isbn = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
 			getArBookInfoStmt = dbConn.prepareStatement("SELECT * from accelerated_reading_titles where arBookId = ?", ResultSet.TYPE_FORWARD_ONLY,  ResultSet.CONCUR_READ_ONLY);
@@ -652,6 +654,10 @@ public class GroupedWorkIndexer {
 	}
 
 	public synchronized void deleteRecord(String permanentId, Long groupedWorkId) {
+		deleteRecord(permanentId, groupedWorkId, false);
+	}
+
+	public synchronized void deleteRecord(String permanentId, Long groupedWorkId, boolean deleteGroupedWork) {
 		logger.info("Clearing existing work " + permanentId + " from index");
 		//noinspection CommentedOutCode
 		try {
@@ -680,19 +686,6 @@ public class GroupedWorkIndexer {
 				}
 			}
 
-			/*
-			Delete the work from the database?
-			TODO: Should we do this or leave a record if it was linked to lists, reading history, etc?
-			TODO: Add a deleted flag since overdrive will return titles that can no longer be accessed?
-			TODO: If we restore deleting the grouped work we should clean up enrichment, reading history, etc
-			We would avoid continually deleting and re-adding?
-			MDN: leave the grouped work to deal with OverDrive records.  The grouped work will still be active, but
-			it won't be in search results.*/
-			/*
-			deleteGroupedWorkStmt.setLong(1, groupedWorkId);
-			deleteGroupedWorkStmt.executeUpdate();
-			*/
-
 			//Delete all grouped_work items, records, and variations, but leave the grouped work
 			removeItemsForWorkStmt.setLong(1, groupedWorkId);
 			removeItemsForWorkStmt.executeUpdate();
@@ -706,6 +699,10 @@ public class GroupedWorkIndexer {
 			//Remove from any Series
 			removeSeriesForWork(permanentId);
 
+			if (deleteGroupedWork) {
+				deleteGroupedWorkIfInactive(groupedWorkId);
+			}
+
 		}catch (SolrServerException sse) {
 			logEntry.incErrors("Solr Exception deleting work from index, quitting to be safe", sse);
 			logEntry.setFinished();
@@ -713,6 +710,39 @@ public class GroupedWorkIndexer {
 			System.exit(-6);
 		} catch (Exception e) {
 			logEntry.incErrors("Error deleting work from index", e);
+		}
+	}
+
+	private void deleteGroupedWorkIfInactive(Long groupedWorkId) {
+		if (groupedWorkId == null) {
+			return;
+		}
+
+		try (PreparedStatement lastUpdatedStmt = dbConn.prepareStatement("SELECT date_updated FROM grouped_work WHERE id = ?")) {
+			lastUpdatedStmt.setLong(1, groupedWorkId);
+			try (ResultSet lastUpdatedRS = lastUpdatedStmt.executeQuery()) {
+				if (!lastUpdatedRS.next()) {
+					return;
+				}
+
+				long lastUpdated = lastUpdatedRS.getLong("date_updated");
+				if (lastUpdatedRS.wasNull()) {
+					lastUpdated = 0;
+				}
+
+				long cutoffSeconds = System.currentTimeMillis() / 1000L - (long) GROUPED_WORK_DELETION_INACTIVITY_MONTHS * SECONDS_PER_MONTH;
+				if (lastUpdated == 0 || lastUpdated <= cutoffSeconds) {
+					try (PreparedStatement deleteStmt = dbConn.prepareStatement("DELETE FROM grouped_work WHERE id = ?")) {
+						deleteStmt.setLong(1, groupedWorkId);
+						deleteStmt.executeUpdate();
+					}
+					logger.debug("Removed grouped work {} from database (last updated {}).", groupedWorkId, lastUpdated);
+				}else{
+					logger.debug("Grouped work {} still considered active (last updated {}).", groupedWorkId, lastUpdated);
+				}
+			}
+		} catch (Exception e) {
+			logEntry.incErrors("Error removing grouped work from database", e);
 		}
 	}
 
