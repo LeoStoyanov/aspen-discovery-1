@@ -20,6 +20,7 @@ public class SavedItemInfo {
 	public Long dateAdded;
 	public long locationCodeId;
 	public long subLocationCodeId;
+	public long collectionCodeId;
 	public Long lastCheckInDate;
 	public long groupedStatusId;
 	public boolean available;
@@ -44,6 +45,7 @@ public class SavedItemInfo {
 		this.dateAdded = getExistingItemsForRecordRS.getLong("dateAdded");
 		this.locationCodeId = getExistingItemsForRecordRS.getLong("locationCodeId");
 		this.subLocationCodeId = getExistingItemsForRecordRS.getLong("subLocationCodeId");
+		this.collectionCodeId = getExistingItemsForRecordRS.getLong("collectionCodeId");
 		this.lastCheckInDate = getExistingItemsForRecordRS.getLong("lastCheckInDate");
 		this.groupedStatusId = getExistingItemsForRecordRS.getLong("groupedStatusId");
 		this.available = getExistingItemsForRecordRS.getBoolean("available");
@@ -55,7 +57,7 @@ public class SavedItemInfo {
 	}
 
 	public SavedItemInfo(long id, long recordId, long variationId, String itemId, long shelfLocationId, long callNumberId, long sortableCallNumberId,
-	                     int numCopies, boolean isOrderItem, long statusId, Date dateAdded, long locationId, long subLocationId, Date lastCheckInDate,
+	                     int numCopies, boolean isOrderItem, long statusId, Date dateAdded, long locationId, long subLocationId, long collectionCodeId, Date lastCheckInDate,
 	                     long groupedStatusId, boolean available, boolean holdable, boolean inLibraryUseOnly, String locationOwnedScopes,
 	                     String libraryOwnedScopes, String recordIncludedScopes){
 		this.id = id;
@@ -75,6 +77,7 @@ public class SavedItemInfo {
 		}
 		this.locationCodeId = locationId;
 		this.subLocationCodeId = subLocationId;
+		this.collectionCodeId = collectionCodeId;
 		if (lastCheckInDate == null){
 			this.lastCheckInDate = null;
 		}else {
@@ -90,7 +93,7 @@ public class SavedItemInfo {
 	}
 
 	boolean hasChanged(long recordId, long variationId, String itemId, long shelfLocationId, long callNumberId, long sortableCallNumberId,
-	                   int numCopies, boolean isOrderItem, long statusId, Date dateAdded, long locationId, long subLocationId, Date lastCheckInDate,
+	                   int numCopies, boolean isOrderItem, long statusId, Date dateAdded, long locationId, long subLocationId, long collectionCodeId, Date lastCheckInDate,
 	                   long groupedStatusId, boolean available, boolean holdable, boolean inLibraryUseOnly, String locationOwnedScopes,
 	                   String libraryOwnedScopes, String recordIncludedScopes) {
 		if (this.recordId != recordId) {
@@ -133,6 +136,9 @@ public class SavedItemInfo {
 			return true;
 		}
 		if (this.subLocationCodeId != subLocationId){
+			return true;
+		}
+		if (this.collectionCodeId != collectionCodeId) {
 			return true;
 		}
 		if (lastCheckInDate != null || this.lastCheckInDate != null) {

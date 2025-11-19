@@ -1663,6 +1663,11 @@ class GroupedWork_AJAX extends JSON_Action {
 
 		$interface->assign('summary', $summary);
 
+		global $library;
+		$groupedWorkDisplaySettings = $library->getGroupedWorkDisplaySettings();
+		$showCollectionCode = $groupedWorkDisplaySettings->showCollectionCode ?? false;
+		$interface->assign('showCollectionCode', $showCollectionCode);
+
 		$modalBody = $interface->fetch('GroupedWork/copyDetails.tpl');
 		return [
 			'title' => translate([

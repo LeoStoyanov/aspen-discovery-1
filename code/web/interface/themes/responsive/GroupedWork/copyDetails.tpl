@@ -7,6 +7,9 @@
 			<th>{translate text="Location" isPublicFacing=true}</th>
 			{if empty($isEContent)}
 				<th>{translate text="Call #" isPublicFacing=true}</th>
+				{if !empty($showCollectionCode)}
+					<th>{translate text="Collection" isPublicFacing=true}</th>
+				{/if}
 			{elseif !empty($showEContentHoldCounts)}
 				<th>{translate text="Holds" isPublicFacing=true}</th>
 			{/if}
@@ -35,6 +38,11 @@
 					<td class="notranslate">
 						{$item.callNumber}
 					</td>
+					{if !empty($showCollectionCode)}
+						<td class="notranslate">
+							{$item.collectionCode}
+						</td>
+					{/if}
 				{elseif !empty($showEContentHoldCounts)}
 					<td class="notranslate">
 						{if $item.availableCopies <= 9999}

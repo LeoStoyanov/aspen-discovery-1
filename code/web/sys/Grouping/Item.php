@@ -21,6 +21,7 @@ class Grouping_Item {
 	public string $libraryOwned;
 	public ?string $locationCode;
 	public ?string $subLocation;
+	public ?string $collectionCode;
 	public string $volume = '';
 	public string|int $volumeId = '';
 	public string $volumeOrder = '';
@@ -90,6 +91,7 @@ class Grouping_Item {
 		$this->inLibraryUseOnly = $itemDetails['inLibraryUseOnly'] == "1";
 		$this->locationCode = $itemDetails['locationCode'];
 		$this->subLocation = $itemDetails['subLocationCode'];
+		$this->collectionCode = $itemDetails['collectionCode'] ?? null;
 		$this->lastCheckInDate = $itemDetails['lastCheckInDate'];
 		$this->isVirtual = $itemDetails['isVirtual'];
 		$this->variationId = $itemDetails['groupedWorkVariationId'];
@@ -246,6 +248,7 @@ class Grouping_Item {
 			'isEContent' => $this->isEContent,
 			'locationCode' => $this->locationCode,
 			'subLocation' => $this->subLocation,
+			'collectionCode' => $this->collectionCode,
 			'itemId' => $this->itemId,
 			'variationId' => $this->variationId,
 			'actions' => $this->getActions(),

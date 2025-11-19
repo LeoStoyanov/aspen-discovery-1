@@ -90,6 +90,7 @@ class GroupedWorkDisplaySetting extends DataObject {
 	public $showItemDueDates;
 	public $showItemNotes;
 	public $showItemBarcodes;
+	public $showCollectionCode;
 	public $showCopiesForPeriodicalsWithNoItems;
 
 	private $_moreDetailsOptions;
@@ -418,6 +419,14 @@ class GroupedWorkDisplaySetting extends DataObject {
 						'type' => 'checkbox',
 						'label' => 'Show Item Barcodes',
 						'description' => 'Whether barcodes for items are shown within the copy details if available.',
+						'hideInLists' => true,
+						'default' => false,
+					],
+					'showCollectionCode' => [
+						'property' => 'showCollectionCode',
+						'type' => 'checkbox',
+						'label' => 'Show Collection Code',
+						'description' => 'Whether collection codes for items are shown within the copy details if available.',
 						'hideInLists' => true,
 						'default' => false,
 					],

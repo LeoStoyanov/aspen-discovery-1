@@ -3397,7 +3397,7 @@ class GroupedWorkDriver extends IndexRecordDriver {
 			$uniqueItemIdsString = implode(',', $uniqueItemIds);
 			$scopeQuery = "SELECT grouped_work_record_items.id as groupedWorkItemId, available, holdable, inLibraryUseOnly, locationOwnedScopes, libraryOwnedScopes, groupedStatusTbl.status as groupedStatus, statusTbl.status as status,
 								  grouped_work_record_items.groupedWorkRecordId, grouped_work_record_items.groupedWorkVariationId, grouped_work_record_items.itemId, indexed_call_number.callNumber, indexed_shelf_location.shelfLocation, numCopies, isOrderItem, dateAdded,
-       							  indexed_location_code.locationCode, indexed_sub_location_code.subLocationCode, lastCheckInDate, isVirtual
+       							  indexed_location_code.locationCode, indexed_sub_location_code.subLocationCode, indexed_collection_code.collectionCode, lastCheckInDate, isVirtual
 								  FROM grouped_work_record_items
 								  LEFT JOIN indexed_status as groupedStatusTbl on groupedStatusId = groupedStatusTbl.id
 								  LEFT JOIN indexed_status as statusTbl on statusId = statusTbl.id
@@ -3405,6 +3405,7 @@ class GroupedWorkDriver extends IndexRecordDriver {
 								  LEFT JOIN indexed_shelf_location ON shelfLocationId = indexed_shelf_location.id
 								  LEFT JOIN indexed_location_code on locationCodeId = indexed_location_code.id
 								  LEFT JOIN indexed_sub_location_code on subLocationCodeId = indexed_sub_location_code.id
+								  LEFT JOIN indexed_collection_code on collectionCodeId = indexed_collection_code.id
 								  where grouped_work_record_items.id IN ($uniqueItemIdsString)";
 			$results = $aspen_db->query($scopeQuery, PDO::FETCH_ASSOC);
 			$scopedItems = $results->fetchAll();
