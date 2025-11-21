@@ -52,5 +52,13 @@
 		<div class="col-xs-12"><span class="badge">{if $list->public == '0'}{translate text="Private" isPublicFacing=true}{else}{translate text="Public" isPublicFacing=true}{/if}</span> {if $list->searchable == '1' && $list->public == '1'}<span class="badge">{translate text="Searchable" isPublicFacing=true}</span> {/if}{if $list->displayListAuthor == '1'}<span class="badge">{translate text="Display List Author" isPublicFacing=true}{/if}</div>
 	</div>
 
+	<div class="row">
+		<div class="col-xs-12" style="margin-top: 5px;">
+			{if $canTransferYourLists || $canTransferAllLists}
+				<button class="btn btn-default btn-sm" onclick="return AspenDiscovery.Account.initiateListTransfer({$list->id})"><i class="fas fa-exchange-alt"></i> {translate text="Transfer" isPublicFacing=true}</button>
+			{/if}
+		</div>
+	</div>
+
 </div>
 {/strip}

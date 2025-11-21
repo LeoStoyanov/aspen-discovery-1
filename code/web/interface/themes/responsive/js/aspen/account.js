@@ -72,6 +72,73 @@ AspenDiscovery.Account = (function () {
 			return false;
 		},
 
+		initiateListTransfer(listId) {
+			if (Globals.loggedIn) {
+				const url = `${Globals.path}/MyAccount/AJAX`;
+				const params = {
+					method: "getTransferListForm",
+					listId: listId
+				};
+				$.getJSON(url, params, (data) => {
+					if (data.success === false) {
+						AspenDiscovery.showMessage(data.title, data.message, false);
+					} else {
+						AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
+					}
+				}).fail(AspenDiscovery.ajaxFail);
+			} else {
+				AspenDiscovery.Account.ajaxLogin(null, function () {
+					return AspenDiscovery.Account.initiateListTransfer(listId);
+				}, false);
+			}
+			return false;
+		},
+
+		doTransferList() {
+			const form = $("#transferListForm");
+			const listId = form.find("input[name=listId]").val();
+			const identifier = form.find("input[name=identifier]").val();
+			const forceTransferSelected = form.find("input[name=forceTransfer]:checked").length > 0;
+			const forceTransfer = forceTransferSelected ? '1' : '0';
+
+			const url = `${Globals.path}/MyAccount/AJAX?method=initiateListTransfer`;
+			const params = {
+				listId: listId,
+				identifier: identifier.trim(),
+				forceTransfer: forceTransfer
+			};
+			$.getJSON(url, params, (data) => {
+				const title = data.title || (data.success ? "Success" : "Error");
+				const shouldReload = data.success && forceTransferSelected;
+				AspenDiscovery.showMessage(title, data.message, data.success, shouldReload);
+			}).fail(AspenDiscovery.ajaxFail);
+			return false;
+		},
+
+		acceptListTransfer(requestId) {
+			const url = `${Globals.path}/MyAccount/AJAX?method=acceptListTransfer`;
+			const params = {
+				requestId: requestId
+			};
+			$.getJSON(url, params, (data) => {
+				const title = data.title || (data.success ? "Success" : "Error");
+				AspenDiscovery.showMessage(title, data.message, data.success, data.success);
+			}).fail(AspenDiscovery.ajaxFail);
+			return false;
+		},
+
+		rejectListTransfer(requestId) {
+			const url = `${Globals.path}/MyAccount/AJAX?method=rejectListTransfer`;
+			const params = {
+				requestId: requestId
+			};
+			$.getJSON(url, params, (data) => {
+				const title = data.title || (data.success ? "Success" : "Error");
+				AspenDiscovery.showMessage(title, data.message, data.success, false);
+			}).fail(AspenDiscovery.ajaxFail);
+			return false;
+		},
+
 		/**
 		 * Do an ajax process, but only if the user is logged in.
 		 * If the user is not logged in, force them to log in and then do the process.
@@ -2443,9 +2510,8 @@ AspenDiscovery.Account = (function () {
 		getEditListForm: function (listEntryId, listId) {
 			var url = Globals.path + "/MyAccount/AJAX?method=getEditListForm&listEntryId=" + listEntryId + "&listId=" + listId;
 			$.getJSON(url, function (data) {
-					AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
-				}
-			);
+				AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
+			});
 			return false;
 		},
 		editListItem: function () {
@@ -2966,9 +3032,8 @@ AspenDiscovery.Account = (function () {
 		showEditListGroupParentForm: function (groupId, parentId) {
 			var url = Globals.path + "/MyAccount/AJAX?method=getEditListGroupParentForm&groupId=" + groupId + "&parentId=" + parentId;
 			$.getJSON(url, function (data) {
-					AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
-				}
-			);
+				AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
+			});
 		},
 		editListGroupParentForm: function () {
 			var url = Globals.path + '/MyAccount/AJAX?method=editListGroupParent';
@@ -2990,9 +3055,8 @@ AspenDiscovery.Account = (function () {
 		showEditListGroupNameForm: function (groupId) {
 			var url = Globals.path + "/MyAccount/AJAX?method=getEditListGroupNameForm&groupId=" + groupId;
 			$.getJSON(url, function (data) {
-					AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
-				}
-			);
+				AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
+			});
 		},
 		editListGroupNameForm: function () {
 			var url = Globals.path + '/MyAccount/AJAX?method=editListGroupName';
@@ -3014,9 +3078,8 @@ AspenDiscovery.Account = (function () {
 		showCreateListGroupForm: function (groupId) {
 			var url = Globals.path + "/MyAccount/AJAX?method=getCreateListGroupForm&groupId=" + groupId;
 			$.getJSON(url, function (data) {
-					AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
-				}
-			);
+				AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
+			});
 		},
 		createListGroup: function () {
 			var groupName = $('#newListGroupName').val();
@@ -3040,9 +3103,8 @@ AspenDiscovery.Account = (function () {
 		showDeleteListGroupForm: function (groupId) {
 			var url = Globals.path + "/MyAccount/AJAX?method=getDeleteListGroupForm&groupId=" + groupId;
 			$.getJSON(url, function (data) {
-					AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
-				}
-			);
+				AspenDiscovery.showMessageWithButtons(data.title, data.modalBody, data.modalButtons);
+			});
 		},
 		deleteListGroup: function (groupId) {
 			$('#confirmDeleteListGroup .fa-spinner').show();

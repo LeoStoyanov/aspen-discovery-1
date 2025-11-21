@@ -1,5 +1,7 @@
 <?php
 
+use JetBrains\PhpStorm\NoReturn;
+
 require_once ROOT_DIR . '/JSON_Action.php';
 
 class MyAccount_AJAX extends JSON_Action {
@@ -1796,6 +1798,88 @@ class MyAccount_AJAX extends JSON_Action {
 			'modalBody' => $interface->fetch("MyAccount/createListForm.tpl"),
 			'modalButtons' => "<button type='button' class='tool btn btn-primary' onclick='AspenDiscovery.Account.addList(); return false;'>" . translate([
 					'text' => 'Create List',
+					'isPublicFacing' => true,
+				]) . "</button>",
+		];
+	}
+
+	/** @noinspection PhpUnused */
+	function getTransferListForm(): array {
+		global $interface;
+
+		if (!UserAccount::isLoggedIn()) {
+			return [
+				'success' => false,
+				'title' => translate([
+					'text' => 'Failed to Load Transfer List Form',
+					'isPublicFacing' => true,
+				]),
+				'message' => translate([
+					'text' => 'You must be logged in to transfer a list.',
+					'isPublicFacing' => true,
+				]),
+			];
+		}
+
+		$listId = $_REQUEST['listId'] ?? null;
+		if (empty($listId)) {
+			return [
+				'success' => false,
+				'title' => translate([
+					'text' => 'Error',
+					'isPublicFacing' => true,
+				]),
+				'message' => translate([
+					'text' => 'No list specified.',
+					'isPublicFacing' => true,
+				]),
+			];
+		}
+
+		$canForceTransfer = UserAccount::userHasPermission('Transfer All Lists');
+		require_once ROOT_DIR . '/sys/UserLists/UserList.php';
+		$list = new UserList();
+		$list->id = $listId;
+		if (!$list->find(true)) {
+			return [
+				'success' => false,
+				'title' => translate([
+					'text' => 'Error',
+					'isPublicFacing' => true,
+				]),
+				'message' => translate([
+					'text' => 'List not found.',
+					'isPublicFacing' => true,
+				]),
+			];
+		}
+		
+		if ($list->user_id != UserAccount::getActiveUserId() && !$canForceTransfer) {
+			return [
+				'success' => false,
+				'title' => translate([
+					'text' => 'Error',
+					'isPublicFacing' => true,
+				]),
+				'message' => translate([
+					'text' => 'You do not have permission to transfer this list.',
+					'isPublicFacing' => true,
+				]),
+			];
+		}
+
+		$interface->assign('listId', $listId);
+		$interface->assign('listTitle', $list->title);
+		$interface->assign('canForceTransfer', $canForceTransfer);
+
+		return [
+			'title' => translate([
+				'text' => 'Transfer List',
+				'isPublicFacing' => true,
+			]),
+			'modalBody' => $interface->fetch("MyAccount/transferListForm.tpl"),
+			'modalButtons' => "<button type='button' class='tool btn btn-primary' onclick='$(\"#transferListForm\").submit(); return false;'>" . translate([
+					'text' => 'Transfer List',
 					'isPublicFacing' => true,
 				]) . "</button>",
 		];
@@ -10331,6 +10415,127 @@ class MyAccount_AJAX extends JSON_Action {
 		}
 	}
 
+	/** @noinspection PhpUnused */
+	public function UserNotificationsSSE(): void {
+		if (UserAccount::isLoggedIn()) {
+			$patron = UserAccount::getActiveUserObj();
+			require_once ROOT_DIR . '/sys/Account/UserMessage.php';
+
+			header("X-Accel-Buffering: no");
+			header("Content-Type: text/event-stream");
+			header("Cache-Control: no-cache");
+
+			echo "event: established\n";
+			echo "data: connection established\n\n";
+			ob_end_flush();
+
+			$interval = 5;
+			$lastCheck = date('Y-m-d H:i:s');
+			while (true) {
+				if (connection_status() != CONNECTION_NORMAL || connection_aborted()) exit();
+
+				$userMessage = new UserMessage();
+				$userMessage->userId = $patron->id;
+				$userMessage->selectAdd();
+				$userMessage->selectAdd('id, messageType, message, date_created');
+				$userMessage->whereAdd("date_created > '$lastCheck'");
+				$userMessage->whereAdd("isDismissed = 0");
+				$hasNewMessages = false;
+
+				if ($userMessage->find()) {
+					while ($userMessage->fetch()) {
+						$hasNewMessages = true;
+						$data = [
+							'id' => $userMessage->id,
+							'title' => 'Notification',
+							'message' => $userMessage->message,
+							'link' => null
+						];
+
+						if ($userMessage->messageType == 'list_transfer') {
+							$data['title'] = 'List Transfer Request';
+						}
+
+						echo "event: list_transfer\n";
+						echo "data: " . json_encode($data) . "\n\n";
+						ob_flush();
+						flush();
+					}
+				}
+
+				// Eliminate 524 timeouts by keeping the connection alive.
+				if (!$hasNewMessages) {
+					echo "event: heartbeat\n";
+					echo "data: keep-alive\n\n";
+					ob_flush();
+					flush();
+				}
+
+				$lastCheck = date('Y-m-d H:i:s');
+				sleep($interval);
+			}
+		}
+	}
+
+	/** @noinspection PhpUnused */
+	public function getUnreadNotificationsCount(): array {
+		if (!UserAccount::isLoggedIn()) {
+			return ['success' => false];
+		}
+		require_once ROOT_DIR . '/sys/Account/UserMessage.php';
+		$userMessage = new UserMessage();
+		$userMessage->userId = UserAccount::getActiveUserId();
+		$userMessage->isDismissed = 0;
+		return ['success' => true, 'count' => $userMessage->count()];
+	}
+
+	/** @noinspection PhpUnused */
+	/**
+	 * @throws SmartyException
+	 */
+	public function getNotificationDropdown(): array {
+		global $interface;
+		if (!UserAccount::isLoggedIn()) {
+			return ['success' => false, 'html' => ''];
+		}
+		require_once ROOT_DIR . '/sys/Account/UserMessage.php';
+		$userMessage = new UserMessage();
+		$userMessage->userId = UserAccount::getActiveUserId();
+		$userMessage->isDismissed = 0;
+		$userMessage->orderBy('date_created DESC');
+		$userMessage->find();
+
+		$messages = [];
+		while ($userMessage->fetch()) {
+			$messages[] = clone $userMessage;
+		}
+
+		$interface->assign('userMessages', $messages);
+		$html = $interface->fetch('MyAccount/notificationDropdown.tpl');
+		return ['success' => true, 'html' => $html];
+	}
+
+	/** @noinspection PhpUnused */
+	public function markNotificationRead(): array {
+		if (!UserAccount::isLoggedIn()) {
+			return ['success' => false];
+		}
+		$id = $_POST['id'] ?? 0;
+		if (!$id) return ['success' => false];
+
+		require_once ROOT_DIR . '/sys/Account/UserMessage.php';
+		$userMessage = new UserMessage();
+		$userMessage->id = $id;
+		if ($userMessage->find(true)) {
+			if ($userMessage->userId == UserAccount::getActiveUserId()) {
+				$userMessage->isDismissed = 1;
+				$userMessage->update();
+				return ['success' => true];
+			}
+		}
+		return ['success' => false];
+	}
+
 	function getYearInReviewSlide() : array {
 		$result = [
 			'success' => false,
@@ -11005,5 +11210,394 @@ class MyAccount_AJAX extends JSON_Action {
 
 		return $result;
 
+	}
+
+	/** @noinspection PhpUnused */
+	function initiateListTransfer(): array {
+		$result = [
+			'success' => false,
+			'title' => translate([
+				'text' => 'Failed to Initiate Transfer',
+				'isPublicFacing' => true,
+			]),
+			'message' => translate([
+				'text' => 'There was an unknown error initiating the list transfer.',
+				'isPublicFacing' => true,
+			]),
+		];
+
+		if (!UserAccount::isLoggedIn()) {
+			$result['message'] = translate([
+				'text' => 'You must be logged in to transfer a list.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+		
+		$listId = $_REQUEST['listId'] ?? null;
+		$recipientIdentifier = $_REQUEST['identifier'] ?? null;
+		$forceTransfer = isset($_REQUEST['forceTransfer']) && $_REQUEST['forceTransfer'] == '1';
+
+		if (empty($listId)) {
+			$result['message'] = translate([
+				'text' => 'No list specified for transfer.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		if (empty($recipientIdentifier)) {
+			$result['message'] = translate([
+				'text' => 'Please provide a username or barcode for the recipient.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		require_once ROOT_DIR . '/sys/UserLists/UserList.php';
+		$list = new UserList();
+		$list->id = $listId;
+		if (!$list->find(true)) {
+			$result['message'] = translate([
+				'text' => 'The specified list could not be found.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		$hasTransferYourLists = UserAccount::userHasPermission('Transfer Your Lists');
+		$hasTransferAllLists = UserAccount::userHasPermission('Transfer All Lists');
+		if ($list->user_id == UserAccount::getActiveUserId()) {
+			if (!$hasTransferYourLists && !$hasTransferAllLists) {
+				$result['message'] = translate([
+					'text' => 'You do not have permission to transfer lists.',
+					'isPublicFacing' => true,
+				]);
+				return $result;
+			}
+		} else {
+			if (!$hasTransferAllLists) {
+				$result['message'] = translate([
+					'text' => 'You do not have permission to transfer lists you do not own.',
+					'isPublicFacing' => true,
+				]);
+				return $result;
+			}
+		}
+
+		if ($forceTransfer && !$hasTransferAllLists) {
+			$result['message'] = translate([
+				'text' => 'You do not have permission to force transfer lists.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		// Try barcode first, then username
+		$recipient = new User();
+		$recipient->ils_barcode = $recipientIdentifier;
+		if (!$recipient->find(true)) {
+			$recipient = new User();
+			$recipient->username = $recipientIdentifier;
+			if (!$recipient->find(true)) {
+				$result['title'] = translate([
+					'text' => 'List Transfer Recipient Not Found',
+					'isPublicFacing' => true,
+				]);
+				$result['message'] = translate([
+					'text' => 'Could not find a user with barcode or username "%1%".',
+					'1' => htmlspecialchars($recipientIdentifier),
+					'isPublicFacing' => true,
+				]);
+				return $result;
+			}
+		}
+
+		if ($recipient->id == UserAccount::getActiveUserId()) {
+			$result['title'] = translate([
+				'text' => 'Invalid List Transfer',
+				'isPublicFacing' => true,
+			]);
+			$result['message'] = translate([
+				'text' => 'You cannot transfer a list to yourself.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		if (!$forceTransfer && isset($recipient->allowListTransfers) && $recipient->allowListTransfers == 0) {
+			$result['title'] = translate([
+				'text' => 'List Transfer Not Allowed',
+				'isPublicFacing' => true,
+			]);
+			$result['message'] = translate([
+				'text' => '%1% has disabled receiving list transfer requests.',
+				'1' => htmlspecialchars($recipient->getDisplayName()),
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		if ($forceTransfer) {
+			$listTitle = $list->title;
+			$list->user_id = $recipient->id;
+			if (!$list->update()) {
+				return $result;
+			}
+			
+			$result['success'] = true;
+			$result['title'] = translate([
+				'text' => 'List Transferred',
+				'isPublicFacing' => true,
+			]);
+			$result['message'] = translate([
+				'text' => 'The list "%1%" has been transferred to %2%.',
+				'1' => htmlspecialchars($listTitle),
+				'2' => htmlspecialchars(rtrim($recipient->getDisplayName(), '.,;:!?')),
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		require_once ROOT_DIR . '/sys/UserLists/UserListTransferRequest.php';
+		$request = new UserListTransferRequest();
+		$request->listId = $listId;
+		$request->fromUserId = UserAccount::getActiveUserId();
+		$request->toUserId = $recipient->id;
+		$request->status = 'pending';
+		if (!$request->insert()) {
+			return $result;
+		}
+
+		require_once ROOT_DIR . '/sys/Account/UserMessage.php';
+		$message = new UserMessage();
+		$message->userId = $recipient->id;
+		$message->messageType = 'list_transfer';
+		$message->messageLevel = 'info';
+		$message->message = "User " . UserAccount::getActiveUserObj()->getDisplayName() . " wants to transfer the list '" . htmlspecialchars($list->title) . "' to you.";
+		$message->action1Title = 'Accept';
+		$message->action1 = "AspenDiscovery.Account.acceptListTransfer(" . $request->id . ")";
+		$message->action2Title = 'Reject';
+		$message->action2 = "AspenDiscovery.Account.rejectListTransfer(" . $request->id . ")";
+		$message->relatedObjectId = $request->id;
+		$message->insert();
+
+		$result['success'] = true;
+		$result['title'] = translate([
+			'text' => 'Transfer Initiated',
+			'isPublicFacing' => true,
+		]);
+		$result['message'] = translate([
+			'text' => 'Transfer request sent to %1%. The user will receive a notification to accept or reject the transfer.',
+			'1' => htmlspecialchars(rtrim($recipient->getDisplayName(), '.,;:!?')),
+			'isPublicFacing' => true,
+		]);
+		return $result;
+	}
+
+	/** @noinspection PhpUnused */
+	function acceptListTransfer(): array {
+		$result = [
+			'success' => false,
+			'title' => translate([
+				'text' => 'Failed to Accept Transfer',
+				'isPublicFacing' => true,
+			]),
+			'message' => translate([
+				'text' => 'There was an unknown error accepting the list transfer.',
+				'isPublicFacing' => true,
+			]),
+		];
+
+		if (!UserAccount::isLoggedIn()) {
+			$result['message'] = translate([
+				'text' => 'You must be logged in to accept a list transfer.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+		
+		$requestId = $_REQUEST['requestId'] ?? null;
+		if (empty($requestId)) {
+			$result['message'] = translate([
+				'text' => 'No transfer request specified.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		require_once ROOT_DIR . '/sys/UserLists/UserListTransferRequest.php';
+		$request = new UserListTransferRequest();
+		$request->id = $requestId;
+		if (!$request->find(true)) {
+			$result['title'] = translate([
+				'text' => 'List Transfer Request Not Found',
+				'isPublicFacing' => true,
+			]);
+			$result['message'] = translate([
+				'text' => 'The transfer request could not be found.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		if ($request->toUserId != UserAccount::getActiveUserId()) {
+			$result['title'] = translate([
+				'text' => 'Access Denied',
+				'isPublicFacing' => true,
+			]);
+			$result['message'] = translate([
+				'text' => 'This transfer request is not for you.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		if ($request->status != 'pending') {
+			$result['title'] = translate([
+				'text' => 'Invalid List Transfer Request',
+				'isPublicFacing' => true,
+			]);
+			$result['message'] = translate([
+				'text' => 'This transfer request has already been %1%.',
+				'1' => $request->status,
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		require_once ROOT_DIR . '/sys/UserLists/UserList.php';
+		$list = new UserList();
+		$list->id = $request->listId;
+		if (!$list->find(true)) {
+			$result['message'] = translate([
+				'text' => 'The list associated with this transfer could not be found.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		$listTitle = $list->title;
+		$list->user_id = UserAccount::getActiveUserId();
+		if (!$list->update()) {
+			return $result;
+		}
+
+		$request->status = 'accepted';
+		$request->update();
+
+		require_once ROOT_DIR . '/sys/Account/UserMessage.php';
+		$message = new UserMessage();
+		$message->userId = UserAccount::getActiveUserId();
+		$message->relatedObjectId = $request->id;
+		if ($message->find(true)) {
+			$message->isDismissed = 1;
+			$message->update();
+		}
+
+		$result['success'] = true;
+		$result['title'] = translate([
+			'text' => 'Transfer Accepted',
+			'isPublicFacing' => true,
+		]);
+		$result['message'] = translate([
+			'text' => 'You are now the owner of the list "%1%".',
+			'1' => htmlspecialchars($listTitle),
+			'isPublicFacing' => true,
+		]);
+		return $result;
+	}
+
+	/** @noinspection PhpUnused */
+	function rejectListTransfer(): array {
+		$result = [
+			'success' => false,
+			'title' => translate([
+				'text' => 'Failed to Reject List Transfer',
+				'isPublicFacing' => true,
+			]),
+			'message' => translate([
+				'text' => 'There was an unknown error rejecting the list transfer.',
+				'isPublicFacing' => true,
+			]),
+		];
+
+		if (!UserAccount::isLoggedIn()) {
+			$result['message'] = translate([
+				'text' => 'You must be logged in to reject a list transfer.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+		
+		$requestId = $_REQUEST['requestId'] ?? null;
+		if (empty($requestId)) {
+			$result['message'] = translate([
+				'text' => 'No transfer request specified.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		require_once ROOT_DIR . '/sys/UserLists/UserListTransferRequest.php';
+		$request = new UserListTransferRequest();
+		$request->id = $requestId;
+		if (!$request->find(true)) {
+			$result['message'] = translate([
+				'text' => 'The transfer request could not be found.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		if ($request->toUserId != UserAccount::getActiveUserId()) {
+			$result['title'] = translate([
+				'text' => 'Access Denied',
+				'isPublicFacing' => true,
+			]);
+			$result['message'] = translate([
+				'text' => 'This transfer request is not for you.',
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		if ($request->status != 'pending') {
+			$result['title'] = translate([
+				'text' => 'Invalid List Transfer Request',
+				'isPublicFacing' => true,
+			]);
+			$result['message'] = translate([
+				'text' => 'This transfer request has already been %1%.',
+				'1' => $request->status,
+				'isPublicFacing' => true,
+			]);
+			return $result;
+		}
+
+		$request->status = 'rejected';
+		if (!$request->update()) {
+			return $result;
+		}
+
+		require_once ROOT_DIR . '/sys/Account/UserMessage.php';
+		$message = new UserMessage();
+		$message->userId = UserAccount::getActiveUserId();
+		$message->relatedObjectId = $request->id;
+		if ($message->find(true)) {
+			$message->isDismissed = 1;
+			$message->update();
+		}
+
+		$result['success'] = true;
+		$result['title'] = translate([
+			'text' => 'Transfer Rejected',
+			'isPublicFacing' => true,
+		]);
+		$result['message'] = translate([
+			'text' => 'You have declined the list transfer request.',
+			'isPublicFacing' => true,
+		]);
+		return $result;
 	}
 }

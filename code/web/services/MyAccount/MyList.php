@@ -204,9 +204,9 @@ class MyAccount_MyList extends MyAccount {
 		$interface->assign('dateCreated', $dateCreated);
 		$interface->assign('dateUpdated', $dateUpdated);
 
-		// Create a handler for displaying favorites and use it to assign
-		// appropriate template variables:
 		$interface->assign('allowEdit', $userCanEdit);
+		$interface->assign('canTransferYourLists', UserAccount::userHasPermission('Transfer Your Lists'));
+		$interface->assign('canTransferAllLists', UserAccount::userHasPermission('Transfer All Lists'));
 
 		//Determine the sort options
 		$activeSort = $defaultSort;
