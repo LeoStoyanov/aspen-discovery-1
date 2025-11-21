@@ -493,6 +493,30 @@
 								</div>
 							</div>
 						</div>
+
+						<div class="panel" id="userListsPreferencesPanel">
+							<a data-toggle="collapse" href="#userListsPreferencesPanelBody" class="active">
+								<div class="panel-heading">
+									<div class="panel-title">
+										<h2>{translate text='User Lists' isPublicFacing=true}</h2>
+									</div>
+								</div>
+							</a>
+							<div id="userListsPreferencesPanelBody" class="panel-collapse collapse in">
+								<div class="panel-body">
+									<div class="form-group propertyRow">
+										<label for="allowListTransfers" class="control-label">{translate text='Allow List Transfer Requests' isPublicFacing=true}</label>&nbsp;
+										{if $edit == true}
+											{* Replace this, and others in the file, with a switch in Bootstrap 5 *}
+											<input type="checkbox" class="form-control" name="allowListTransfers" id="allowListTransfers" {if $allowListTransfers}checked='checked'{/if} data-switch="">
+										{else}
+											&nbsp;{if !$allowListTransfers}{translate text='No' isPublicFacing=true}{else}{translate text='Yes' isPublicFacing=true}{/if}
+										{/if}
+										<span class="help-block" style="margin-top:0"><small><i class="fas fa-info-circle"></i> {translate text='If disabled, other users cannot send you list transfer requests.' isPublicFacing=true}</small></span>
+									</div>
+								</div>
+							</div>
+						</div>
 					</div>
 
 					{if empty($offline) && $edit == true}

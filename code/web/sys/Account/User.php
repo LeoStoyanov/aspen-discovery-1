@@ -79,6 +79,7 @@ class User extends DataObject {
 	public $lastListUsed;
 	public $lastListGroupAdded;
 	public $lastListGroupViewed;
+	public $allowListTransfers;
 
 	public $browseAddToHome;
 
@@ -1646,6 +1647,7 @@ class User extends DataObject {
 		$this->__set('rememberHoldPickupLocation', (isset($_POST['rememberHoldPickupLocation']) && $_POST['rememberHoldPickupLocation'] == 'on') ? 1 : 0);
 		$this->__set('rememberHoldPromptForEdition', (isset($_POST['rememberHoldPromptForEdition']) && $_POST['rememberHoldPromptForEdition'] == 'on') ? 1 : 0);
 		$this->__set('disableCirculationActions', (isset($_POST['disableCirculationActions']) && $_POST['disableCirculationActions'] == 'on') ? 0 : 1);
+		$this->__set('allowListTransfers', isset($_POST['allowListTransfers']) ? 1 : 0);
 		$homeLibrary = $this->getHomeLibrary();
 		if ($homeLibrary !== null && $homeLibrary->enableCostSavings) {
 			$this->__set('enableCostSavings', (isset($_POST['enableCostSavings']) && $_POST['enableCostSavings'] == 'on') ? 1 : 0);
@@ -1691,7 +1693,7 @@ class User extends DataObject {
 		} else {
 			return [
 				'success' => true,
-				'message' => 'Your preferences were updated successfully',
+				'message' => 'Your preferences were updated successfully.',
 			];
 		}
 	}
@@ -3844,7 +3846,7 @@ class User extends DataObject {
 				$userMessage->action2 = "return AspenDiscovery.Account.redirectLinkedAccounts()";
 				$userMessage->messageLevel = 'warning';
 				$userMessage->addendum = translate([
-					'text' => "Learn more about linked accounts",
+					'text' => "Click to Learn More",
 					'isPublicFacing' => true,
 				]);
 				$userMessage->insert();
@@ -3902,7 +3904,17 @@ class User extends DataObject {
 		$userMessage->messageType = 'linked_acct_notify_removed_' . $unlinkedUser->id;
 		$userMessage->userId = $this->id;
 		$userMessage->isDismissed = '0';
-		$userMessage->message = "An account you were previously linked to, $unlinkedUser->displayName, has removed the link to your account. To learn more about linked accounts, please visit your <a href='/MyAccount/LinkedAccounts'>Linked Accounts</a> page.";
+
+		$userMessage->message = translate([
+			'text' => "An account you were previously linked to, %1%, has removed the link to your account. Visit your Linked Accounts page to review your connections.",
+			'1' => $unlinkedUser->displayName,
+			'isPublicFacing' => true,
+		]);
+		$userMessage->addendum = translate([
+			'text' => "Learn more about linked accounts",
+			'isPublicFacing' => true,
+		]);
+
 		$userMessage->update();
 	}
 

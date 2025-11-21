@@ -168,6 +168,7 @@ class MyAccount_MyPreferences extends MyAccount {
 				$listsPageDefaults = PageDefaults::getPageDefaultsForUser($user->id, 'Lists', 'Results', null);
 				$interface->assign('defaultListsSort', $listsPageDefaults == null ? '' : $listsPageDefaults->pageSort);
 			}
+			$interface->assign('allowListTransfers', (bool)$patron->allowListTransfers);
 
 			if (array_key_exists('series', $validSearchSources)){
 				$seriesSearchObject = SearchSources::getSearcherForSource('series');
