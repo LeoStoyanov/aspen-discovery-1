@@ -69,7 +69,30 @@
 		{/foreach}
 	</div>
 	<div class="menu-section menu-section-right">
-		{if !empty($loggedIn)}{* Logged In *}
+		{if !empty($loggedIn)}
+			<div class="dropdown menuToggleButton notificationMenu" style="display:inline-block;" id="notification-bell-dropdown">
+				<a tabindex="0" class="menu-icon menu-bar-option" role="button" data-toggle="dropdown" title="{translate text="Notifications" inAttribute=true isPublicFacing=true}" aria-label="{translate text="Notifications" inAttribute=true isPublicFacing=true}" aria-haspopup="true" aria-expanded="false" id="notification-menu-trigger">
+					<i class="fas fa-bell fa-lg" role="presentation"></i>
+					<span class="badge" id="notification-bell-badge" style="display:none; position: absolute; top: 5px; right: 5px; background-color: #d9534f; color: white; border-radius: 50%; padding: 2px 5px; font-size: 10px;">0</span>
+				</a>
+				<div id="notification-menu" class="dropdown-menu dropdownMenu dropdown-menu-right" aria-labelledby="notification-menu-trigger" style="width: 300px; max-height: 400px; overflow-y: auto;" data-empty-text="{translate text="No new notifications" isPublicFacing=true inAttribute=true}" data-loader-template="&lt;div class=&quot;notification-loading&quot; aria-hidden=&quot;true&quot;&gt;&lt;div class=&quot;notification-loading-item&quot;&gt;&lt;span class=&quot;notification-loading-title&quot;&gt;&lt;/span&gt;&lt;span class=&quot;notification-loading-body&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;notification-loading-item&quot;&gt;&lt;span class=&quot;notification-loading-title&quot;&gt;&lt;/span&gt;&lt;span class=&quot;notification-loading-body&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;notification-loading-item&quot;&gt;&lt;span class=&quot;notification-loading-title&quot;&gt;&lt;/span&gt;&lt;span class=&quot;notification-loading-body short&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;">
+					<div class="notification-loading" aria-hidden="true">
+							<div class="notification-loading-item">
+								<span class="notification-loading-title"></span>
+								<span class="notification-loading-body"></span>
+							</div>
+							<div class="notification-loading-item">
+								<span class="notification-loading-title"></span>
+								<span class="notification-loading-body"></span>
+							</div>
+							<div class="notification-loading-item">
+								<span class="notification-loading-title"></span>
+								<span class="notification-loading-body short"></span>
+							</div>
+						</div>
+					</div>
+				</div>
+
 			<div class="dropdown menuToggleButton accountMenu" style="display:inline-block;">
 			<a tabindex="0" class="dropdown-toggle menu-icon menu-bar-option" role="button" title="{translate text="Account" inAttribute=true isPublicFacing=true}" aria-label="{translate text="Account" inAttribute=true isPublicFacing=true}" aria-haspopup="true" aria-expanded="false" id="account-menu-dropdown">
 				{if !empty($masqueradeMode)}

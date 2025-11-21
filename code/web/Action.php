@@ -43,12 +43,6 @@ abstract class Action
 		global $isAJAX;
 		if (!$isAJAX && UserAccount::isLoggedIn()){
 			$this->loadAccountSidebarVariables();
-			try {
-				$messages = UserAccount::getActiveUserObj()->getMessages();
-				$interface->assign('messages', $messages);
-			}catch (Exception $e){
-				//Messages table doesn't exist, ignore
-			}
 		}
 		if ($this->isStandalonePage) {
 			$interface->display('standalone-layout.tpl');

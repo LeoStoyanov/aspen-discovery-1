@@ -8138,6 +8138,124 @@ hr.menu {
 #accountMenuToggleButton.selected {
   background-color: #ededed;
 }
+#notification-bell-dropdown {
+  position: relative;
+}
+#notification-bell-dropdown > .dropdown-menu,
+#notification-bell-dropdown.open > .dropdown-menu {
+  -webkit-transition: none !important;
+  transition: none !important;
+}
+#notification-bell-dropdown.open > .dropdown-menu {
+  opacity: 1 !important;
+  visibility: visible !important;
+  max-height: 400px !important;
+  overflow-y: auto;
+}
+#notification-menu {
+  padding: 0;
+  margin-top: -1px;
+  background-color: #fff;
+  border: 1px solid #c0c0c0;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+  min-width: 280px;
+}
+#notification-menu .header-menu-option {
+  background: transparent;
+}
+#notification-menu .notification-item {
+  border-bottom: 1px solid #cccccc;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 0;
+  background-color: #fff;
+  max-height: 500px;
+  overflow: hidden;
+  cursor: default;
+}
+#notification-menu .notification-item + .notification-item {
+  margin-top: 4px;
+}
+#notification-menu .notification-item:last-child {
+  border-bottom: none;
+}
+#notification-menu .notification-item-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+#notification-menu .notification-item-body {
+  color: #404040;
+  margin-bottom: 6px;
+}
+#notification-menu .notification-item-link {
+  margin-bottom: 8px;
+}
+#notification-menu .notification-item-link a {
+  font-weight: 600;
+}
+#notification-menu .notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+#notification-menu .notification-item--dismissing,
+#notification-menu .notification-item--collapsed {
+  transition: opacity 0.25s ease, transform 0.25s ease, max-height 0.35s ease, margin 0.35s ease, padding 0.35s ease, border 0.35s ease;
+}
+#notification-menu .notification-item--dismissing {
+  opacity: 0;
+  transform: translateX(6px);
+}
+#notification-menu .notification-item--collapsed {
+  max-height: 0;
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 0;
+}
+#notification-menu .notification-loading {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#notification-menu .notification-loading-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #cccccc;
+}
+#notification-menu .notification-loading-item:last-child {
+  border-bottom: none;
+}
+#notification-menu .notification-loading-title,
+#notification-menu .notification-loading-body {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #d9d9d9 0%, #f3f3f3 50%, #d9d9d9 100%);
+  background-size: 200% 100%;
+  animation: notification-loading-shimmer 1.4s ease infinite;
+}
+#notification-menu .notification-loading-title {
+  width: 45%;
+  margin-bottom: 8px;
+}
+#notification-menu .notification-loading-body {
+  width: 80%;
+}
+#notification-menu .notification-loading-body.short {
+  width: 60%;
+}
+@keyframes notification-loading-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
 .childMenuItem {
   margin-left: 15px;
 }
