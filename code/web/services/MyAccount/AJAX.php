@@ -1836,7 +1836,7 @@ class MyAccount_AJAX extends JSON_Action {
 			];
 		}
 
-		$canForceTransfer = UserAccount::userHasPermission('Transfer All Lists');
+		$canForceTransfer = UserAccount::userHasPermission('Transfer Library Lists') || UserAccount::userHasPermission('Transfer All Lists');
 		require_once ROOT_DIR . '/sys/UserLists/UserList.php';
 		$list = new UserList();
 		$list->id = $listId;
@@ -11266,9 +11266,11 @@ class MyAccount_AJAX extends JSON_Action {
 		}
 
 		$hasTransferYourLists = UserAccount::userHasPermission('Transfer Your Lists');
+		$hasTransferLibraryLists = UserAccount::userHasPermission('Transfer Library Lists');
 		$hasTransferAllLists = UserAccount::userHasPermission('Transfer All Lists');
+		
 		if ($list->user_id == UserAccount::getActiveUserId()) {
-			if (!$hasTransferYourLists && !$hasTransferAllLists) {
+			if (!$hasTransferYourLists && !$hasTransferLibraryLists && !$hasTransferAllLists) {
 				$result['message'] = translate([
 					'text' => 'You do not have permission to transfer lists.',
 					'isPublicFacing' => true,
@@ -11276,7 +11278,7 @@ class MyAccount_AJAX extends JSON_Action {
 				return $result;
 			}
 		} else {
-			if (!$hasTransferAllLists) {
+			if (!$hasTransferLibraryLists && !$hasTransferAllLists) {
 				$result['message'] = translate([
 					'text' => 'You do not have permission to transfer lists you do not own.',
 					'isPublicFacing' => true,
@@ -11285,7 +11287,7 @@ class MyAccount_AJAX extends JSON_Action {
 			}
 		}
 
-		if ($forceTransfer && !$hasTransferAllLists) {
+		if ($forceTransfer && !$hasTransferLibraryLists && !$hasTransferAllLists) {
 			$result['message'] = translate([
 				'text' => 'You do not have permission to force transfer lists.',
 				'isPublicFacing' => true,
@@ -11293,7 +11295,7 @@ class MyAccount_AJAX extends JSON_Action {
 			return $result;
 		}
 
-		// Try barcode first, then username
+		// Try barcode first, then username.
 		$recipient = new User();
 		$recipient->ils_barcode = $recipientIdentifier;
 		if (!$recipient->find(true)) {
@@ -11323,6 +11325,50 @@ class MyAccount_AJAX extends JSON_Action {
 				'isPublicFacing' => true,
 			]);
 			return $result;
+		}
+
+		if ($hasTransferLibraryLists && !$hasTransferAllLists) {
+			$currentUser = UserAccount::getActiveUserObj();
+			$listOwner = new User();
+			$listOwner->id = $list->user_id;
+			if (!$listOwner->find(true)) {
+				$result['message'] = translate([
+					'text' => 'Could not find the list owner.',
+					'isPublicFacing' => true,
+				]);
+				return $result;
+			}
+
+			// Get allowed locations: home location + additional administration locations.
+			$adminHomeLocationId = $currentUser->homeLocationId;
+			$additionalAdministrationLocations = $currentUser->getAdditionalAdministrationLocations();
+			$allowedLocationIds = array_merge([$adminHomeLocationId], array_keys($additionalAdministrationLocations));
+
+			// Validate list owner is in allowed locations.
+			if (!in_array($listOwner->homeLocationId, $allowedLocationIds)) {
+				$result['title'] = translate([
+					'text' => 'List Transfer Not Allowed',
+					'isPublicFacing' => true,
+				]);
+				$result['message'] = translate([
+					'text' => 'You can only transfer lists for users in your home library or administered locations.',
+					'isPublicFacing' => true,
+				]);
+				return $result;
+			}
+
+			// Validate recipient is in allowed locations.
+			if (!in_array($recipient->homeLocationId, $allowedLocationIds)) {
+				$result['title'] = translate([
+					'text' => 'List Transfer Not Allowed',
+					'isPublicFacing' => true,
+				]);
+				$result['message'] = translate([
+					'text' => 'You can only transfer lists to users in your home library or administered locations.',
+					'isPublicFacing' => true,
+				]);
+				return $result;
+			}
 		}
 
 		if (!$forceTransfer && isset($recipient->allowListTransfers) && $recipient->allowListTransfers == 0) {

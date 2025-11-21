@@ -107,6 +107,7 @@ class Lists extends MyAccount {
 		$interface->assign('activeListGroupDetails', $activeListGroupDetails);
 		$interface->assign('listGroups', $listGroups);
 		$interface->assign('canTransferYourLists', UserAccount::userHasPermission('Transfer Your Lists'));
+		$interface->assign('canTransferLibraryLists', UserAccount::userHasPermission('Transfer Library Lists'));
 		$interface->assign('canTransferAllLists', UserAccount::userHasPermission('Transfer All Lists'));
 
 		$this->display('../MyAccount/lists.tpl', 'My Lists');

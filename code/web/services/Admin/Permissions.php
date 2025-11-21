@@ -158,6 +158,16 @@ class Admin_Permissions extends Admin_Admin {
 				}
 			}
 		}
+		// Sort permissions within each group by weight
+		foreach ($groups as &$group) {
+			uasort($group['permissions'], function($a, $b) {
+				if ($a->weight == $b->weight) {
+					return 0;
+				}
+				return ($a->weight < $b->weight) ? -1 : 1;
+			});
+		}
+
 		return $groups;
 	}
 

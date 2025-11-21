@@ -206,6 +206,7 @@ class MyAccount_MyList extends MyAccount {
 
 		$interface->assign('allowEdit', $userCanEdit);
 		$interface->assign('canTransferYourLists', UserAccount::userHasPermission('Transfer Your Lists'));
+		$interface->assign('canTransferLibraryLists', UserAccount::userHasPermission('Transfer Library Lists'));
 		$interface->assign('canTransferAllLists', UserAccount::userHasPermission('Transfer All Lists'));
 
 		//Determine the sort options

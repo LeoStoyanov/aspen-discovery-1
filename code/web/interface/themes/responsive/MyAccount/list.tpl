@@ -174,6 +174,9 @@
 								{/if}
 
 								<div class="btn-group btn-group-sm">
+									{if $canTransferYourLists || $canTransferLibraryLists || $canTransferAllLists}
+										<button class="btn btn-sm btn-default listViewButton" onclick="return AspenDiscovery.Account.initiateListTransfer({$userList->id})"><i class="fas fa-exchange-alt"></i> {translate text="Transfer" isPublicFacing=true}</button>
+									{/if}
 									{if !empty($showEmailThis)}
 									<button value="emailList" id="FavEmail" class="btn btn-sm btn-default listViewButton" onclick='return AspenDiscovery.Lists.emailListAction("{$userList->id}")'>{translate text='Email List' isPublicFacing=true}</button>
 									{/if}
@@ -377,6 +380,9 @@
                     {/if}
 
 					<div class="btn-group btn-group-sm">
+						{if $canTransferYourLists || $canTransferLibraryLists || $canTransferAllLists}
+							<button class="btn btn-sm btn-default listViewButton" onclick="return AspenDiscovery.Account.initiateListTransfer({$userList->id})"><i class="fas fa-exchange-alt"></i> {translate text="Transfer" isPublicFacing=true}</button>
+						{/if}
                         {if !empty($showEmailThis)}
 							<button value="emailList" id="FavEmail" class="btn btn-sm btn-default listViewButton" onclick='return AspenDiscovery.Lists.emailListAction("{$userList->id}")'>{translate text='Email List' isPublicFacing=true}</button>
                         {/if}

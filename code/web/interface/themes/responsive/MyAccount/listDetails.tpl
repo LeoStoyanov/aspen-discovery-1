@@ -54,7 +54,7 @@
 
 	<div class="row">
 		<div class="col-xs-12" style="margin-top: 5px;">
-			{if $canTransferYourLists || $canTransferAllLists}
+			{if $canTransferYourLists || $canTransferLibraryLists || $canTransferAllLists}
 				<button class="btn btn-default btn-sm" onclick="return AspenDiscovery.Account.initiateListTransfer({$list->id})"><i class="fas fa-exchange-alt"></i> {translate text="Transfer" isPublicFacing=true}</button>
 			{/if}
 		</div>

@@ -54,13 +54,14 @@ function getUpdates25_12_00(): array {
 				"INSERT IGNORE INTO `permission_groups` (`groupKey`,`sectionName`,`label`,`description`) VALUES
 					('transferLists','User Lists','Transfer Lists','Specify whether the role can transfer their own lists or force-transfer any list.')",
 				"INSERT IGNORE INTO `permissions` (`sectionName`,`name`,`requiredModule`,`weight`,`description`) VALUES
-					('User Lists', 'Transfer Your Lists', '', 10, 'Allows the user to transfer ownership of their own lists to another user with notification approval.'),
-					('User Lists', 'Transfer All Lists', '', 11, 'Allows the user to immediately transfer ownership of any list without notification approval.')",
-				"INSERT IGNORE INTO `permission_group_permissions` (`groupId`,`permissionId`) 
-					SELECT pg.id, p.id 
-					FROM `permission_groups` pg 
-					JOIN `permissions` p ON p.name IN ('Transfer Your Lists','Transfer All Lists') 
-					WHERE pg.groupKey = 'transferLists'"
+				('User Lists', 'Transfer Your Lists', '', 10, 'Allows the user to transfer ownership of their own lists to another user with notification approval.'),
+				('User Lists', 'Transfer Library Lists', '', 11, 'Allows library administrators to force transfer lists for patrons in their home library or administered locations.'),
+				('User Lists', 'Transfer All Lists', '', 12, 'Allows the user to immediately transfer ownership of any list without notification approval.')",
+			"INSERT IGNORE INTO `permission_group_permissions` (`groupId`,`permissionId`) 
+				SELECT pg.id, p.id 
+				FROM `permission_groups` pg 
+				JOIN `permissions` p ON p.name IN ('Transfer Your Lists','Transfer Library Lists','Transfer All Lists') 
+				WHERE pg.groupKey = 'transferLists'"
 			]
 		],
 		'allow_list_transfers_preference' => [
@@ -68,7 +69,7 @@ function getUpdates25_12_00(): array {
 			'description' => 'Add allowListTransfers column to user table to allow users to opt out of receiving list transfer requests.',
 			'continueOnError' => false,
 			'sql' => [
-				"ALTER TABLE user ADD COLUMN allowListTransfers TINYINT(1) DEFAULT 1"
+				"ALTER TABLE user ADD COLUMN IF NOT EXISTS allowListTransfers TINYINT(1) DEFAULT 1"
 			]
 		],
 		'user_messages_date_created' => [
@@ -76,7 +77,7 @@ function getUpdates25_12_00(): array {
 			'description' => 'Adds a timestamp column to user_messages for sorting and SSE.',
 			'continueOnError' => false,
 			'sql' => [
-				"ALTER TABLE user_messages ADD COLUMN date_created DATETIME DEFAULT CURRENT_TIMESTAMP"
+				"ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS date_created DATETIME DEFAULT CURRENT_TIMESTAMP"
 			]
 		],
 
