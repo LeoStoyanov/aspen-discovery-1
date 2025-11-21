@@ -14,6 +14,7 @@ class UserMessage extends DataObject {
 	public $action2;
 	public $addendum;
 	public $relatedObjectId;
+	public $dateCreated;
 
 	public function getNumericColumnNames(): array {
 		return [

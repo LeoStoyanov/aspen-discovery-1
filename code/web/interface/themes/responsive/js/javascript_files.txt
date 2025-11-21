@@ -66,3 +66,4 @@ aspen/palace-project.js
 aspen/communityEngagement.js
 aspen/curbside-pickups.js
 aspen/form-fields.js
+aspen/notifications.js
